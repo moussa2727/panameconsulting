@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://paname-consulting.com/sitemap.xml
