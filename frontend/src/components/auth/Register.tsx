@@ -179,6 +179,7 @@ const Register: React.FC = () => {
                     placeholder="••••••••"
                     required
                     minLength={8}
+                    autoComplete="new-password"
                     disabled={isLoading}
                   />
                   <button
@@ -214,6 +215,7 @@ const Register: React.FC = () => {
                     placeholder="••••••••"
                     required
                     minLength={8}
+                    autoComplete="new-password"
                     disabled={isLoading}
                   />
                   <button
