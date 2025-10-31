@@ -142,19 +142,19 @@ let blinkTimeout: NodeJS.Timeout;
     },
     { 
       name: 'Ma Procédure', 
-      path: '/ma-procedure', 
+      path: '/user-procedure', 
       icon: <FileText className='w-4 h-4' />,
       visible: user?.role === 'user'
     },
     { 
       name: 'Mes Rendez-Vous', 
-      path: '/mes-rendez-vous', 
+      path: '/user-rendez-vous', 
       icon: <Calendar className='w-4 h-4' />,
       visible: user?.role === 'user'
     },
     { 
       name: 'Mon Profil', 
-      path: '/mon-profil', 
+      path: '/user-profile', 
       icon: <UserIcon className='w-4 h-4' />,
       visible: user?.role === 'user'
     },

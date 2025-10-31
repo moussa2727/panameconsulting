@@ -29,7 +29,7 @@ export class Rendezvous {
     email: string;
 
     @Prop({ required: true, trim: true })
-    phone: string;
+    telephone: string;
 
     @Prop({
         required: true,

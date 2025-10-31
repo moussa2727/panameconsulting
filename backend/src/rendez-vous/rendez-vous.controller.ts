@@ -13,7 +13,6 @@ import {
     Req
 } from '@nestjs/common';
 import { AuthGuard } from '../shared/guards/auth.guard';
-import { AdminGuard } from '@/shared/guards/admin.guard';
 import { CreateRendezvousDto } from './dto/create-rendezvous.dto';
 import { UpdateRendezvousDto } from './dto/update-rendezvous.dto';
 import { RendezvousService } from './rendez-vous.service';
@@ -103,6 +102,23 @@ export class RendezvousController {
     remove(@Param('id') id: string, @Req() req: any) {
         return this.rendezvousService.removeWithPolicy(id, req.user?.role === 'admin');
     }
+
+    // Dans rendez-vous.controller.ts
+@Get('user/completed')
+@UseGuards(AuthGuard)
+async findCompletedByUser(
+    @Query('email') email: string
+) {
+    return this.rendezvousService.findByEmailAndStatus(email, 'Terminé');
+}
+
+@Get('user/cancelled')
+@UseGuards(AuthGuard)
+async findCancelledByUser(
+    @Query('email') email: string
+) {
+    return this.rendezvousService.findByEmailAndStatus(email, 'Annulé');
+}
 
 
     @Get('stats')

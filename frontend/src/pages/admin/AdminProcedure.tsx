@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../utils/AuthContext';
+
+
+
 import { toast } from 'react-toastify';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale/fr';
-import { Navigate, useNavigate } from 'react-router-dom';
 
 interface Procedure {
   _id: string;
@@ -11,730 +11,378 @@ interface Procedure {
   nom: string;
   email: string;
   destination: string;
-  statut: 'En cours' | 'Refusée' | 'Annulée' | 'Terminée';
-  steps: {
+  statut: 'En cours' | 'Terminée' | 'Annulée' | 'Refusée';
+  steps: Array<{
     nom: string;
-    statut: 'En cours' | 'Refusé' | 'Terminé';
-    raisonRefus?: string;
+    statut: string;
     dateMaj: string;
-  }[];
-  rendezVousId?: {
-    _id: string;
-    date: string;
-    time: string;
-    status: string;
-  };
+  }>;
   createdAt: string;
+  progress: number;
 }
 
-interface Rendezvous {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  date: string;
-  time: string;
+interface ProcedureStats {
+  total: number;
+  inProgress: number;
+  completed: number;
+  cancelled: number;
 }
 
-export default function AdminProcedure() {
-  const { user, isLoading: authLoading } = useAuth();
-  const navigate = useNavigate();
+const AdminProcedures: React.FC = () => {
+  const { user, token } = useAuth();
   const [procedures, setProcedures] = useState<Procedure[]>([]);
-  const [rendezvousList, setRendezvousList] = useState<Rendezvous[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [editingProcedure, setEditingProcedure] = useState<Procedure | null>(null);
-  const [editingStep, setEditingStep] = useState<string | null>(null);
-  const [stepForm, setStepForm] = useState<{ statut: string; raisonRefus?: string }>({ statut: 'En cours' });
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newProcedure, setNewProcedure] = useState({
-    prenom: '',
-    nom: '',
-    email: '',
-    destination: 'France',
-    rendezVousId: '',
-    steps: [
-      { nom: "Demande d'Admission", statut: 'En cours' },
-      { nom: "Demande de Visa", statut: 'En cours' },
-      { nom: "Préparatifs de Voyage", statut: 'En cours' }
-    ]
+  const [stats, setStats] = useState<ProcedureStats>({
+    total: 0,
+    inProgress: 0,
+    completed: 0,
+    cancelled: 0
   });
-  const VITE_API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-  const [showDeleteId, setShowDeleteId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [cancellingProcedure, setCancellingProcedure] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null);
 
-  const getAuthToken = () => {
-    return localStorage.getItem('token') || '';
-  };
+  const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-  // Vérification des permissions administrateur
-  const hasAdminAccess = () => {
-    return user && user.role === 'admin' && user.isActive;
-  };
+  useEffect(() => {
+    fetchUserProcedures();
+  }, [user]);
 
-  const handleApiError = (error: any, defaultMessage: string) => {
-    if (error instanceof Error) {
-      if (error.message.includes('token') || error.message.includes('Token')) {
-        toast.error('Session expirée - Veuillez vous reconnecter');
-        localStorage.removeItem('token');
-        window.location.href = '/connexion';
-        return;
-      }
-      toast.error(error.message);
-    } else {
-      toast.error(defaultMessage);
-    }
-  };
+  const fetchUserProcedures = async () => {
+    if (!user?.email) return;
 
-  const fetchProcedures = async () => {
     try {
       setLoading(true);
-      let url = `${VITE_API_URL}/api/procedures?page=${currentPage}&limit=10`;
-      
-      if (selectedStatus !== 'all') {
-        url += `&statut=${selectedStatus}`;
-      }
-
-      const response = await fetch(url, {
+      const response = await fetch(`${VITE_API_URL}/api/procedures/user/${user.email}`, {
         headers: {
-          'Authorization': `Bearer ${getAuthToken()}`,
-        },
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
 
-      if (response.status === 401) {
-        toast.error('Session expirée. Veuillez vous reconnecter.');
-        localStorage.removeItem('token');
-        window.location.href = '/connexion';
-        return;
-      }
-      
-      if (response.status === 403) {
-        toast.error('Accès refusé : droits administrateur requis');
-        return;
-      }
-      
       if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`);
+        throw new Error('Erreur lors de la récupération des procédures');
       }
 
       const data = await response.json();
       setProcedures(data.data || []);
-      setTotalPages(Math.ceil(data.total / 10));
+      calculateStats(data.data || []);
     } catch (error) {
       console.error('Erreur:', error);
-      handleApiError(error, 'Erreur lors du chargement des procédures');
+      toast.error('Impossible de charger vos procédures');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchRendezvous = async () => {
-    try {
-      const response = await fetch(`${VITE_API_URL}/api/rendezvous?page=1&limit=100`, {
-        headers: {
-          'Authorization': `Bearer ${getAuthToken()}`,
-        },
-      });
-
-      if (response.status === 403) {
-        console.log('Accès aux rendez-vous non autorisé - Permission manquante');
-        return;
-      }
-      
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setRendezvousList(data.data || []);
-    } catch (error) {
-      console.error('Erreur lors de la récupération des rendez-vous:', error);
-    }
+  const calculateStats = (proceduresList: Procedure[]) => {
+    const statsData: ProcedureStats = {
+      total: proceduresList.length,
+      inProgress: proceduresList.filter(p => p.statut === 'En cours').length,
+      completed: proceduresList.filter(p => p.statut === 'Terminée').length,
+      cancelled: proceduresList.filter(p => p.statut === 'Annulée').length
+    };
+    setStats(statsData);
   };
 
-  const handleStepUpdate = async (procedureId: string, stepName: string) => {
-    if (!procedureId) {
-      toast.error('ID de procédure manquant');
-      return;
-    }
-
-    try {
-      const response = await fetch(
-        `${VITE_API_URL}/api/procedures/${procedureId}/steps/${encodeURIComponent(stepName)}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${getAuthToken()}`,
-          },
-          body: JSON.stringify(stepForm),
-        }
-      );
-
-      if (response.status === 403) {
-        throw new Error('Droits administrateur requis pour modifier les étapes');
-      }
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors de la mise à jour de l\'étape');
-      }
-
-      toast.success('Étape mise à jour avec succès');
-      setEditingStep(null);
-      setEditingProcedure(null);
-      fetchProcedures();
-    } catch (error) {
-      console.error('Erreur:', error);
-      handleApiError(error, 'Erreur lors de la mise à jour de l\'étape');
-    }
+  const handleCancelClick = (procedure: Procedure) => {
+    setSelectedProcedure(procedure);
+    setShowCancelConfirm(true);
   };
 
-  const handleProcedureStatusUpdate = async (id: string, newStatus: string) => {
-    if (!id) {
-      toast.error('ID de procédure manquant');
-      return;
-    }
+  const confirmCancel = async () => {
+    if (!selectedProcedure) return;
 
     try {
-      const response = await fetch(`${VITE_API_URL}/api/procedures/${id}`, {
+      setCancellingProcedure(selectedProcedure._id);
+      
+      const response = await fetch(`${VITE_API_URL}/api/procedures/${selectedProcedure._id}/cancel`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ statut: newStatus }),
+        body: JSON.stringify({
+          email: user?.email,
+          reason: 'Annulée par l\'utilisateur'
+        })
       });
 
-      if (response.status === 403) {
-        throw new Error('Droits administrateur requis pour modifier le statut');
-      }
-      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors de la mise à jour du statut');
+        throw new Error('Erreur lors de l\'annulation');
       }
 
-      toast.success('Statut de la procédure mis à jour');
-      fetchProcedures();
+      toast.success('Procédure annulée avec succès');
+      await fetchUserProcedures(); // Recharger les données
     } catch (error) {
       console.error('Erreur:', error);
-      handleApiError(error, 'Erreur lors de la mise à jour du statut');
-    }
-  };
-
-  const handleDeleteProcedure = async (id: string) => {
-    if (!id) {
-      toast.error('ID de procédure manquant');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${VITE_API_URL}/api/procedures/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${getAuthToken()}`,
-        },
-      });
-
-      if (response.status === 403) {
-        throw new Error('Droits administrateur requis pour supprimer');
-      }
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors de la suppression de la procédure');
-      }
-
-      toast.success('Procédure supprimée avec succès');
-      setShowDeleteId(null);
-      fetchProcedures();
-    } catch (error) {
-      console.error('Erreur:', error);
-      handleApiError(error, 'Erreur lors de la suppression de la procédure');
-    }
-  };
-
-  const handleCreateProcedure = async () => {
-    try {
-      if (!newProcedure.prenom || !newProcedure.nom || !newProcedure.email || !newProcedure.destination) {
-        toast.error('Veuillez remplir tous les champs obligatoires');
-        return;
-      }
-
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(newProcedure.email)) {
-        toast.error('Veuillez entrer une adresse email valide');
-        return;
-      }
-
-      // Préparer les données à envoyer
-      const procedureToCreate = {
-        prenom: newProcedure.prenom,
-        nom: newProcedure.nom,
-        email: newProcedure.email,
-        destination: newProcedure.destination,
-        rendezVousId: newProcedure.rendezVousId || undefined,
-        steps: newProcedure.steps
-      };
-
-      const response = await fetch(`${VITE_API_URL}/api/procedures`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`,
-        },
-        body: JSON.stringify(procedureToCreate),
-      });
-
-      if (response.status === 403) {
-        throw new Error('Droits administrateur requis pour créer des procédures');
-      }
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Erreur détaillée:', errorData);
-        throw new Error(errorData.message || 'Erreur lors de la création de la procédure');
-      }
-
-      toast.success('Procédure créée avec succès');
-      setShowCreateModal(false);
-      setNewProcedure({
-        prenom: '',
-        nom: '',
-        email: '',
-        destination: 'France',
-        rendezVousId: '',
-        steps: [
-          { nom: "Demande d'Admission", statut: 'En cours' },
-          { nom: "Demande de Visa", statut: 'En cours' },
-          { nom: "Préparatifs de Voyage", statut: 'En cours' }
-        ]
-      });
-      fetchProcedures();
-    } catch (error) {
-      console.error('Erreur:', error);
-      handleApiError(error, 'Erreur lors de la création de la procédure');
-    }
-  };
-
-  const formatFrenchDate = (dateStr: string) => {
-    try {
-      return format(new Date(dateStr), 'dd MMM yyyy à HH:mm', { locale: fr });
-    } catch {
-      return dateStr;
+      toast.error('Erreur lors de l\'annulation de la procédure');
+    } finally {
+      setCancellingProcedure(null);
+      setShowCancelConfirm(false);
+      setSelectedProcedure(null);
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Terminée': return 'bg-green-100 text-green-800 border-green-200';
       case 'En cours': return 'bg-sky-100 text-sky-800 border-sky-200';
-      case 'Refusée': return 'bg-red-100 text-red-800 border-red-200';
-      case 'Annulée': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'Terminée': return 'bg-green-100 text-green-800 border-green-200';
+      case 'Annulée': return 'bg-red-100 text-red-800 border-red-200';
+      case 'Refusée': return 'bg-orange-100 text-orange-800 border-orange-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  const getStepStatusColor = (status: string) => {
-    switch (status) {
-      case 'Terminé': return 'bg-green-100 text-green-800';
-      case 'En cours': return 'bg-sky-100 text-sky-800';
-      case 'Refusé': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+  const getStepStatus = (steps: any[]) => {
+    const currentStep = steps.find(step => step.statut === 'En cours');
+    return currentStep ? currentStep.nom : 'Terminé';
   };
 
-  useEffect(() => {
-    if (hasAdminAccess()) {
-      fetchProcedures();
-      fetchRendezvous();
-    } else if (!authLoading) {
-      toast.error('Accès réservé aux administrateurs');
-      navigate('/');
-    }
-  }, [currentPage, selectedStatus]);
-
-  // Redirection si pas admin
-  if (!authLoading && (!user || user.role !== 'admin' || !user.isActive)) {
-    return <Navigate to="/" replace />;
-  }
-
-  if (authLoading) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-sky-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
+      <div className="min-h-screen bg-gradient-to-br from-sky-50 to-blue-100 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="animate-pulse">
+            <div className="h-8 bg-sky-200 rounded w-1/4 mb-8"></div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="bg-white rounded-lg shadow p-6">
+                  <div className="h-4 bg-sky-200 rounded w-1/2 mb-2"></div>
+                  <div className="h-6 bg-sky-200 rounded w-1/4"></div>
+                </div>
+              ))}
+            </div>
+            <div className="bg-white rounded-lg shadow">
+              <div className="h-64 bg-sky-200 rounded"></div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-sky-50 p-4 md:p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
-          <div className="p-6 bg-gradient-to-r from-sky-500 to-sky-600">
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-white">Gestion des Procédures</h1>
-                <p className="text-sky-100 mt-2">Suivi des procédures étudiantes</p>
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 to-blue-100 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        {/* En-tête */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-sky-900 mb-2">
+            Mes Procédures
+          </h1>
+          <p className="text-sky-700">
+            Suivez l'avancement de vos procédures en cours
+          </p>
+        </div>
+
+        {/* Cartes de statistiques */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white rounded-lg shadow-lg border border-sky-100 p-6">
+            <div className="flex items-center">
+              <div className="p-3 rounded-full bg-sky-100 text-sky-600 mr-4">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
               </div>
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="bg-white text-sky-600 hover:bg-sky-50 px-4 py-2 rounded-lg font-medium transition duration-200 focus:outline-none focus:ring-none"
-              >
-                Créer une procédure
-              </button>
+              <div>
+                <p className="text-sm font-medium text-sky-600">Total</p>
+                <p className="text-2xl font-bold text-sky-900">{stats.total}</p>
+              </div>
             </div>
           </div>
 
-          <div className="p-4 md:p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div>
-                <label htmlFor="status-filter" className="block text-sm font-medium text-sky-700 mb-1">
-                  Filtrer par statut
-                </label>
-                <select
-                  id="status-filter"
-                  className="w-full rounded-lg border border-sky-300 p-2 focus:outline-none focus:ring-none focus:border-sky-500 hover:border-sky-400"
-                  value={selectedStatus}
-                  onChange={(e) => setSelectedStatus(e.target.value)}
-                >
-                  <option value="all">Tous les statuts</option>
-                  <option value="En cours">En cours</option>
-                  <option value="Terminée">Terminée</option>
-                  <option value="Refusée">Refusée</option>
-                  <option value="Annulée">Annulée</option>
-                </select>
+          <div className="bg-white rounded-lg shadow-lg border border-sky-100 p-6">
+            <div className="flex items-center">
+              <div className="p-3 rounded-full bg-sky-100 text-sky-600 mr-4">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </div>
-
-              <div className="flex items-end">
-                <button
-                  onClick={() => {
-                    setSelectedStatus('all');
-                    setCurrentPage(1);
-                    fetchProcedures();
-                  }}
-                  className="w-full bg-sky-500 hover:bg-sky-600 text-white py-2 px-4 rounded-lg transition duration-200 focus:outline-none focus:ring-none"
-                >
-                  Actualiser
-                </button>
+              <div>
+                <p className="text-sm font-medium text-sky-600">En cours</p>
+                <p className="text-2xl font-bold text-sky-900">{stats.inProgress}</p>
               </div>
             </div>
+          </div>
 
-            {loading ? (
-              <div className="flex justify-center items-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
+          <div className="bg-white rounded-lg shadow-lg border border-green-100 p-6">
+            <div className="flex items-center">
+              <div className="p-3 rounded-full bg-green-100 text-green-600 mr-4">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </div>
-            ) : (
-              <>
-                <div className="space-y-4">
-                  {procedures.length === 0 ? (
-                    <div className="text-center py-8 text-sky-500">
-                      Aucune procédure trouvée
-                    </div>
-                  ) : (
-                    procedures.map((procedure) => (
-                      <div key={procedure._id} className="border border-sky-200 rounded-lg p-4 bg-white shadow-sm">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="text-lg font-semibold text-sky-800">
-                              {procedure.prenom} {procedure.nom}
-                            </h3>
-                            <p className="text-sm text-sky-600">{procedure.email}</p>
-                            <p className="text-sm mt-1">
-                              <span className="font-medium">Destination:</span> {procedure.destination}
-                            </p>
-                            {procedure.rendezVousId && (
-                              <p className="text-sm">
-                                <span className="font-medium">Rendez-vous:</span> {formatFrenchDate(procedure.rendezVousId.date)} à {procedure.rendezVousId.time}
-                              </p>
-                            )}
-                            <p className="text-sm">
-                              <span className="font-medium">Créée le:</span> {formatFrenchDate(procedure.createdAt)}
-                            </p>
-                          </div>
-                          <div className="flex flex-col items-end">
-                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(procedure.statut)} mb-2`}>
-                              {procedure.statut}
-                            </span>
-                            <button
-                              onClick={() => setShowDeleteId(procedure._id)}
-                              className="text-red-500 hover:text-red-700 text-sm focus:outline-none focus:ring-none rounded"
-                            >
-                              Supprimer
-                            </button>
-                          </div>
-                        </div>
+              <div>
+                <p className="text-sm font-medium text-green-600">Terminées</p>
+                <p className="text-2xl font-bold text-green-900">{stats.completed}</p>
+              </div>
+            </div>
+          </div>
 
-                        <div className="mt-4">
-                          <h4 className="text-sm font-medium text-sky-700 mb-2">Étapes de la procédure</h4>
-                          <div className="space-y-3">
-                            {procedure.steps.map((step) => (
-                               <div key={step.nom} className="border-l-4 border-sky-200 pl-3 py-1">
-                                <div className="flex justify-between items-center">
-                                  <div>
-                                    <p className="font-medium text-sky-800">{step.nom}</p>
-                                    <p className="text-xs text-sky-500">
-                                      Dernière mise à jour: {formatFrenchDate(step.dateMaj)}
-                                    </p>
-                                    {step.raisonRefus && (
-                                      <p className="text-xs text-red-500 mt-1">
-                                        Raison: {step.raisonRefus}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStepStatusColor(step.statut)}`}>
-                                      {step.statut}
-                                    </span>
-                                    <button
-                                      onClick={() => {
-                                        setEditingProcedure(procedure);
-                                        setEditingStep(step.nom);
-                                        setStepForm({
-                                          statut: step.statut,
-                                          raisonRefus: step.raisonRefus
-                                        });
-                                      }}
-                                      className="text-sky-600 hover:text-sky-800 text-sm"
-                                    >
-                                      Modifier
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="mt-4 flex justify-end space-x-2">
-                          {procedure.statut !== 'Terminée' && (
-                            <button
-                              onClick={() => handleProcedureStatusUpdate(procedure._id, 'Terminée')}
-                              className="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 focus:outline-none focus:ring-none"
-                            >
-                              Terminer
-                            </button>
-                          )}
-                          {procedure.statut !== 'Annulée' && (
-                            <button
-                              onClick={() => handleProcedureStatusUpdate(procedure._id, 'Annulée')}
-                              className="px-3 py-1 bg-yellow-500 text-white text-sm rounded hover:bg-yellow-600 focus:outline-none focus:ring-none"
-                            >
-                              Annuler
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between mt-6">
-                  <div>
-                    <p className="text-sm text-sky-700">
-                      Page <span className="font-medium">{currentPage}</span> sur <span className="font-medium">{totalPages}</span>
-                    </p>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                      disabled={currentPage === 1}
-                      className={`px-4 py-2 rounded-lg ${currentPage === 1 ? 'bg-sky-200 text-sky-400 cursor-not-allowed' : 'bg-sky-500 text-white hover:bg-sky-600'}`}
-                    >
-                      Précédent
-                    </button>
-                    <button
-                      onClick={() => setCurrentPage(prev => prev + 1)}
-                      disabled={currentPage === totalPages}
-                      className={`px-4 py-2 rounded-lg ${currentPage === totalPages ? 'bg-sky-200 text-sky-400 cursor-not-allowed' : 'bg-sky-500 text-white hover:bg-sky-600'}`}
-                    >
-                      Suivant
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
+          <div className="bg-white rounded-lg shadow-lg border border-red-100 p-6">
+            <div className="flex items-center">
+              <div className="p-3 rounded-full bg-red-100 text-red-600 mr-4">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-red-600">Annulées</p>
+                <p className="text-2xl font-bold text-red-900">{stats.cancelled}</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Modals */}
-        {showCreateModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <h2 className="text-xl font-bold text-sky-700 mb-4">Créer une nouvelle procédure</h2>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-sky-700 mb-1">Prénom *</label>
-                    <input
-                      type="text"
-                      className="w-full rounded-lg border border-sky-300 p-2 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                      value={newProcedure.prenom}
-                      onChange={(e) => setNewProcedure({...newProcedure, prenom: e.target.value})}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-sky-700 mb-1">Nom *</label>
-                    <input
-                      type="text"
-                      className="w-full rounded-lg border border-sky-300 p-2 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                      value={newProcedure.nom}
-                      onChange={(e) => setNewProcedure({...newProcedure, nom: e.target.value})}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-sky-700 mb-1">Email *</label>
-                    <input
-                      type="email"
-                      className="w-full rounded-lg border border-sky-300 p-2 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                      value={newProcedure.email}
-                      onChange={(e) => setNewProcedure({...newProcedure, email: e.target.value})}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-sky-700 mb-1">Destination *</label>
-                    <select
-                      className="w-full rounded-lg border border-sky-300 p-2 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                      value={newProcedure.destination}
-                      onChange={(e) => setNewProcedure({...newProcedure, destination: e.target.value})}
-                      required
-                    >
-                      <option value="France">France</option>
-                      <option value="Canada">Canada</option>
-                      <option value="Maroc">Maroc</option>
-                      <option value="Algérie">Algérie</option>
-                      <option value="Chine">Chine</option>
-                      <option value="Russie">Russie</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-sky-700 mb-1">Rendez-vous associé (optionnel)</label>
-                    <select
-                      className="w-full rounded-lg border border-sky-300 p-2 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                      value={newProcedure.rendezVousId}
-                      onChange={(e) => setNewProcedure({...newProcedure, rendezVousId: e.target.value})}
-                    >
-                      <option value="">Sélectionnez un rendez-vous</option>
-                      {rendezvousList.map((rdv) => (
-                        <option key={rdv._id} value={rdv._id}>
-                          {rdv.firstName} {rdv.lastName} - {formatFrenchDate(rdv.date)} à {rdv.time}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="flex justify-end space-x-3 pt-4">
-                    <button
-                      onClick={() => setShowCreateModal(false)}
-                      className="px-4 py-2 border border-sky-300 text-sky-600 rounded-lg hover:bg-sky-50 transition focus:outline-none focus:ring-none"
-                    >
-                      Annuler
-                    </button>
-                    <button
-                      onClick={handleCreateProcedure}
-                      className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition focus:outline-none focus:ring-none"
-                    >
-                      Créer
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+        {/* Liste des procédures en cours */}
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-sky-100">
+            <h2 className="text-xl font-semibold text-sky-900">
+              Procédures en cours ({stats.inProgress})
+            </h2>
           </div>
-        )}
 
-        {editingProcedure && editingStep && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <h2 className="text-xl font-bold text-sky-700 mb-4">Modifier l'étape: {editingStep}</h2>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-sky-700 mb-1">Statut</label>
-                    <select
-                      className="w-full rounded-lg border border-sky-300 p-2 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                      value={stepForm.statut}
-                      onChange={(e) => setStepForm({...stepForm, statut: e.target.value})}
-                    >
-                      <option value="En cours">En cours</option>
-                      <option value="Terminé">Terminé</option>
-                      <option value="Refusé">Refusé</option>
-                    </select>
-                  </div>
+          <div className="divide-y divide-sky-100">
+            {procedures
+              .filter(procedure => procedure.statut === 'En cours')
+              .map((procedure) => (
+                <div key={procedure._id} className="p-6 hover:bg-sky-50 transition-colors">
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-lg font-semibold text-sky-900">
+                          {procedure.prenom} {procedure.nom}
+                        </h3>
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(procedure.statut)}`}>
+                          {procedure.statut}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-sky-700">
+                        <div>
+                          <span className="font-medium">Destination:</span>{' '}
+                          {procedure.destination}
+                        </div>
+                        <div>
+                          <span className="font-medium">Étape actuelle:</span>{' '}
+                          {getStepStatus(procedure.steps)}
+                        </div>
+                        <div>
+                          <span className="font-medium">Progression:</span>{' '}
+                          {procedure.progress}%
+                        </div>
+                      </div>
 
-                  {stepForm.statut === 'Refusé' && (
-                    <div>
-                      <label className="block text-sm font-medium text-sky-700 mb-1">Raison du refus *</label>
-                      <textarea
-                        className="w-full rounded-lg border border-sky-300 p-2 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                        rows={3}
-                        value={stepForm.raisonRefus || ''}
-                        onChange={(e) => setStepForm({...stepForm, raisonRefus: e.target.value})}
-                        placeholder="Expliquez la raison du refus..."
-                        required
-                      />
+                      {/* Barre de progression */}
+                      <div className="mt-4">
+                        <div className="flex justify-between text-sm text-sky-700 mb-1">
+                          <span>Avancement</span>
+                          <span>{procedure.progress}%</span>
+                        </div>
+                        <div className="w-full bg-sky-200 rounded-full h-2">
+                          <div 
+                            className="bg-sky-600 h-2 rounded-full transition-all duration-500"
+                            style={{ width: `${procedure.progress}%` }}
+                          ></div>
+                        </div>
+                      </div>
                     </div>
-                  )}
 
-                  <div className="flex justify-end space-x-3 pt-4">
-                    <button
-                      onClick={() => {
-                        setEditingProcedure(null);
-                        setEditingStep(null);
-                      }}
-                      className="px-4 py-2 border border-sky-300 text-sky-600 rounded-lg hover:bg-sky-50 transition focus:outline-none focus:ring-none"
-                    >
-                      Annuler
-                    </button>
-                    <button
-                      onClick={() => handleStepUpdate(editingProcedure._id, editingStep)}
-                      className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition focus:outline-none focus:ring-none"
-                    >
-                      Enregistrer
-                    </button>
+                    <div className="mt-4 lg:mt-0 lg:ml-6">
+                      <button
+                        onClick={() => handleCancelClick(procedure)}
+                        disabled={cancellingProcedure === procedure._id}
+                        className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {cancellingProcedure === procedure._id ? (
+                          <>
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-red-700" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Annulation...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Annuler
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
+              ))}
+            
+            {procedures.filter(procedure => procedure.statut === 'En cours').length === 0 && (
+              <div className="p-12 text-center">
+                <svg className="mx-auto h-12 w-12 text-sky-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h3 className="mt-4 text-lg font-medium text-sky-900">Aucune procédure en cours</h3>
+                <p className="mt-2 text-sm text-sky-600">
+                  Vous n'avez actuellement aucune procédure en cours de traitement.
+                </p>
               </div>
-            </div>
+            )}
           </div>
-        )}
+        </div>
+      </div>
 
-        {showDeleteId && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <h2 className="text-lg font-bold text-sky-700 mb-2">Confirmer la suppression</h2>
-                <p className="text-sm text-gray-600 mb-6">Êtes-vous sûr de vouloir supprimer cette procédure ? Cette action est irréversible.</p>
-                <div className="flex justify-end space-x-3">
-                  <button
-                    onClick={() => setShowDeleteId(null)}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition focus:outline-none focus:ring-none"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    onClick={() => handleDeleteProcedure(showDeleteId!)}
-                    className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition focus:outline-none focus:ring-none"
-                  >
-                    Supprimer
-                  </button>
+      {/* Popover de confirmation d'annulation */}
+      {showCancelConfirm && selectedProcedure && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0">
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
                 </div>
               </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Confirmer l'annulation
+                </h3>
+                <p className="text-sm text-gray-500">
+                  Êtes-vous sûr de vouloir annuler cette procédure ?
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+              <p className="text-sm text-red-800">
+                <strong>Procédure:</strong> {selectedProcedure.prenom} {selectedProcedure.nom} - {selectedProcedure.destination}
+              </p>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-6">
+              Cette action est irréversible. Une fois annulée, la procédure ne pourra pas être reprise.
+            </p>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowCancelConfirm(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-colors"
+              >
+                Retour
+              </button>
+              <button
+                onClick={confirmCancel}
+                disabled={cancellingProcedure !== null}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {cancellingProcedure ? 'Annulation...' : 'Confirmer l\'annulation'}
+              </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
-}
+};
+
+export default AdminProcedures;

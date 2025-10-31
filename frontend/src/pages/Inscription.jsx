@@ -6,7 +6,7 @@ const Inscription = () => {
   const pageTitle = 'Créer un compte - PANAME CONSULTING';
   const pageDescription =
     'Inscrivez-vous pour démarrer votre projet d’études à l’étranger avec Paname Consulting.';
-  const canonicalUrl = 'https://www.paname-consulting.com/inscription';
+  const canonicalUrl = 'https://panameconsulting.com/inscription';
 
   return (
     <>
@@ -27,7 +27,7 @@ const Inscription = () => {
         <meta property='og:type' content='website' />
         <meta
           property='og:image'
-          content='https://www.paname-consulting.com/paname-consulting.jpg'
+          content='https://panameconsulting.com/paname-consulting.jpg'
         />
         <meta property='og:image:alt' content='Logo Paname Consulting' />
 
@@ -37,7 +37,7 @@ const Inscription = () => {
         <meta name='twitter:description' content={pageDescription} />
         <meta
           name='twitter:image'
-          content='https://www.paname-consulting.com/paname-consulting.jpg'
+          content='https://panameconsulting.com/paname-consulting.jpg'
         />
 
         {/* Favicon et icônes */}

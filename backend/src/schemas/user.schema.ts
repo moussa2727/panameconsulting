@@ -23,8 +23,6 @@ export class User extends Document {
   @Prop({ required: true, unique: true })
   telephone: string;
 
-  @Prop()
-  phone?: string;
 
   @Prop({
     type: String,

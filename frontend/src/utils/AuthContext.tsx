@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import { toast } from 'react-toastify';
 
@@ -7,17 +7,23 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
-  logout: (redirectPath?: string) => void;
+  logout: (redirectPath?: string, silent?: boolean) => void;
   register: (data: RegisterFormData) => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
-  refreshToken: () => Promise<void>;
+  refreshToken: () => Promise<boolean>;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  // Fonctions sessionStorage sécurisées
+  saveToSession: (key: string, data: any) => void;
+  getFromSession: (key: string) => any;
+  removeFromSession: (key: string) => void;
+  clearSession: () => void;
 }
 
 interface User {
+  telephone?: string;
   id: string;
   email: string;
   firstName: string;
@@ -41,149 +47,335 @@ interface JwtPayload {
   role: string;
   exp: number;
   iat: number;
+  jti?: string;
 }
 
 interface LoginResponse {
   accessToken: string;
-  refreshToken: string;
   user: User;
   message?: string;
 }
 
 interface RefreshResponse {
-  accessToken: string;
+  accessToken?: string;
   refreshToken?: string;
+  loggedOut?: boolean;
 }
+
+// Clés autorisées pour le sessionStorage (whitelist)
+const ALLOWED_SESSION_KEYS = {
+  REDIRECT_PATH: 'auth_redirect_path',
+  LOGIN_TIMESTAMP: 'login_timestamp',
+  UI_PREFERENCES: 'ui_preferences',
+  SESSION_METADATA: 'session_metadata',
+  NAVIGATION_STATE: 'navigation_state',
+  FORM_DRAFTS: 'form_drafts_',
+  FILTERS_STATE: 'filters_state_'
+} as const;
+
+// Clés interdites (blacklist)
+const SENSITIVE_KEYS = [
+  'user_email', 'user_password', 'user_id', 'user_role',
+  'jwt_token', 'access_token', 'refresh_token', 'personal_data',
+  'auth_token', 'credentials', 'password', 'email'
+];
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-  const [refreshToken, setRefreshToken] = useState<string | null>(localStorage.getItem('refreshToken'));
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(true); // Initialisé à true
+  const location = useLocation();
+  const refreshTimeoutRef = useRef<number | null>(null);
+  const checkIntervalRef = useRef<number | null>(null);
 
   const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      setIsLoading(true);
-      try {
-        const savedToken = localStorage.getItem('token');
-        
-        if (savedToken) {
-          const decoded = jwtDecode<JwtPayload>(savedToken);
-          
-          // Vérifier si le token est expiré
-          if (decoded.exp * 1000 < Date.now()) {
-            await refreshTokenFunction();
-          } else {
-            await fetchUserData(savedToken);
-          }
-        } else {
-          // Pas de token, on passe directement à l'état non connecté
-          setIsLoading(false);
-        }
-      } catch (err) {
-        console.error('Auth check error:', err);
-        // En cas d'erreur, on considère l'utilisateur comme non connecté
-        localStorage.removeItem('token');
-        setUser(null);
-        setToken(null);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    checkAuth();
-  }, []);
+  // === FONCTIONS SESSIONSTORAGE SÉCURISÉES ===
 
-   const setupTokenRefresh = (exp: number) => {
-    const refreshTime = (exp * 1000 - Date.now()) - 5 * 60 * 1000;
-    if (refreshTime > 0) {
-      const timeout = setTimeout(() => {
-        refreshTokenFunction();
-      }, refreshTime);
-      return () => clearTimeout(timeout);
+  const validateSessionKey = (key: string): boolean => {
+    // Vérifier si la clé est dans la blacklist
+    if (SENSITIVE_KEYS.some(sensitive => key.toLowerCase().includes(sensitive.toLowerCase()))) {
+      console.debug(`Tentative de stockage de donnée sensible ignorée: ${key}`);
+      return false;
+    }
+    
+    // Vérifier si la clé est dans la whitelist ou commence par un préfixe autorisé
+    const isAllowed = Object.values(ALLOWED_SESSION_KEYS).some(allowedKey => 
+      key === allowedKey || key.startsWith(ALLOWED_SESSION_KEYS.FORM_DRAFTS) || key.startsWith(ALLOWED_SESSION_KEYS.FILTERS_STATE)
+    );
+    
+    if (!isAllowed) {
+      console.debug(`Clé sessionStorage non autorisée ignorée: ${key}`);
+      return false;
+    }
+    
+    return true;
+  };
+
+  const validateSessionData = (data: any): boolean => {
+    if (!data || typeof data !== 'object') return true;
+
+    // Vérifier des clés sensibles exactes uniquement (évite les faux positifs: sessionId, userAgent, etc.)
+    const SENSITIVE_EXACT = new Set([
+      'email',
+      'password',
+      'token',
+      'accessToken',
+      'refreshToken',
+      'authorization',
+      'bearer',
+      'id',
+      'role',
+      'credentials',
+    ].map(k => k.toLowerCase()));
+
+    const hasSensitiveData = Object.keys(data).some(key => SENSITIVE_EXACT.has(key.toLowerCase()));
+
+    if (hasSensitiveData) {
+      // Refus silencieux pour éviter le bruit console
+      return false;
+    }
+
+    return true;
+  };
+
+  const saveToSession = (key: string, data: any): void => {
+    try {
+      if (!validateSessionKey(key)) {
+        return;
+      }
+      // Ne pas valider le contenu pour les clés whitelisted connues et sûres
+      const skipContentValidation = (
+        key === ALLOWED_SESSION_KEYS.UI_PREFERENCES ||
+        key === ALLOWED_SESSION_KEYS.SESSION_METADATA ||
+        key === ALLOWED_SESSION_KEYS.LOGIN_TIMESTAMP ||
+        key === ALLOWED_SESSION_KEYS.REDIRECT_PATH ||
+        key.startsWith(ALLOWED_SESSION_KEYS.FORM_DRAFTS) ||
+        key.startsWith(ALLOWED_SESSION_KEYS.FILTERS_STATE)
+      );
+      if (!skipContentValidation && !validateSessionData(data)) {
+        return;
+      }
+      
+      // Limiter la taille des données (50KB max)
+      const dataSize = new Blob([JSON.stringify(data)]).size;
+      if (dataSize > 50 * 1024) {
+        console.debug(`Données trop volumineuses pour sessionStorage: ${dataSize} bytes`);
+        return;
+      }
+      
+      sessionStorage.setItem(key, JSON.stringify(data));
+    } catch (error) {
+      console.warn('❌ Erreur sessionStorage (sauvegarde):', error);
     }
   };
 
-  const checkAdminAccess = (): boolean => {
-    if (!user) return false;
-    return user.role === 'admin' && user.isActive;
+  const getFromSession = (key: string): any => {
+    try {
+      if (!validateSessionKey(key)) {
+        return null;
+      }
+      
+      const item = sessionStorage.getItem(key);
+      return item ? JSON.parse(item) : null;
+    } catch (error) {
+      console.warn('❌ Erreur sessionStorage (récupération):', error);
+      return null;
+    }
   };
 
-  
-    const fetchUserData = async (token: string) => {
+  const removeFromSession = (key: string): void => {
     try {
-      setIsLoading(true);
+      sessionStorage.removeItem(key);
+    } catch (error) {
+      console.warn('❌ Erreur sessionStorage (suppression):', error);
+    }
+  };
+
+  const clearSession = (): void => {
+    try {
+      // Sauvegarder les préférences UI avant de tout effacer
+      const uiPreferences = getFromSession(ALLOWED_SESSION_KEYS.UI_PREFERENCES);
+      sessionStorage.clear();
+      
+      // Restaurer les préférences UI si elles existaient
+      if (uiPreferences) {
+        saveToSession(ALLOWED_SESSION_KEYS.UI_PREFERENCES, uiPreferences);
+      }
+    } catch (error) {
+      console.warn('❌ Erreur sessionStorage (nettoyage):', error);
+    }
+  };
+
+  const cleanupSensitiveData = (): void => {
+    SENSITIVE_KEYS.forEach(key => {
+      if (sessionStorage.getItem(key)) {
+        sessionStorage.removeItem(key);
+        console.debug(`Donnée sensible supprimée: ${key}`);
+      }
+    });
+  };
+
+
+  // === GESTIONNAIRES D'ÉTAT SÉCURISÉS ===
+
+  const saveNavigationState = (): void => {
+    saveToSession(ALLOWED_SESSION_KEYS.REDIRECT_PATH, location.pathname);
+    saveToSession(ALLOWED_SESSION_KEYS.LOGIN_TIMESTAMP, Date.now());
+  };
+
+  const saveUIPreferences = (preferences: any): void => {
+    saveToSession(ALLOWED_SESSION_KEYS.UI_PREFERENCES, {
+      ...preferences,
+      savedAt: Date.now()
+    });
+  };
+
+
+  const saveSessionMetadata = (): void => {
+    saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
+      sessionStart: Date.now(),
+      sessionId: Math.random().toString(36).substring(2, 15),
+      userAgent: navigator.userAgent.substring(0, 50),
+      hasActiveSession: !!(user || localStorage.getItem('token'))
+    });
+  };
+
+ // Configuration du rafraîchissement automatique
+  const setupTokenRefresh = (exp: number): void => {
+    if (refreshTimeoutRef.current) {
+      window.clearTimeout(refreshTimeoutRef.current);
+    }
+
+    const refreshTime = exp * 1000 - Date.now() - 5 * 60 * 1000; // 5 min avant expiration
+    
+    if (refreshTime > 0) {
+      refreshTimeoutRef.current = window.setTimeout(() => {
+        refreshTokenFunction();
+      }, refreshTime);
+    }
+  };
+
+ 
+
+ const refreshTokenFunction = async (): Promise<boolean> => {
+  if (isRefreshing) {
+    return false;
+  }
+  setIsRefreshing(true);
+  
+  try {
+    const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include' // Important pour envoyer les cookies
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        // silencieux
+        return false;
+      }
+      if (response.status >= 500) {
+        return false;
+      }
+      return false;
+    }
+
+    const data: RefreshResponse = await response.json();
+    
+    if (data.loggedOut) {
+      // Déconnexion silencieuse après cap 25min
+      logout('/', true);
+      return false;
+    }
+    
+    if (!data.accessToken) {
+      return false;
+    }
+
+    // Mettre à jour le token
+    localStorage.setItem('token', data.accessToken);
+    setToken(data.accessToken);
+
+    // Configurer le prochain rafraîchissement
+    try {
+      const decoded = jwtDecode<JwtPayload>(data.accessToken);
+      setupTokenRefresh(decoded.exp);
+      
+      // Rafraîchir les données utilisateur
+      await fetchUserData(data.accessToken);
+      saveSessionMetadata();
+      return true;
+    } catch (decodeError) {
+      // silencieux
+      return false;
+    }
+    
+  } catch (err: any) {
+    // silencieux; en cas d'erreur réseau, ne pas déconnecter immédiatement
+    return false;
+  } finally {
+    setIsRefreshing(false);
+  }
+};
+
+  // === INITIALISATION ET NETTOYAGE ===
+
+  useEffect(() => {
+    cleanupSensitiveData();
+    saveUIPreferences({
+      theme: 'light',
+      language: 'fr',
+      notifications: true,
+      sidebarCollapsed: false
+    });
+    saveSessionMetadata();
+  }, []);
+
+  // Chargement des données utilisateur
+  const fetchUserData = async (token: string): Promise<void> => {
+    try {
       const response = await fetch(`${VITE_API_URL}/api/auth/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
-        credentials: 'include' // ← AJOUTÉ
+        credentials: 'include'
       });
-  
+
       if (!response.ok) {
-        if (response.status === 401) {
-          // On tente de refresh, puis on rappelle fetchUserData avec le nouveau token
-          await refreshTokenFunction();
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            await fetchUserData(newToken);
-          }
-          return;
-        }
         throw new Error('Erreur de récupération du profil');
       }
-  
+
       const userData = await response.json();
-      setUser(userData);
+      const mappedUser: User = {
+        id: userData.id,
+        email: userData.email,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        role: userData.role,
+        isActive: userData.isActive,
+        telephone: userData.telephone || userData.phone || ''
+      };
+      setUser(mappedUser);
+      
     } catch (err) {
-      handleAuthError(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
- const refreshTokenFunction = async () => {
-    setIsLoading(true);
-
-    try {
-      const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include' // ← IMPORTANT: Le refreshToken est automatiquement envoyé via les cookies
-      });
-
-      if (!response.ok) {
-        throw new Error('Session expirée - Veuillez vous reconnecter');
-      }
-
-      const data: RefreshResponse = await response.json();
-      localStorage.setItem('token', data.accessToken);
-      setToken(data.accessToken);
-
-      const decoded = jwtDecode<JwtPayload>(data.accessToken);
-      setupTokenRefresh(decoded.exp);
-
-      await fetchUserData(data.accessToken);
-    } catch (err) {
-      handleAuthError(err);
+      console.error('Erreur fetchUserData:', err);
       logout();
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  const login = async (email: string, password: string) => {
-      setIsLoading(true);
-      setError(null);
-
+  // Connexion
+  const login = async (email: string, password: string): Promise<void> => {
+    setIsLoading(true);
+    
     try {
       const response = await fetch(`${VITE_API_URL}/api/auth/login`, {
         method: 'POST',
@@ -191,48 +383,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ email, password }),
-        credentials: 'include' // ← IMPORTANT: Pour recevoir les cookies
+        credentials: 'include'
       });
 
       const data: LoginResponse = await response.json();
 
       if (!response.ok) {
-        let msg = 'Erreur de connexion';
-        if (response.status === 401) msg = 'Email ou mot de passe incorrect';
-        if (response.status === 429) msg = 'Trop de tentatives, réessayez plus tard';
-        if (response.status >= 500) msg = 'Serveur indisponible, réessayez plus tard';
-        throw new Error(data.message || msg);
+        throw new Error(data.message || 'Erreur de connexion');
       }
 
-      // Stockez seulement l'accessToken dans localStorage
       localStorage.setItem('token', data.accessToken);
       setToken(data.accessToken);
       setUser(data.user);
 
-      // Le refreshToken est automatiquement stocké dans les cookies HTTP-only
-      // Pas besoin de le gérer manuellement côté frontend
-
+      // Configurer le rafraîchissement automatique
       const decoded = jwtDecode<JwtPayload>(data.accessToken);
       setupTokenRefresh(decoded.exp);
+      saveSessionMetadata();
 
-      // Redirection selon le rôle
-      navigate(data.user.role === 'admin'
-        ? '/gestionnaire/statistiques'
-        : '/'
-      );
-    } catch (err) {
-      handleAuthError(err);
+      // Redirection basée sur le rôle
+      const redirectPath = data.user.role === 'admin' 
+        ? '/gestionnaire/statistiques' 
+        : '/';
+      
+      navigate(redirectPath);
+      
+    } catch (err: any) {
+      toast.error(err.message || 'Erreur de connexion');
       throw err;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const register = async (formData: RegisterFormData) => {
+  const register = async (formData: RegisterFormData): Promise<void> => {
     setIsLoading(true);
     setError(null);
 
     try {
+      saveNavigationState();
+
       const response = await fetch(`${VITE_API_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
@@ -245,7 +435,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           telephone: formData.phone,
           password: formData.password,
         }),
-        credentials: 'include' // ← AJOUTÉ
+        credentials: 'include'
       });
 
       const data = await response.json();
@@ -257,20 +447,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(errorMsg);
       }
 
-      // Auto-login après inscription
       await login(formData.email, formData.password);
     } catch (err) {
+      removeFromSession(ALLOWED_SESSION_KEYS.REDIRECT_PATH);
+      removeFromSession(ALLOWED_SESSION_KEYS.LOGIN_TIMESTAMP);
       handleAuthError(err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const forgotPassword = async (email: string) => {
+  const forgotPassword = async (email: string): Promise<void> => {
     setIsLoading(true);
     setError(null);
 
     try {
+      // Stocker un hash de l'email pour pré-remplissage (pas l'email en clair)
+      const emailHash = btoa(email).slice(0, 16);
+      saveToSession('password_reset_hash', { hash: emailHash, timestamp: Date.now() });
+
       const response = await fetch(`${VITE_API_URL}/api/auth/forgot-password`, {
         method: 'POST',
         headers: {
@@ -293,7 +488,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const resetPassword = async (token: string, newPassword: string) => {
+  const resetPassword = async (token: string, newPassword: string): Promise<void> => {
     setIsLoading(true);
     setError(null);
 
@@ -311,6 +506,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(data.message || 'Erreur lors de la réinitialisation');
       }
 
+      removeFromSession('password_reset_hash');
       toast.success('Mot de passe réinitialisé avec succès');
       navigate('/connexion');
     } catch (err) {
@@ -320,28 +516,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const logout = (redirectPath: string = '/') => {
-    // Tentative de logout côté serveur (mais ne pas bloquer si ça échoue)
-    if (token) {
-      fetch(`${VITE_API_URL}/api/auth/logout`, {
-        method: 'POST',
-        headers: {
-        Authorization: `Bearer ${token}`,
-        },
-        credentials: 'include' // ← AJOUTÉ
-      }).catch(console.error);
+   // Déconnexion
+  const logout = (redirectPath?: string, silent?: boolean): void => {
+    localStorage.removeItem('token');
+    setToken(null);
+    setUser(null);
+
+    if (refreshTimeoutRef.current) {
+      window.clearTimeout(refreshTimeoutRef.current);
     }
 
-    // Nettoyage côté client
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    setToken(null);
-    setRefreshToken(null);
-    setUser(null);
-    navigate(redirectPath);
+    if (!silent && token) {
+      fetch(`${VITE_API_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        credentials: 'include'
+      }).catch(() => {});
+    }
+
+    saveSessionMetadata();
+    navigate(redirectPath ?? '/');
   };
 
-  const handleAuthError = (error: any) => {
+  const handleAuthError = (error: any): void => {
     const errorMessage = error instanceof Error 
       ? error.message 
       : 'Une erreur est survenue';
@@ -350,10 +547,73 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     toast.error(errorMessage);
   };
 
-  const value = {
+  // === VÉRIFICATION D'AUTHENTIFICATION AU CHARGEMENT ===
+  const checkAuth = async (): Promise<void> => {
+    const savedToken = localStorage.getItem('token');
+    
+    if (!savedToken) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      // Vérifier si le token est expiré
+      const decoded = jwtDecode<JwtPayload>(savedToken);
+      const isTokenExpired = decoded.exp * 1000 < Date.now();
+
+      if (isTokenExpired) {
+        const refreshed = await refreshTokenFunction();
+        if (!refreshed) {
+          logout('/', true);
+          return;
+        }
+      } else {
+        // Token valide, charger les données utilisateur
+        await fetchUserData(savedToken);
+        setupTokenRefresh(decoded.exp);
+      }
+    } catch (error) {
+      console.error('Erreur vérification auth:', error);
+      logout();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  
+
+  useEffect(() => {
+    let isMounted = true;
+    let interval: number | undefined;
+
+    const initializeAuth = async () => {
+      if (!isMounted) return;
+      await checkAuth();
+      if (isMounted) {
+        interval = window.setInterval(() => {
+          if (token) {
+            checkAuth().catch(() => {});
+          }
+        }, 5 * 60 * 1000);
+        checkIntervalRef.current = interval;
+      }
+    };
+
+    initializeAuth();
+    return () => {
+      isMounted = false;
+      if (interval) window.clearInterval(interval);
+      if (checkIntervalRef.current) {
+        window.clearInterval(checkIntervalRef.current);
+        checkIntervalRef.current = null;
+      }
+    };
+  }, []);
+
+  const value: AuthContextType = {
     user,
     token,
-    isAuthenticated: !!user,
+    isAuthenticated: !!user && !!token,
     isLoading,
     error,
     login,
@@ -362,14 +622,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     forgotPassword,
     resetPassword,
     refreshToken: refreshTokenFunction,
+    saveToSession,
+    getFromSession,
+    removeFromSession,
+    clearSession,
   };
-    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
+export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+};
+
+export const useSecureSession = <T,>(key: string, defaultValue: T) => {
+  const { saveToSession, getFromSession, removeFromSession } = useAuth();
+  
+  const [state, setState] = useState<T>(() => {
+    return getFromSession(key) || defaultValue;
+  });
+
+  const setSessionState = (value: T): void => {
+    setState(value);
+    saveToSession(key, value);
+  };
+
+  const clearSessionState = (): void => {
+    setState(defaultValue);
+    removeFromSession(key);
+  };
+
+  return [state, setSessionState, clearSessionState] as const;
 };

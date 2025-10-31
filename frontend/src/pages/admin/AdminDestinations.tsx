@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import RequireAdmin from '../../utils/RequireAdmin';
 import { toast } from 'react-toastify';
+import { useAuth } from '../../utils/AuthContext';
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // Fonction getFullImageUrl conforme à ta demande
 const getFullImageUrl = (imagePath: string) => {
@@ -48,6 +49,7 @@ const initialForm: Partial<Destination> = {
 };
 
 const AdminDestinations: React.FC = () => {
+  const { token, refreshToken, logout } = useAuth();
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -74,7 +76,25 @@ const AdminDestinations: React.FC = () => {
   const fetchDestinations = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/destination?limit=100`);
+      const res = await fetch(`${API_URL}/api/destination?limit=100`, {
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (res.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          await fetchDestinations();
+          return;
+        }
+        logout('/connexion', true);
+        return;
+      }
+      if (res.status === 403) {
+        showPopover('Accès refusé', 'error');
+        return;
+      }
       
       if (!res.ok) {
         // Si erreur, on utilise les valeurs par défaut
@@ -174,23 +194,36 @@ const AdminDestinations: React.FC = () => {
         ? `${API_URL}/api/destination/${editingId}`
         : `${API_URL}/api/destination`;
 
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        showPopover('Authentification requise', 'error');
-        setLoading(false);
-        return;
-      }
-
       const res = await fetch(url, {
         method,
+        credentials: 'include',
         headers: {
           'Authorization': `Bearer ${token}`,
         },
         body: formData,
       });
 
-      if (!res.ok) {
+      if (res.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const retry = await fetch(url, {
+            method,
+            credentials: 'include',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+            body: formData,
+          });
+          if (!retry.ok) {
+            const errorData = await retry.json().catch(() => ({}));
+            throw new Error(errorData.message || 'Erreur lors de la sauvegarde');
+          }
+        } else {
+          logout('/connexion', true);
+          return;
+        }
+      } else if (res.status === 403) {
+        showPopover('Accès refusé', 'error');
+        return;
+      } else if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.message || 'Erreur lors de la sauvegarde');
       }
@@ -243,20 +276,35 @@ const AdminDestinations: React.FC = () => {
   const handleDelete = async (id: string) => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        showPopover('Authentification requise', 'error');
-        setLoading(false);
-        return;
-      }
-
       const res = await fetch(`${API_URL}/api/destination/${id}`, {
         method: 'DELETE',
+        credentials: 'include',
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
+      if (res.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const retry = await fetch(`${API_URL}/api/destination/${id}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            },
+          });
+          if (!retry.ok) {
+            const errorData = await retry.json().catch(() => ({}));
+            throw new Error(errorData.message || 'Erreur lors de la suppression');
+          }
+        } else {
+          logout('/connexion', true);
+          return;
+        }
+      } else if (res.status === 403) {
+        showPopover('Accès refusé', 'error');
+        return;
+      }
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));

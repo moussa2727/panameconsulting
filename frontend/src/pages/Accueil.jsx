@@ -58,7 +58,7 @@ function Accueil() {
           <link rel='icon' href='/paname-consulting.ico' type='image/x-icon' />
           <link rel='apple-touch-icon' href='/paname-consulting.ico' />
           <link rel='manifest' href='/manifest.json' />
-          <link rel='canonical' href='https://paname-consulting.com/' />
+          <link rel='canonical' href='https://panameconsulting.com/' />
 
           {/* Balises Open Graph pour le partage social */}
           <meta
@@ -70,10 +70,10 @@ function Accueil() {
             content='Accompagnement étudiant, voyages et demandes de visa pour destinations internationales'
           />
           <meta property='og:type' content='website' />
-          <meta property='og:url' content='https://paname-consulting.com/' />
+          <meta property='og:url' content='https://panameconsulting.com/' />
           <meta
             property='og:image'
-            content='https://paname-consulting.com/paname-consulting.jpg'
+            content='https://panameconsulting.com/paname-consulting.jpg'
           />
           <meta property='og:locale' content='fr_FR' />
 
@@ -88,7 +88,7 @@ function Accueil() {
           />
           <meta
             name='twitter:image'
-            content='https://paname-consulting.com/paname-consulting.jpg'
+            content='https://panameconsulting.com/paname-consulting.jpg'
           />
           {/* Ajout d'un style global pour désactiver le swipe horizontal */}
           <style type='text/css'>{`

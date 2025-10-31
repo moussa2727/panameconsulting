@@ -158,7 +158,6 @@ const Form = () => {
                   className='w-full h-full'
                   loading='lazy'
                   title='Localisation Paname Consulting'
-                  allow='zoom'
                   style={{ touchAction: 'manipulation' }}
                 />
               </div>

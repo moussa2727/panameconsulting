@@ -1,423 +1,297 @@
-import React, { useState, useEffect } from 'react';
-import { Edit, Eye, EyeOff, Save, X, Lock, User, Mail, Phone } from 'lucide-react';
-// axios supprimé au profit de fetch
-import { toast } from 'react-toastify';
+import React, { useState } from 'react';
 import { useAuth } from '../../utils/AuthContext';
-import { motion } from 'framer-motion';
+import { Eye, EyeOff, Shield, CheckCircle, XCircle } from 'lucide-react';
 
-interface UserData {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  telephone: string;
-  role: string;
-  isActive: boolean;
+// Interface pour les données de mise à jour du mot de passe
+interface UpdatePasswordData {
+  currentPassword: string;
+  newPassword: string;
 }
 
 const AdminProfile: React.FC = () => {
   const { user } = useAuth();
-  const [isEditing, setIsEditing] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isPasswordLoading, setIsPasswordLoading] = useState(false);
-  const [userData, setUserData] = useState<UserData | null>(null);
-  const VITE_API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-
-  const [formData, setFormData] = useState<Omit<UserData, '_id' | 'role'>>({ 
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    telephone: '',
-    isActive: true
-  });
-
-  const [passwordData, setPasswordData] = useState({
+  const [formData, setFormData] = useState({
     currentPassword: '',
     newPassword: '',
-    confirmPassword: '',
+    confirmPassword: ''
   });
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        const res = await fetch(`${VITE_API_URL}/api/users/profile/me`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-        });
-        if (!res.ok) throw new Error('Erreur profil');
-        const data = await res.json();
-        setUserData(data);
-        setFormData({
-          firstName: data.firstName,
-          lastName: data.lastName,
-          email: data.email,
-          phone: data.phone || '',
-          telephone: data.telephone || '',
-          isActive: data.isActive
-        });
-      } catch (error) {
-        toast.error('Erreur lors du chargement des données utilisateur');
-        console.error(error);
-      }
-    };
+  // Règles de validation du mot de passe
+  const passwordRules = [
+    { id: 'length', label: 'Au moins 8 caractères', met: formData.newPassword.length >= 8 },
+    { id: 'lowercase', label: 'Une lettre minuscule', met: /[a-z]/.test(formData.newPassword) },
+    { id: 'uppercase', label: 'Une lettre majuscule', met: /[A-Z]/.test(formData.newPassword) },
+    { id: 'number', label: 'Un chiffre', met: /\d/.test(formData.newPassword) },
+    { id: 'match', label: 'Les mots de passe correspondent', met: formData.newPassword === formData.confirmPassword && formData.newPassword !== '' }
+  ];
 
-    if (user?.role === 'admin') {
-      fetchUserData();
-    }
-  }, [user]);
+  const allRulesMet = passwordRules.every(rule => rule.met);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setPasswordData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Fonction de mise à jour du mot de passe
+  const updatePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
     setIsLoading(true);
-    
+    setMessage(null);
+
     try {
-      const res = await fetch(`${VITE_API_URL}/api/users/profile/me`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+      const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(`${VITE_API_URL}/api/auth/update-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+        credentials: 'include'
       });
-      if (!res.ok) throw new Error('Erreur mise à jour profil');
-      
-      toast.success('Profil mis à jour avec succès!');
-      setIsEditing(false);
-      
-      // Rafraîchir les données utilisateur
-      const res2 = await fetch(`${VITE_API_URL}/api/users/profile/me`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      const data2 = await res2.json();
-      setUserData(data2);
-    } catch (error) {
-      toast.error('Erreur lors de la mise à jour du profil');
-      console.error(error);
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Erreur lors de la mise à jour du mot de passe');
+      }
+
+      setMessage({ type: 'success', text: 'Mot de passe mis à jour avec succès' });
+      setFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Une erreur est survenue';
+      setMessage({ type: 'error', text: errorMessage });
+      throw err;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      return toast.error('Les mots de passe ne correspondent pas');
+    if (!allRulesMet) {
+      setMessage({ type: 'error', text: 'Veuillez respecter toutes les règles de mot de passe' });
+      return;
     }
-    
-    if (passwordData.newPassword.length < 6) {
-      return toast.error('Le mot de passe doit contenir au moins 6 caractères');
-    }
-    
-    setIsPasswordLoading(true);
-    
+
     try {
-      const res = await fetch(`${VITE_API_URL}/api/auth/update-password`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPassword: passwordData.currentPassword, newPassword: passwordData.newPassword })
-      });
-      if (!res.ok) throw new Error('Erreur mise à jour mot de passe');
-      
-      toast.success('Mot de passe mis à jour avec succès!');
-      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    } catch (error:any) {
-      toast.error(error.response?.data?.message || 'Erreur lors de la mise à jour du mot de passe');
-      console.error(error);
-    } finally {
-      setIsPasswordLoading(false);
+      await updatePassword(formData.currentPassword, formData.newPassword);
+    } catch (error) {
+      // L'erreur est déjà gérée dans updatePassword
     }
   };
 
-  const cancelEdit = () => {
-    if (userData) {
-      setFormData({
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        email: userData.email,
-        phone: userData.phone || '',
-        telephone: userData.telephone || '',
-        isActive: userData.isActive
-      });
-    }
-    setIsEditing(false);
+  const togglePasswordVisibility = (field: 'current' | 'new' | 'confirm') => {
+    setShowPasswords(prev => ({
+      ...prev,
+      [field]: !prev[field]
+    }));
   };
-
-  if (!userData) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-blue-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500 mx-auto"></div>
-          <p className="mt-4 text-sky-500 font-medium">Chargement des données...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="p-6 bg-gradient-to-br from-indigo-50 to-blue-50 min-h-screen">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Profil Card */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className="bg-white rounded-xl shadow-lg overflow-hidden"
-        >
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
+    <div className="min-h-screen px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md mx-auto">
+        {/* En-tête */}
+        <div className="text-center mb-6">
+          <div className="mx-auto w-14 h-14 bg-gradient-to-r from-sky-500 to-sky-600 rounded-full flex items-center justify-center shadow-lg mb-3">
+            <Shield className="w-6 h-6 text-white" />
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">
+            Profil Administrateur
+          </h1>
+          <p className="text-slate-600 text-xs sm:text-sm">
+            Gestion sécurisée du mot de passe
+          </p>
+        </div>
+
+        {/* Carte principale */}
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg sm:shadow-xl p-4 sm:p-6 border border-slate-200">
+          {/* Info admin */}
+          <div className="bg-sky-50 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-4 sm:mb-6 border border-sky-100">
             <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold">Mon Profil Administrateur</h1>
-                <p className="text-blue-100">Gérez vos informations personnelles</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sky-800 font-semibold text-sm truncate">
+                  {user?.firstName} {user?.lastName}
+                </p>
+                <p className="text-sky-600 text-xs mt-1 truncate">{user?.email}</p>
               </div>
-              {!isEditing && (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="flex items-center space-x-2 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-all"
-                >
-                  <Edit className="w-5 h-5" />
-                  <span>Modifier</span>
-                </button>
-              )}
+              <div className="bg-sky-500 text-white px-2 sm:px-3 py-1 rounded-full text-xs font-medium flex-shrink-0 ml-2">
+                Admin
+              </div>
             </div>
           </div>
 
-          <div className="p-6">
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 flex items-center">
-                    <User className="w-4 h-4 mr-2 text-blue-500" />
-                    Prénom
-                  </label>
-                  <input
-                    type="text"
-                    name="firstName"
-                    value={formData.firstName}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 transition"
-                  />
-                </div>
+          {/* Formulaire */}
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+            {/* Champ username caché pour l'accessibilité */}
+            <div className="sr-only" aria-hidden="true">
+              <label htmlFor="username">Nom d'utilisateur</label>
+              <input
+                id="username"
+                type="text"
+                name="username"
+                autoComplete="username"
+                value={user?.email || ''}
+                readOnly
+                tabIndex={-1}
+                className="sr-only"
+              />
+            </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 flex items-center">
-                    <User className="w-4 h-4 mr-2 text-blue-500" />
-                    Nom
-                  </label>
-                  <input
-                    type="text"
-                    name="lastName"
-                    value={formData.lastName}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 transition"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 flex items-center">
-                    <Mail className="w-4 h-4 mr-2 text-blue-500" />
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 transition"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 flex items-center">
-                    <Phone className="w-4 h-4 mr-2 text-blue-500" />
-                    Téléphone portable
-                  </label>
-                  <input
-                    type="tel"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 transition"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 flex items-center">
-                    <Phone className="w-4 h-4 mr-2 text-blue-500" />
-                    Téléphone fixe
-                  </label>
-                  <input
-                    type="tel"
-                    name="telephone"
-                    value={formData.telephone}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 transition"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Rôle
-                  </label>
-                  <div className="px-4 py-2 bg-gray-100 rounded-lg">
-                    <span className="font-medium text-blue-600">
-                      {userData.role === 'admin' ? 'Administrateur' : 'Utilisateur'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {isEditing && (
-                <div className="flex justify-end space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={cancelEdit}
-                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition flex items-center"
-                  >
-                    <X className="w-5 h-5 mr-2" />
-                    Annuler
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-70 transition flex items-center"
-                  >
-                    {isLoading ? (
-                      <>
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Enregistrement...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-5 h-5 mr-2" />
-                        Enregistrer
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </form>
-          </div>
-        </motion.div>
-
-        {/* Password Card */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-          className="bg-white rounded-xl shadow-lg overflow-hidden"
-        >
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
-            <h2 className="text-xl font-bold flex items-center">
-              <Lock className="w-5 h-5 mr-2" />
-              Changer le mot de passe
-            </h2>
-          </div>
-
-          <div className="p-6">
-            <form onSubmit={handlePasswordSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Mot de passe actuel
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      name="currentPassword"
-                      value={passwordData.currentPassword}
-                      onChange={handlePasswordChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-10 transition"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Nouveau mot de passe
-                  </label>
-                  <input
-                    type="password"
-                    name="newPassword"
-                    value={passwordData.newPassword}
-                    onChange={handlePasswordChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Confirmer le mot de passe
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      name="confirmPassword"
-                      value={passwordData.confirmPassword}
-                      onChange={handlePasswordChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-10 transition"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-4">
+            {/* Mot de passe actuel */}
+            <div>
+              <label htmlFor="currentPassword" className="block text-sm font-medium text-slate-700 mb-2">
+                Mot de passe actuel
+              </label>
+              <div className="relative">
+                <input
+                  id="currentPassword"
+                  name="currentPassword"
+                  type={showPasswords.current ? 'text' : 'password'}
+                  value={formData.currentPassword}
+                  onChange={(e) => setFormData(prev => ({ ...prev, currentPassword: e.target.value }))}
+                  className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-slate-300 rounded-lg sm:rounded-xl focus:ring-0 focus:border-sky-500 focus:outline-none hover:border-sky-600 transition-all duration-200 bg-white text-slate-900 placeholder-slate-400 text-sm sm:text-base"
+                  placeholder="Mot de passe actuel"
+                  required
+                  autoComplete="current-password"
+                />
                 <button
-                  type="submit"
-                  disabled={isPasswordLoading}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-70 transition flex items-center"
+                  type="button"
+                  onClick={() => togglePasswordVisibility('current')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors focus:outline-none focus:ring-0"
                 >
-                  {isPasswordLoading ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Mise à jour...
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="w-5 h-5 mr-2" />
-                      Mettre à jour le mot de passe
-                    </>
-                  )}
+                  {showPasswords.current ? <EyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Eye className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </button>
               </div>
-            </form>
+            </div>
+
+            {/* Nouveau mot de passe */}
+            <div>
+              <label htmlFor="newPassword" className="block text-sm font-medium text-slate-700 mb-2">
+                Nouveau mot de passe
+              </label>
+              <div className="relative">
+                <input
+                  id="newPassword"
+                  name="newPassword"
+                  type={showPasswords.new ? 'text' : 'password'}
+                  value={formData.newPassword}
+                  onChange={(e) => setFormData(prev => ({ ...prev, newPassword: e.target.value }))}
+                  className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-slate-300 rounded-lg sm:rounded-xl focus:ring-0 focus:border-sky-500 focus:outline-none hover:border-sky-600 transition-all duration-200 bg-white text-slate-900 placeholder-slate-400 text-sm sm:text-base"
+                  placeholder="Nouveau mot de passe"
+                  required
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => togglePasswordVisibility('new')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors focus:outline-none focus:ring-0"
+                >
+                  {showPasswords.new ? <EyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Eye className="w-4 h-4 sm:w-5 sm:h-5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Confirmation mot de passe */}
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-2">
+                Confirmer le mot de passe
+              </label>
+              <div className="relative">
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type={showPasswords.confirm ? 'text' : 'password'}
+                  value={formData.confirmPassword}
+                  onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                  className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-slate-300 rounded-lg sm:rounded-xl focus:ring-0 focus:border-sky-500 focus:outline-none hover:border-sky-600 transition-all duration-200 bg-white text-slate-900 placeholder-slate-400 text-sm sm:text-base"
+                  placeholder="Confirmer le mot de passe"
+                  required
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => togglePasswordVisibility('confirm')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors focus:outline-none focus:ring-0"
+                >
+                  {showPasswords.confirm ? <EyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Eye className="w-4 h-4 sm:w-5 sm:h-5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Règles de validation */}
+            <div className="bg-slate-50 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-slate-200">
+              <p className="text-sm font-medium text-slate-700 mb-2 sm:mb-3">Règles de sécurité :</p>
+              <div className="space-y-1 sm:space-y-2">
+                {passwordRules.map((rule) => (
+                  <div key={rule.id} className="flex items-center gap-2 sm:gap-3">
+                    {rule.met ? (
+                      <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-green-500 flex-shrink-0" />
+                    ) : (
+                      <XCircle className="w-3 h-3 sm:w-4 sm:h-4 text-slate-300 flex-shrink-0" />
+                    )}
+                    <span className={`text-xs ${rule.met ? 'text-green-600' : 'text-slate-500'}`}>
+                      {rule.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Messages */}
+            {message && (
+              <div
+                className={`p-3 sm:p-4 rounded-lg sm:rounded-xl border ${
+                  message.type === 'success'
+                    ? 'bg-green-50 border-green-200 text-green-800'
+                    : 'bg-red-50 border-red-200 text-red-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {message.type === 'success' ? (
+                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                  ) : (
+                    <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                  )}
+                  <span className="text-xs sm:text-sm font-medium">{message.text}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Bouton de soumission */}
+            <button
+              type="submit"
+              disabled={!allRulesMet || isLoading || !formData.currentPassword}
+              className="w-full bg-gradient-to-r from-sky-500 to-sky-600 text-white py-2 sm:py-3 px-4 rounded-lg sm:rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg focus:outline-none focus:ring-0 focus:border-sky-500 focus:ring-offset-0 text-sm sm:text-base"
+            >
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Mise à jour...
+                </div>
+              ) : (
+                'Mettre à jour le mot de passe'
+              )}
+            </button>
+          </form>
+
+          {/* Note de sécurité */}
+          <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-amber-50 border border-amber-200 rounded-lg sm:rounded-xl">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-amber-800 text-sm font-medium">Sécurité renforcée</p>
+                <p className="text-amber-700 text-xs mt-1">
+                  Votre mot de passe doit respecter les normes de sécurité les plus strictes pour protéger l'accès administrateur.
+                </p>
+              </div>
+            </div>
           </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );

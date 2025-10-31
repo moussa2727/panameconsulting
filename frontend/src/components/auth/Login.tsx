@@ -62,6 +62,21 @@ const Login: React.FC = () => {
 
           <div className="p-4">
             <form className="space-y-3" onSubmit={handleSubmit}>
+              {/* Champ username caché pour l'accessibilité */}
+              <div className="sr-only" aria-hidden="true">
+                <label htmlFor="username">Nom d'utilisateur</label>
+                <input
+                  id="username"
+                  type="text"
+                  name="username"
+                  autoComplete="username"
+                  value={email}
+                  readOnly
+                  tabIndex={-1}
+                  className="sr-only"
+                />
+              </div>
+
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                   Email
@@ -72,13 +87,15 @@ const Login: React.FC = () => {
                   </div>
                   <input
                     id="email"
+                    name="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-9 w-full px-3 py-2 rounded bg-gray-50 border border-gray-300 hover:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-colors"
+                    className="pl-9 w-full px-3 py-2 rounded bg-gray-50 border border-gray-300 hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500 transition-colors"
                     placeholder="votre@email.com"
                     required
                     disabled={isLoading}
+                    autoComplete="email"
                     aria-describedby="email-description"
                   />
                 </div>
@@ -97,14 +114,16 @@ const Login: React.FC = () => {
                   </div>
                   <input
                     id="password"
+                    name="password"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-9 w-full px-3 py-2 rounded bg-gray-50 border border-gray-300 hover:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 pr-9 transition-colors"
+                    className="pl-9 w-full px-3 py-2 rounded bg-gray-50 border border-gray-300 hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500 pr-9 transition-colors"
                     placeholder="••••••••"
                     required
                     minLength={8}
                     disabled={isLoading}
+                    autoComplete="current-password"
                     aria-describedby="password-description password-toggle-description"
                   />
                   <button

@@ -24,45 +24,47 @@ interface RequestWithUser extends Request {
     userId: string;
     email: string;
     role: string;
+    telephone: string;
   };
 }
 
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }
 
+  // === ENDPOINTS ADMIN ===
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   create(@Body() createUserDto: RegisterDto) {
     return this.usersService.create(createUserDto);
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   findAll() {
     return this.usersService.findAll();
   }
 
-@Get('stats')
-@Roles(UserRole.ADMIN)
-async getStats() {
-  return this.usersService.getStats();
-}
-
-  @Get(':id')
+  @Get('stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  findOne(@Param('id') id: string) {
-    return this.usersService.findById(id);
+  async getStats() {
+    return this.usersService.getStats();
   }
 
+  
+
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(id, updateUserDto);
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
@@ -70,18 +72,18 @@ async getStats() {
   }
 
   @Patch(':id/toggle-status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   toggleStatus(@Param('id') id: string) {
     return this.usersService.toggleStatus(id);
   }
 
-
   @Get('maintenance-status')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
-async getMaintenanceStatus() {
-  return this.usersService.getMaintenanceStatus();
-}
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async getMaintenanceStatus() {
+    return this.usersService.getMaintenanceStatus();
+  }
 
   @Post('maintenance-mode')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -99,20 +101,12 @@ async getMaintenanceStatus() {
     return { hasAccess };
   }
 
-  @Get('check-access')
-  @UseGuards(JwtAuthGuard)
-  async checkCurrentUserAccess(@Request() req: RequestWithUser) {
-    const hasAccess = await this.usersService.checkUserAccess(req.user.userId);
-    return { hasAccess };
-  }
+  
 
-  // Méthodes accessibles à tous les utilisateurs authentifiés
-  @Get('profile/me')
-  getProfile(@Request() req: RequestWithUser) {
-    return this.usersService.findById(req.user.userId);
-  }
+  // === ENDPOINTS PUBLIC (Pour l'utilisateur connecté) ===
 
   @Patch('profile/me')
+  @UseGuards(JwtAuthGuard)
   updateProfile(@Request() req: RequestWithUser, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(req.user.userId, updateUserDto);
   }

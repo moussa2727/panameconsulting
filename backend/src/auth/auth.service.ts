@@ -17,6 +17,7 @@ import { User, UserRole } from '../schemas/user.schema';
 import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
 import { RevokedTokenService } from './revoked-token.service';
+import { RefreshTokenService } from './refresh-token.service';
 import { SessionService } from './session.service';
 import { AuthConstants } from './auth.constants';
 
@@ -38,6 +39,7 @@ export class AuthService {
     private readonly revokedTokenService: RevokedTokenService,
     @InjectModel(ResetToken.name)
     private readonly resetTokenModel: Model<ResetToken>,
+    private readonly refreshTokenService: RefreshTokenService,
   ) { }
 
 
@@ -146,19 +148,30 @@ export class AuthService {
   }
 
   async login(user: User) {
-    const jti = uuidv4();
-    const payload = { 
+    const jtiAccess = uuidv4();
+    const jtiRefresh = uuidv4();
+
+    const accessPayload = { 
       sub: (user._id as any).toString(), 
       email: user.email,
       role: user.role,
-      jti
+      jti: jtiAccess,
+      tokenType: 'access'
+    };
+
+    const refreshPayload = {
+      sub: (user._id as any).toString(),
+      email: user.email,
+      role: user.role,
+      jti: jtiRefresh,
+      tokenType: 'refresh'
     };
     
-    const accessToken = this.jwtService.sign(payload, {
+    const accessToken = this.jwtService.sign(accessPayload, {
       expiresIn: AuthConstants.JWT_EXPIRATION,
     });
 
-    const refreshToken = this.jwtService.sign(payload, {
+    const refreshToken = this.jwtService.sign(refreshPayload, {
       expiresIn: '7d',
       secret: process.env.JWT_REFRESH_SECRET,
     });
@@ -168,6 +181,16 @@ export class AuthService {
       accessToken,
       new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
     );
+
+    // Whitelist: deactivate all previous refresh tokens for user, then store the new one as active
+    try {
+      await this.refreshTokenService.deactivateAllForUser((user._id as any).toString());
+      const decodedRefresh = this.jwtService.decode(refreshToken) as any;
+      const refreshExp = new Date(((decodedRefresh?.exp || 0) * 1000) || (Date.now() + 7 * 24 * 60 * 60 * 1000));
+      await this.refreshTokenService.create((user._id as any).toString(), refreshToken, refreshExp);
+    } catch (e) {
+      this.logger.warn(`Impossible d'enregistrer le refresh token: ${e?.message}`);
+    }
 
     return {
       accessToken,
@@ -183,32 +206,92 @@ export class AuthService {
   }
 
   
-async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken?: string }> {
+async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken?: string; sessionExpired?: boolean }> {
   if (!refreshToken) {
     throw new UnauthorizedException('Refresh token manquant');
   }
 
   try {
+    // Whitelist enforcement with optional migration
+    let isWhitelisted = await this.refreshTokenService.isValid(refreshToken);
+    if (!isWhitelisted) {
+      // Optional migration path for existing sessions: auto-enroll valid tokens
+      if (process.env.REFRESH_MIGRATION_ALLOW === 'true') {
+        try {
+          const tmpPayload = this.jwtService.verify(refreshToken, { secret: process.env.JWT_REFRESH_SECRET });
+          const expMs = ((tmpPayload as any)?.exp || 0) * 1000;
+          await this.refreshTokenService.create((tmpPayload as any).sub, refreshToken, new Date(expMs || Date.now() + 7 * 24 * 60 * 60 * 1000));
+          isWhitelisted = true;
+        } catch (_) {
+          // ignore
+        }
+      }
+      if (!isWhitelisted) {
+        throw new UnauthorizedException('Refresh token non autorisé');
+      }
+    }
+    // Reject if this refresh token was already used (strict rotation)
+    const wasRevoked = await this.revokedTokenService.isTokenRevoked(refreshToken);
+    if (wasRevoked) {
+      throw new UnauthorizedException('Refresh token déjà utilisé');
+    }
+
     const payload = this.jwtService.verify(refreshToken, {
       secret: process.env.JWT_REFRESH_SECRET,
     });
-
+    if ((payload as any)?.tokenType !== 'refresh') {
+      throw new UnauthorizedException('Type de token invalide');
+    }
+    // Hard cap: 25 minutes max session lifetime based on refresh token issuance time
+    const maxSessionMs = 25 * 60 * 1000;
+    const issuedAtMs = ((payload as any)?.iat || 0) * 1000;
+    if (issuedAtMs && Date.now() - issuedAtMs > maxSessionMs) {
+      try {
+        await this.logoutUser((payload as any).sub, 'Session maximale de 25 minutes atteinte');
+        // deactivate the provided refresh token in whitelist
+        await this.refreshTokenService.deactivateByToken(refreshToken);
+      } catch (e) {
+        this.logger.warn(`Erreur lors du logout après dépassement de session: ${e?.message}`);
+      }
+      return {
+        accessToken: '',
+        refreshToken,
+        sessionExpired: true
+      };
+    }
     const user = await this.usersService.findById(payload.sub);
     if (!user) {
       throw new UnauthorizedException('Utilisateur non trouvé');
     }
 
-    const jti = uuidv4();
+    const newJti = uuidv4();
     const newAccessToken = this.jwtService.sign(
       { 
         sub: user._id, 
         email: user.email,
         role: user.role,
-        jti 
+        jti: newJti,
+        tokenType: 'access'
       },
       { 
         expiresIn: '15m',
         secret: process.env.JWT_SECRET
+      }
+    );
+
+    // Rotate refresh token with a new jti
+    const newRefreshJti = uuidv4();
+    const newRefreshToken = this.jwtService.sign(
+      {
+        sub: (user._id as any).toString(),
+        email: user.email,
+        role: user.role,
+        jti: newRefreshJti,
+        tokenType: 'refresh'
+      },
+      {
+        expiresIn: '7d',
+        secret: process.env.JWT_REFRESH_SECRET,
       }
     );
 
@@ -219,9 +302,27 @@ async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken
       new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
     );
 
+    // Revoke the used refresh token to prevent reuse
+    try {
+      const expMs = ((payload as any)?.exp || 0) * 1000;
+      await this.revokedTokenService.revokeToken(refreshToken, new Date(expMs || Date.now() + 7 * 24 * 60 * 60 * 1000));
+      await this.refreshTokenService.deactivateByToken(refreshToken);
+    } catch (e) {
+      this.logger.warn(`Impossible de révoquer l'ancien refresh token: ${e?.message}`);
+    }
+
+    // Whitelist: store the new refresh token as active
+    try {
+      const decodedNewRefresh = this.jwtService.decode(newRefreshToken) as any;
+      const newExp = new Date(((decodedNewRefresh?.exp || 0) * 1000) || (Date.now() + 7 * 24 * 60 * 60 * 1000));
+      await this.refreshTokenService.create((user._id as any).toString(), newRefreshToken, newExp);
+    } catch (e) {
+      this.logger.warn(`Impossible d'enregistrer le nouveau refresh token: ${e?.message}`);
+    }
+
     return { 
       accessToken: newAccessToken,
-      refreshToken // Renvoyer le même refreshToken
+      refreshToken: newRefreshToken
     };
   } catch (error) {
     this.logger.error(`Erreur de refresh token: ${error.message}`);
@@ -305,8 +406,8 @@ async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken
     }
   }
 
-  async isTokenRevoked(jti: string): Promise<boolean> {
-    return await this.revokedTokenService.isTokenRevoked(jti);
+  async isTokenRevoked(token: string): Promise<boolean> {
+    return await this.revokedTokenService.isTokenRevoked(token);
   }
 
   async revokeAllTokens(): Promise<{ 
@@ -347,7 +448,7 @@ async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken
     try {
       const payload = this.jwtService.verify(token);
       const [isRevoked, isActive] = await Promise.all([
-        this.isTokenRevoked(payload.jti),
+        this.isTokenRevoked(token),
         this.sessionService.isTokenActive(token)
       ]);
       const userExists = await this.usersService.exists(payload.sub);

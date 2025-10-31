@@ -1,45 +1,125 @@
-// UserProfile.tsx
 import {
+  Calendar,
   Edit,
   Eye,
   EyeOff,
+  FileText,
   Home,
+  Lock,
   Mail,
   Phone,
   Save,
   User,
   X,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../../utils/AuthContext';
+import { toast } from 'react-toastify';
 
 interface UserData {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
+  telephone?: string;
 }
 
+interface PasswordData {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+
 const UserProfile: React.FC = () => {
+  const { user, token, refreshToken, logout } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordPopup, setShowPasswordPopup] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState<UserData>({
-    firstName: 'Jean',
-    lastName: 'Dupont',
-    email: 'jean.dupont@example.com',
-    phone: '0123456789',
+    firstName: '',
+    lastName: '',
+    email: '',
+    telephone: '',
   });
-  const [passwordData, setPasswordData] = useState({
+  const [passwordData, setPasswordData] = useState<PasswordData>({
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   });
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
+  const loadUserProfile = async () => {
+    if (!token) return; // attendre le token
+    try {
+      const response = await fetch(`${API_URL}/api/auth/me`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const profile = await response.json();
+        setFormData({
+          firstName: profile.firstName || user?.firstName || '',
+          lastName: profile.lastName || user?.lastName || '',
+          email: profile.email || user?.email || '',
+          telephone: profile.phone || profile.telephone || user?.telephone || '',
+        });
+      } else if (response.status === 401) {
+        // Tenter un rafraîchissement du token puis relancer une fois
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const retry = await fetch(`${API_URL}/api/auth/me`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+            credentials: 'include',
+          });
+          if (retry.ok) {
+            const profile = await retry.json();
+            setFormData({
+              firstName: profile.firstName || user?.firstName || '',
+              lastName: profile.lastName || user?.lastName || '',
+              email: profile.email || user?.email || '',
+              telephone: profile.phone || profile.telephone || user?.telephone || '',
+            });
+            return;
+          }
+        }
+        // Si on arrive ici, on est toujours non autorisé: déconnecter proprement
+        logout('/', true);
+        setFormData(prev => ({
+          ...prev,
+          telephone: user?.telephone || prev.telephone || ''
+        }));
+      } else if (user) {
+        setFormData({
+          firstName: user.firstName || '',
+          lastName: user.lastName || '',
+          email: user.email || '',
+          telephone: user.telephone || '',
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Charger les données utilisateur
+  useEffect(() => {
+    if (user && token) {
+      loadUserProfile();
+    }
+  }, [user, token]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    // Ne permettre la modification que de l'email et du téléphone
+    if (name === 'email' || name === 'telephone') {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -47,239 +127,449 @@ const UserProfile: React.FC = () => {
     setPasswordData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsEditing(false);
-    setPasswordData({
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: '',
+ const handleProfileSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  if (!token) {
+    toast.error('Session expirée. Veuillez vous reconnecter.');
+    logout('/', true);
+    return;
+  }
+
+  try {
+    // première tentative
+    let response = await fetch(`${API_URL}/api/users/profile/me`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        email: formData.email,
+        telephone: formData.telephone,
+      }),
     });
+
+    if (!response.ok && response.status === 401) {
+      const refreshed = await refreshToken();
+      if (!refreshed) {
+        toast.error('Session expirée. Veuillez vous reconnecter.');
+        logout('/', true);
+        return;
+      }
+      response = await fetch(`${API_URL}/api/users/profile/me`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          email: formData.email,
+          telephone: formData.telephone,
+        }),
+      });
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Erreur lors de la mise à jour');
+    }
+
+    const updatedUser = await response.json();
+    setFormData(prev => ({
+      ...prev,
+      telephone: updatedUser.telephone || updatedUser.phone || '',
+      email: updatedUser.email || ''
+    }));
+
+    toast.success('Profil mis à jour avec succès');
+    setIsEditing(false);
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Erreur lors de la mise à jour');
+  }
+};
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      if (passwordData.newPassword !== passwordData.confirmPassword) {
+        toast.error('Les mots de passe ne correspondent pas');
+        return;
+      }
+
+      if (passwordData.newPassword.length < 8) {
+        toast.error('Le mot de passe doit contenir au moins 8 caractères');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/auth/update-password`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erreur lors de la mise à jour du mot de passe');
+      }
+
+      toast.success('Mot de passe mis à jour avec succès');
+      setShowPasswordPopup(false);
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erreur lors de la mise à jour du mot de passe');
+    }
   };
 
   const handleCancel = () => {
-    setFormData({
-      firstName: 'Jean',
-      lastName: 'Dupont',
-      email: 'jean.dupont@example.com',
-      phone: '0123456789',
-    });
+    if (user) {
+      loadUserProfile();
+      setIsEditing(false);
+    }
+  };
+
+  const resetPasswordForm = () => {
     setPasswordData({
       currentPassword: '',
       newPassword: '',
       confirmPassword: '',
     });
-    setIsEditing(false);
+    setShowPassword(false);
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className='min-h-screen bg-gray-50 py-8'>
-      <div className='max-w-4xl mx-auto px-4 sm:px-6 lg:px-8'>
-        <div className='mb-8 flex items-center justify-between'>
-          <div className='flex items-center space-x-4'>
-            <Link
-              to='/'
-              className='flex items-center text-sky-600 hover:text-sky-700 transition-colors'
-            >
-              <Home className='w-5 h-5 mr-2' />
-              <span>Retour à l'accueil</span>
-            </Link>
+    <div className='min-h-screen bg-gray-50'>
+      {/* Navigation utilisateur - Mobile First */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center space-x-2 md:space-x-6 overflow-x-auto">
+              <Link 
+                to="/" 
+                className="flex items-center text-sky-600 hover:text-sky-700 transition-colors text-sm md:text-base whitespace-nowrap"
+              >
+                <Home className="w-4 h-4 md:w-5 md:h-5 mr-1 md:mr-2" />
+                <span className="hidden xs:inline">Accueil</span>
+              </Link>
+              <nav className="flex space-x-1 md:space-x-4">
+                <Link 
+                  to="/user-profile" 
+                  className="flex items-center px-2 py-2 md:px-3 bg-sky-100 text-sky-700 rounded-md text-sm whitespace-nowrap"
+                >
+                  <User className="w-4 h-4 mr-1 md:mr-2" />
+                  <span className="hidden sm:inline">Mon Profil</span>
+                </Link>
+                <Link 
+                  to="/user-rendez-vous" 
+                  className="flex items-center px-2 py-2 md:px-3 text-gray-600 hover:text-sky-600 hover:bg-sky-50 rounded-md transition-colors text-sm whitespace-nowrap"
+                >
+                  <Calendar className="w-4 h-4 mr-1 md:mr-2" />
+                  <span className="hidden sm:inline">Rendez-vous</span>
+                </Link>
+                <Link 
+                  to="/user-procedure" 
+                  className="flex items-center px-2 py-2 md:px-3 text-gray-600 hover:text-sky-600 hover:bg-sky-50 rounded-md transition-colors text-sm whitespace-nowrap"
+                >
+                  <FileText className="w-4 h-4 mr-1 md:mr-2" />
+                  <span className="hidden sm:inline">Procédures</span>
+                </Link>
+              </nav>
+            </div>
           </div>
-          <h1 className='text-3xl font-bold text-gray-900'>Mon Profil</h1>
         </div>
+      </div>
 
-        <div className='bg-white rounded-lg shadow-lg overflow-hidden'>
-          <div className='bg-gradient-to-r from-sky-500 to-sky-600 px-6 py-8'>
-            <div className='flex items-center space-x-6'>
-              <div className='w-20 h-20 bg-white/20 rounded-full flex items-center justify-center text-white text-2xl font-bold'>
-                {formData.firstName.charAt(0).toUpperCase()}
-                {formData.lastName.charAt(0).toUpperCase()}
-              </div>
-              <div className='text-white'>
-                <h2 className='text-2xl font-bold'>
-                  {formData.firstName} {formData.lastName}
-                </h2>
-                <p className='text-sky-100'>{formData.email}</p>
-              </div>
-            </div>
+      <div className='py-4 md:py-8'>
+        <div className='max-w-4xl mx-auto px-3 sm:px-6 lg:px-8'>
+          <div className='mb-4 md:mb-8'>
+            <h1 className='text-xl md:text-3xl font-bold text-gray-900'>Mon Profil</h1>
+            <p className='text-gray-600 mt-1 md:mt-2 text-sm md:text-base'>Gérez vos informations personnelles</p>
           </div>
 
-          <form onSubmit={handleSubmit} className='p-6 space-y-6'>
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
-              <div>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>
-                  Prénom *
-                </label>
-                <div className='relative'>
-                  <User className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5' />
-                  <input
-                    type='text'
-                    name='firstName'
-                    value={formData.firstName}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className='w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500 disabled:bg-gray-50'
-                    required
-                  />
+          <div className='bg-white rounded-lg shadow-lg overflow-hidden'>
+            {/* Header avec avatar */}
+            <div className='bg-gradient-to-r from-sky-500 to-sky-600 px-4 py-4 md:px-6 md:py-8'>
+              <div className='flex items-center space-x-3 md:space-x-6'>
+                <div className='w-12 h-12 md:w-20 md:h-20 bg-white/20 rounded-full flex items-center justify-center text-white text-lg md:text-2xl font-bold'>
+                  {formData.firstName.charAt(0).toUpperCase()}
+                  {formData.lastName.charAt(0).toUpperCase()}
                 </div>
-              </div>
-
-              <div>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>
-                  Nom *
-                </label>
-                <div className='relative'>
-                  <User className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5' />
-                  <input
-                    type='text'
-                    name='lastName'
-                    value={formData.lastName}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className='w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500 disabled:bg-gray-50'
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>
-                  Email *
-                </label>
-                <div className='relative'>
-                  <Mail className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5' />
-                  <input
-                    type='email'
-                    name='email'
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className='w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500 disabled:bg-gray-50'
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>
-                  Téléphone *
-                </label>
-                <div className='relative'>
-                  <Phone className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5' />
-                  <input
-                    type='tel'
-                    name='phone'
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className='w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500 disabled:bg-gray-50'
-                    required
-                  />
+                <div className='text-white'>
+                  <h2 className='text-lg md:text-2xl font-bold'>
+                    {formData.firstName} {formData.lastName}
+                  </h2>
+                  <p className='text-sky-100 text-sm md:text-base'>{formData.email}</p>
                 </div>
               </div>
             </div>
 
-            {isEditing && (
-              <div className='border-t pt-6'>
-                <h3 className='text-lg font-medium text-gray-900 mb-4'>
-                  Changer le mot de passe
-                </h3>
-                <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
-                  <div>
-                    <label className='block text-sm font-medium text-gray-700 mb-2'>
-                      Mot de passe actuel
-                    </label>
-                    <div className='relative'>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        name='currentPassword'
-                        value={passwordData.currentPassword}
-                        onChange={handlePasswordChange}
-                        className='w-full px-4 py-3 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500'
-                        placeholder='Laissez vide si pas de changement'
-                      />
-                      <button
-                        type='button'
-                        onClick={() => setShowPassword(!showPassword)}
-                        className='absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600'
-                      >
-                        {showPassword ? (
-                          <EyeOff className='w-5 h-5' />
-                        ) : (
-                          <Eye className='w-5 h-5' />
-                        )}
-                      </button>
-                    </div>
+            {/* Formulaire de profil */}
+            <form onSubmit={handleProfileSubmit} className='p-4 md:p-6 space-y-4 md:space-y-6'>
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6'>
+                {/* Prénom - Lecture seule */}
+                <div>
+                  <label htmlFor='firstName' className='block text-sm font-medium text-gray-700 mb-2'>
+                    Prénom
+                  </label>
+                  <div className='relative'>
+                    <User className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 md:w-5 md:h-5' />
+                    <input
+                      type='text'
+                      name='firstName'
+                      id='firstName'
+                      value={formData.firstName}
+                      disabled={true}
+                      autoComplete='given-name'
+                      className='w-full pl-10 pr-4 py-2 md:py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 focus:outline-none cursor-not-allowed'
+                    />
                   </div>
+                  <p className='text-xs text-gray-500 mt-1'>Non modifiable</p>
+                </div>
 
-                  <div>
-                    <label className='block text-sm font-medium text-gray-700 mb-2'>
-                      Nouveau mot de passe
-                    </label>
-                    <div className='relative'>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        name='newPassword'
-                        value={passwordData.newPassword}
-                        onChange={handlePasswordChange}
-                        className='w-full px-4 py-3 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500'
-                        placeholder='Minimum 6 caractères'
-                      />
-                    </div>
+                {/* Nom - Lecture seule */}
+                <div>
+                  <label htmlFor='lastName' className='block text-sm font-medium text-gray-700 mb-2'>
+                    Nom
+                  </label>
+                  <div className='relative'>
+                    <User className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 md:w-5 md:h-5' />
+                    <input
+                      type='text'
+                      name='lastName'
+                      id='lastName'
+                      value={formData.lastName}
+                      disabled={true}
+                      autoComplete='family-name'
+                      className='w-full pl-10 pr-4 py-2 md:py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 focus:outline-none cursor-not-allowed'
+                    />
                   </div>
+                  <p className='text-xs text-gray-500 mt-1'>Non modifiable</p>
+                </div>
 
-                  <div>
-                    <label className='block text-sm font-medium text-gray-700 mb-2'>
-                      Confirmer le nouveau mot de passe
-                    </label>
-                    <div className='relative'>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        name='confirmPassword'
-                        value={passwordData.confirmPassword}
-                        onChange={handlePasswordChange}
-                        className='w-full px-4 py-3 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500'
-                        placeholder='Confirmez le nouveau mot de passe'
-                      />
-                    </div>
+                {/* Email - Modifiable */}
+                <div className="md:col-span-2">
+                  <label htmlFor='email' className='block text-sm font-medium text-gray-700 mb-2'>
+                    Adresse email *
+                  </label>
+                  <div className='relative'>
+                    <Mail className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 md:w-5 md:h-5' />
+                    <input
+                      type='email'
+                      name='email'
+                      id='email'
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      disabled={!isEditing}
+                      autoComplete='email'
+                      className='w-full pl-10 pr-4 py-2 md:py-3 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 disabled:bg-gray-50 transition-colors'
+                      required
+                      placeholder="votre@email.com"
+                    />
                   </div>
+                  <p className='text-xs text-gray-500 mt-1'>Modifiable - Utilisé pour la connexion</p>
+                </div>
+
+                {/* Téléphone - Modifiable */}
+                <div className="md:col-span-2">
+                  <label htmlFor='telephone' className='block text-sm font-medium text-gray-700 mb-2'>
+                    Numéro de téléphone *
+                  </label>
+                  <div className='relative'>
+                    <Phone className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 md:w-5 md:h-5' />
+                    <input
+                      type='tel'
+                      name='telephone'
+                      id='telephone'
+                      value={formData.telephone}
+                      onChange={handleInputChange}
+                      disabled={!isEditing}
+                      autoComplete='tel'
+                      className='w-full pl-10 pr-4 py-2 md:py-3 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 disabled:bg-gray-50 transition-colors'
+                      required
+                      placeholder="+33 1 23 45 67 89"
+                    />
+                  </div>
+                  <p className='text-xs text-gray-500 mt-1'>Modifiable - Pour vous contacter</p>
                 </div>
               </div>
-            )}
 
-            <div className='flex justify-end space-x-4 pt-6 border-t'>
-              {!isEditing ? (
+              {/* Boutons d'action */}
+              <div className='flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0 pt-4 md:pt-6 border-t'>
                 <button
                   type='button'
-                  onClick={() => setIsEditing(true)}
-                  className='flex items-center px-6 py-3 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition-colors'
+                  onClick={() => setShowPasswordPopup(true)}
+                  className='flex items-center px-4 py-2 md:px-5 md:py-2.5 text-sky-600 border border-sky-600 rounded-lg hover:bg-sky-50 transition-colors w-full sm:w-auto justify-center text-sm md:text-base'
                 >
-                  <Edit className='w-5 h-5 mr-2' />
-                  Modifier le profil
+                  <Lock className='w-4 h-4 md:w-5 md:h-5 mr-2' />
+                  Changer le mot de passe
                 </button>
-              ) : (
-                <>
+
+                <div className='flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 w-full sm:w-auto'>
+                  {!isEditing ? (
+                    <button
+                      type='button'
+                      onClick={() => setIsEditing(true)}
+                      className='flex items-center px-4 py-2 md:px-6 md:py-3 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition-colors w-full sm:w-auto justify-center text-sm md:text-base'
+                    >
+                      <Edit className='w-4 h-4 md:w-5 md:h-5 mr-2' />
+                      Modifier le profil
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type='button'
+                        onClick={handleCancel}
+                        className='flex items-center px-4 py-2 md:px-6 md:py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors w-full sm:w-auto justify-center text-sm md:text-base'
+                      >
+                        <X className='w-4 h-4 md:w-5 md:h-5 mr-2' />
+                        Annuler
+                      </button>
+                      <button
+                        type='submit'
+                        className='flex items-center px-4 py-2 md:px-6 md:py-3 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition-colors w-full sm:w-auto justify-center text-sm md:text-base'
+                      >
+                        <Save className='w-4 h-4 md:w-5 md:h-5 mr-2' />
+                        Sauvegarder
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      {/* Popup de changement de mot de passe */}
+      {showPasswordPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-in fade-in duration-300 max-h-[90vh] overflow-y-auto">
+            <div className="p-4 md:p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Changer le mot de passe</h3>
+                <button
+                  onClick={() => {
+                    setShowPasswordPopup(false);
+                    resetPasswordForm();
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-2">
+                    Mot de passe actuel
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      name="currentPassword"
+                      id="currentPassword"
+                      value={passwordData.currentPassword}
+                      onChange={handlePasswordChange}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-colors"
+                      placeholder="Entrez votre mot de passe actuel"
+                      required
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-2">
+                    Nouveau mot de passe
+                  </label>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="newPassword"
+                    id="newPassword"
+                    value={passwordData.newPassword}
+                    onChange={handlePasswordChange}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-colors"
+                    placeholder="Minimum 8 caractères"
+                    required
+                    autoComplete="new-password"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Le mot de passe doit contenir au moins 8 caractères
+                  </p>
+                </div>
+
+                <div>
+                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+                    Confirmer le nouveau mot de passe
+                  </label>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="confirmPassword"
+                    id="confirmPassword"
+                    value={passwordData.confirmPassword}
+                    onChange={handlePasswordChange}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-colors"
+                    placeholder="Confirmez le nouveau mot de passe"
+                    required
+                    autoComplete="new-password"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-3 pt-4">
                   <button
-                    type='button'
-                    onClick={handleCancel}
-                    className='flex items-center px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors'
+                    type="button"
+                    onClick={() => {
+                      setShowPasswordPopup(false);
+                      resetPasswordForm();
+                    }}
+                    className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors w-full sm:w-auto"
                   >
-                    <X className='w-5 h-5 mr-2' />
                     Annuler
                   </button>
                   <button
-                    type='submit'
-                    className='flex items-center px-6 py-3 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition-colors'
+                    type="submit"
+                    className="px-4 py-2.5 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition-colors w-full sm:w-auto"
                   >
-                    <Save className='w-5 h-5 mr-2' />
-                    Sauvegarder
+                    Mettre à jour
                   </button>
-                </>
-              )}
+                </div>
+              </form>
             </div>
-          </form>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

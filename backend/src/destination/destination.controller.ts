@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -150,45 +151,41 @@ export class DestinationController {
     return this.destinationsService.findOne(id);
   }
 
-  @Put(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  @UseInterceptors(FileInterceptor('image'))
-  @ApiOperation({ summary: 'Mettre à jour une Destination' })
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description: 'Données de mis à jour de la destination avec image optionnel',
-    type: UpdateDestinationDto,
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Destination mise à jour',
-    type: Destination,
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'Destination non disponible',
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'Données de la réquêtes invalides',
-  })
-  async update(
-    @Param('id') id: string,
-    @Body() updateDestinationDto: UpdateDestinationDto,
-    @UploadedFile(
-      new ParseFilePipe({
-        validators: [
-          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
-          new FileTypeValidator({ fileType: 'image/*' }),
-        ],
-        fileIsRequired: false,
-      }),
-    )
-    imageFile?: Express.Multer.File,
-  ): Promise<Destination> {
-    return this.destinationsService.update(id, updateDestinationDto, imageFile);
+@Put(':id')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
+@UseInterceptors(FileInterceptor('image'))
+@ApiOperation({ summary: 'Mettre à jour une Destination' })
+@ApiConsumes('multipart/form-data')
+@ApiBody({
+  description: 'Données de mis à jour de la destination avec image optionnel',
+  type: UpdateDestinationDto,
+})
+async update(
+  @Param('id') id: string,
+  @Body() updateDestinationDto: UpdateDestinationDto,
+  @UploadedFile(
+    new ParseFilePipe({
+      validators: [
+        new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+        new FileTypeValidator({ fileType: 'image/*' }),
+      ],
+      fileIsRequired: false,
+    }),
+  )
+  imageFile?: Express.Multer.File,
+): Promise<Destination> {
+  if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+    throw new NotFoundException('ID de destination invalide');
   }
+
+  // Vérifier que au moins un champ est fourni pour la mise à jour
+  if (Object.keys(updateDestinationDto).length === 0 && !imageFile) {
+    throw new BadRequestException('Aucune donnée à mettre à jour fournie');
+  }
+
+  return this.destinationsService.update(id, updateDestinationDto, imageFile);
+}
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)

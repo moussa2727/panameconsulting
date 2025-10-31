@@ -8,7 +8,7 @@ import { useAuth } from '../utils/AuthContext';
 import { toast } from 'react-toastify';
 
 const RendezVous = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, token, refreshToken, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [initialDestination, setInitialDestination] = useState('');
@@ -29,7 +29,7 @@ const RendezVous = () => {
   }, [location]);
 
   const [formData, setFormData] = useState({
-    destination: initialDestination || 'France',
+    destination: initialDestination ,
     destinationAutre: '',
     nom: '',
     prenom: '',
@@ -47,12 +47,12 @@ const RendezVous = () => {
   const [occupiedSlots, setOccupiedSlots] = useState<string[]>([]);
   const [showFiliereAutre, setShowFiliereAutre] = useState(false);
   const [showDestinationAutre, setShowDestinationAutre] = useState(false);
-  const API_URL = (import.meta as any).env.VITE_API_URL;
+  const API_URL = (import.meta as any).env.VITE_API_URL || (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:3000';
 
   useEffect(() => {
     setFormData(prev => ({
       ...prev,
-      destination: initialDestination || 'France',
+      destination: initialDestination,
       email: user?.email || ''
     }));
   }, [initialDestination, user]);
@@ -67,20 +67,36 @@ const RendezVous = () => {
   }, [submitStatus]);
 
   useEffect(() => {
-    if (formData.date) {
+    if (formData.date && token) {
       fetchOccupiedSlots(formData.date);
-    } else {
+    } else if (!formData.date) {
       setOccupiedSlots([]);
     }
-  }, [formData.date]);
+  }, [formData.date, token]);
 
   const fetchOccupiedSlots = async (date: string) => {
     try {
-      const response = await fetch(`${API_URL}/api/rendezvous/occupied?date=${date}`);
-      const data = await response.json();
-      if (response.ok) {
-        setOccupiedSlots(data.occupied);
+      const bearer = token || localStorage.getItem('token');
+      let response = await fetch(`${API_URL}/api/rendezvous/occupied?date=${date}`, {
+        headers: { 'Authorization': `Bearer ${bearer}` },
+        credentials: 'include',
+      });
+      if (response.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const retryBearer = localStorage.getItem('token');
+          response = await fetch(`${API_URL}/api/rendezvous/occupied?date=${date}`, {
+            headers: { 'Authorization': `Bearer ${retryBearer}` },
+            credentials: 'include',
+          });
+        } else {
+          logout('/', true);
+          return;
+        }
       }
+      if (!response.ok) return;
+      const data = await response.json();
+      setOccupiedSlots(Array.isArray(data.occupied) ? data.occupied : []);
     } catch (error) {
       console.error("Erreur lors de la récupération des créneaux occupés:", error);
     }
@@ -91,12 +107,15 @@ const RendezVous = () => {
   const filieres = ['Informatique', 'Médecine', 'Ingénierie', 'Droit', 'Commerce', 'Autre'];
 
   const generateTimeSlots = (): string[] => {
-    return Array.from({ length: 18 }, (_, i) => {
-      const hour = Math.floor(i / 2) + 8;
-      const minute = i % 2 === 0 ? '20' : '50';
-      if (hour === 17 && minute === '50') return undefined;
-      return `${hour.toString().padStart(2, '0')}:${minute}`;
-    }).filter((slot): slot is string => typeof slot === 'string');
+    const slots: string[] = [];
+    const startMinutes = 9 * 60; // 09:00
+    const endMinutes = 16 * 60 + 30; // 16:30
+    for (let m = startMinutes; m <= endMinutes; m += 30) {
+      const h = Math.floor(m / 60).toString().padStart(2, '0');
+      const min = (m % 60).toString().padStart(2, '0');
+      slots.push(`${h}:${min}`);
+    }
+    return slots;
   };
 
   const handleChange = (field: string, value: string) => {
@@ -128,12 +147,14 @@ const RendezVous = () => {
       firstName: formData.prenom,
       lastName: formData.nom,
       email: formData.email,
-      phone: formData.telephone,
-      destination: formData.destination === 'Autre' ? formData.destinationAutre : formData.destination,
+      telephone: formData.telephone,
+      destination: formData.destination, 
+      destinationAutre: formData.destination === 'Autre' ? formData.destinationAutre : undefined,
       niveauEtude: formData.niveauEtude,
-      filiere: formData.filiere === 'Autre' ? formData.filiereAutre : formData.filiere,
-      date: formData.date,
-      time: formData.horaire
+      filiere: formData.filiere, 
+      filiereAutre: formData.filiere === 'Autre' ? formData.filiereAutre : undefined,
+      date: formData.date, 
+      time: formData.horaire 
     };
 
     try {
@@ -143,6 +164,7 @@ const RendezVous = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
@@ -159,7 +181,7 @@ const RendezVous = () => {
       navigate('/mes-rendezvous');
 
       setFormData({
-        destination: initialDestination || 'France',
+        destination: initialDestination,
         destinationAutre: '',
         nom: '',
         prenom: '',
@@ -202,11 +224,11 @@ const RendezVous = () => {
   return (
     <>
       <Helmet>
-        <title>Prendre Rendez-Vous | Etudes Monde</title>
-        <meta name="description" content="Prenez rendez-vous avec un conseiller Etudes Monde pour discuter de votre projet d'études à l'étranger. Choisissez votre destination, date et horaire préférés." />
-        <meta name="keywords" content="rendez-vous, études à l'étranger, conseiller, orientation, Canada, Maroc, Belgique, France" />
-        <link rel="icon" href="/etude-monde.ico" sizes="any" />
-        <link rel="canonical" href="https://etudes-monde.com/rendez-vous" />
+        <title>Prendre Rendez-Vous </title>
+        <meta name="description" content="Prenez rendez-vous avec un conseiller Paname Consulting pour discuter de votre projet d'études à l'étranger. Choisissez votre destination, date et horaire préférés." />
+        <meta name="keywords" content="rendez-vous, études à l'étranger, conseiller, orientation, Algérie, Maroc, Turquie, Chine, Russie" />
+        <link rel="icon" href="/panameconsulting.ico" sizes="any" />
+        <link rel="canonical" href="https://panameconsulting.com/rendez-vous" />
       </Helmet>
 
       <div className="min-h-screen bg-gray-50 p-2 sm:p-3">
@@ -487,25 +509,38 @@ const RendezVous = () => {
                   {generateTimeSlots().map((time) => {
                     const isOccupied = occupiedSlots.includes(time);
                     const isSelected = formData.horaire === time;
-                    
+                    // Désactiver les créneaux passés si la date sélectionnée est aujourd'hui
+                    let isPast = false;
+                    if (formData.date) {
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      if (formData.date === todayStr) {
+                        const now = new Date();
+                        const [hh, mm] = time.split(':').map(Number);
+                        const slotMinutes = hh * 60 + mm;
+                        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+                        isPast = slotMinutes <= nowMinutes;
+                      }
+                    }
+
                     return (
                       <button
                         key={time}
                         type="button"
-                        onClick={() => !isOccupied && handleChange('horaire', time)}
+                        onClick={() => !isOccupied && !isPast && handleChange('horaire', time)}
                         className={`text-xxs rounded p-0 focus:ring-none focus:outline-none transition-colors sm:text-xs ${
                           isSelected
                             ? 'bg-sky-600 text-white'
-                            : isOccupied
+                            : (isOccupied || isPast)
                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                               : 'bg-gray-100 hover:bg-sky-100'
                         }`}
                         aria-pressed={isSelected}
-                        aria-label={`Horaire ${time}${isOccupied ? ' (Indisponible)' : ''}`}
-                        disabled={isOccupied}
+                        aria-label={`Horaire ${time}${isOccupied ? ' (Indisponible)' : ''}${isPast ? ' (Passé)' : ''}`}
+                        disabled={isOccupied || isPast}
                       >
                         {time}
                         {isOccupied && <span className="sr-only"> (Indisponible)</span>}
+                        {isPast && <span className="sr-only"> (Passé)</span>}
                       </button>
                     )
                   })}

@@ -26,7 +26,7 @@ export class CreateProcedureDto {
   @IsEmail()
   email: string;
 
-  @IsEnum(['Algérie', 'Canada', 'Maroc', 'France', 'Chine', 'Russie'])
+  @IsEnum(['Algérie', 'Russie', 'Maroc', 'France', 'Chine'])
   destination: string;
 
   @ValidateNested({ each: true })

@@ -6,7 +6,7 @@ const MotdePasseOubliePage = () => {
   const pageTitle = 'Mot de passe oublié - PANAME CONSULTING';
   const pageDescription =
     'Réinitialisez votre mot de passe pour accéder à votre espace Paname Consulting.';
-  const canonicalUrl = 'https://www.paname-consulting.com/mot-de-passe-oublie';
+  const canonicalUrl = 'https://panameconsulting.com/mot-de-passe-oublie';
 
   return (
     <>
@@ -27,7 +27,7 @@ const MotdePasseOubliePage = () => {
         <meta property='og:type' content='website' />
         <meta
           property='og:image'
-          content='https://www.paname-consulting.com/paname-consulting.jpg'
+          content='https://panameconsulting.com/paname-consulting.jpg'
         />
         <meta property='og:image:alt' content='Logo Paname Consulting' />
 
@@ -37,7 +37,7 @@ const MotdePasseOubliePage = () => {
         <meta name='twitter:description' content={pageDescription} />
         <meta
           name='twitter:image'
-          content='https://www.paname-consulting.com/paname-consulting.jpg'
+          content='https://panameconsulting.com/paname-consulting.jpg'
         />
 
         {/* Favicon et icônes */}

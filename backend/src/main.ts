@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import helmet from 'helmet';
 import { join } from 'path';
 import { AppModule } from './app.module';
+import cookieParser from 'cookie-parser';
 
 function useContainer(appContext: INestApplicationContext, options: { fallbackOnErrors: boolean }) {
   classValidatorUseContainer(appContext, options);
@@ -32,6 +33,7 @@ async function bootstrap() {
   );
 
   useContainer(app.select(AppModule), { fallbackOnErrors: true });
+  app.use(cookieParser());
 
   // Sécurité HTTP avec Helmet
   app.use(
@@ -97,7 +99,10 @@ async function bootstrap() {
     origin: [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://panameconsulting.com'
+      'https://panameconsulting.com',
+      'https://panameconsulting.vercel.app',
+      'https://www.panameconsulting.vercel.app',
+      'https://www.panameconsulting.com'
     ],
     methods: ['GET', 'POST', 'HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Accept', 'Authorization', ' Cache-Control', 'X-Requested-With', 'X-HTTP-Method-Override'],

@@ -1,579 +1,211 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  FiMail, 
-  FiSearch, 
-  FiFilter, 
-  FiCheck, 
-  FiEye, 
-  FiEyeOff, 
-  FiSend, 
-  FiTrash2,
-  FiChevronDown,
-  FiChevronUp,
-  FiMessageSquare,
-  FiUser,
-  FiCalendar,
-  FiArrowLeft,
-  FiArrowRight
-} from 'react-icons/fi';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../utils/AuthContext';
 
 interface ContactMessage {
   _id: string;
-  firstName: string;
-  lastName: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
-  subject: string;
   message: string;
   isRead: boolean;
-  status: 'new' | 'read' | 'in_progress' | 'resolved';
-  priority: 'low' | 'medium' | 'high';
   adminResponse?: string;
   respondedAt?: string;
   createdAt: string;
-  updatedAt: string;
 }
 
-interface MessageStats {
+interface MessagesResponse {
+  data: ContactMessage[];
   total: number;
-  unread: number;
-  read: number;
-  responded: number;
-  thisMonth: number;
-  lastMonth: number;
 }
 
 const AdminMessages: React.FC = () => {
-  const { token } = useAuth();
+  const { token, logout, user } = useAuth();
   const [messages, setMessages] = useState<ContactMessage[]>([]);
-  const [stats, setStats] = useState<MessageStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [priorityFilter, setPriorityFilter] = useState<string>('all');
-  const [readFilter, setReadFilter] = useState<string>('all');
-  const [expandedMessage, setExpandedMessage] = useState<string | null>(null);
-  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
+  const [selectedMessage, setSelectedMessage] = useState<ContactMessage | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [replying, setReplying] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('unread');
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
-  const [sortBy, setSortBy] = useState<'createdAt' | 'priority' | 'status'>('createdAt');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [totalPages, setTotalPages] = useState(1);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-  // Charger les messages et statistiques
-  useEffect(() => {
-    fetchMessages();
-    fetchStats();
-  }, []);
-
-  const fetchMessages = async () => {
+  // Fonction de débogage du token
+  const debugToken = () => {
+    if (!token) {
+      console.error('❌ Aucun token disponible');
+      return;
+    }
+    
     try {
-      const response = await fetch(`${API_URL}/api/admin/contact`, {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      console.log('🔍 Token payload:', payload);
+      console.log('🔍 Token expiration:', new Date(payload.exp * 1000));
+      console.log('🔍 Token role:', payload.role);
+      console.log('🔍 Token est expiré?', Date.now() >= payload.exp * 1000);
+    } catch (e) {
+      console.error('❌ Erreur décodage token:', e);
+    }
+  };
+
+  const fetchMessages = async (page: number = 1, filterType: string = 'unread') => {
+    try {
+      setLoading(true);
+      setError('');
+
+      console.log('🔍 Debug - User:', user);
+      console.log('🔍 Debug - Token exists:', !!token);
+      debugToken();
+
+      if (!token) {
+        throw new Error('Token manquant - Veuillez vous reconnecter');
+      }
+
+      if (user?.role !== 'admin') {
+        throw new Error('Accès réservé aux administrateurs');
+      }
+
+      const isReadParam = filterType === 'all' ? undefined : filterType === 'read';
+      
+      const url = new URL(`${VITE_API_URL}/api/admin/contact`);
+      url.searchParams.append('page', page.toString());
+      url.searchParams.append('limit', '10');
+      if (isReadParam !== undefined) {
+        url.searchParams.append('isRead', isReadParam.toString());
+      }
+
+      console.log('🔍 Debug - Full URL:', url.toString());
+
+      const response = await fetch(url.toString(), {
         headers: {
           'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setMessages(data);
-      }
-    } catch (error) {
-      console.error('Erreur lors du chargement des messages:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fetchStats = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/admin/contact/stats`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
-    } catch (error) {
-      console.error('Erreur lors du chargement des statistiques:', error);
-    }
-  };
-
-  // Fonctions de gestion des messages
-  const markAsRead = async (id: string) => {
-    try {
-      const response = await fetch(`${API_URL}/api/admin/contact/${id}/read`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      if (response.ok) {
-        setMessages(messages.map(msg => 
-          msg._id === id ? { ...msg, isRead: true, status: 'read' } : msg
-        ));
-        fetchStats();
-      }
-    } catch (error) {
-      console.error('Erreur:', error);
-    }
-  };
-
-  const markAsUnread = async (id: string) => {
-    try {
-      // Implémentation backend nécessaire pour marquer comme non-lu
-      // Pour l'instant, mise à jour locale
-      setMessages(messages.map(msg => 
-        msg._id === id ? { ...msg, isRead: false, status: 'new' } : msg
-      ));
-      fetchStats();
-    } catch (error) {
-      console.error('Erreur:', error);
-    }
-  };
-
-  const sendReply = async (id: string) => {
-    if (!replyText.trim()) return;
-
-    try {
-      const response = await fetch(`${API_URL}/api/admin/contact/${id}/reply`, {
-        method: 'POST',
-        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ reply: replyText }),
+        credentials: 'include'
       });
-      
-      if (response.ok) {
-        setReplyingTo(null);
-        setReplyText('');
-        fetchMessages();
-        fetchStats();
+
+      console.log('🔍 Debug - Response status:', response.status);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          let errorMessage = 'Non autorisé (401)';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorMessage;
+          } catch {
+            // Ignorer si pas de JSON
+          }
+          throw new Error(errorMessage);
+        }
+        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
       }
-    } catch (error) {
-      console.error('Erreur:', error);
+
+      const data: MessagesResponse = await response.json();
+      console.log('🔍 Debug - Data received:', data);
+      
+      setMessages(data.data);
+      setTotalPages(Math.ceil(data.total / 10));
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Une erreur est survenue';
+      console.error('❌ Fetch error:', err);
+      setError(errorMessage);
+      
+      if (errorMessage.includes('Non autorisé') || errorMessage.includes('Token manquant')) {
+        setTimeout(() => {
+          logout('/connexion', true);
+        }, 3000);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const deleteMessage = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce message ?')) return;
+  useEffect(() => {
+    console.log('🔍 AdminMessages mounted - User:', user);
+    debugToken();
+    
+    if (token && user) {
+      fetchMessages(currentPage, filter);
+    }
+  }, [currentPage, filter, token, user]);
+
+  const handleMarkAsRead = async (messageId: string) => {
+    try {
+      const response = await fetch(
+        `${VITE_API_URL}/api/admin/contact/${messageId}/read`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Erreur lors du marquage comme lu');
+      }
+
+      const result = await response.json();
+      
+      setMessages(prev => prev.map(msg => 
+        msg._id === messageId ? result.contact : msg
+      ));
+
+      if (selectedMessage?._id === messageId) {
+        setSelectedMessage(result.contact);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors du marquage');
+    }
+  };
+
+  const handleReply = async (messageId: string) => {
+    if (!replyText.trim()) {
+      setError('Veuillez saisir une réponse');
+      return;
+    }
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/contact/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      setReplying(true);
+      const response = await fetch(
+        `${VITE_API_URL}/api/admin/contact/${messageId}/reply`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ reply: replyText }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de l\'envoi de la réponse');
+      }
+
+      const result = await response.json();
       
-      if (response.ok) {
-        setMessages(messages.filter(msg => msg._id !== id));
-        setSelectedMessages(selectedMessages.filter(msgId => msgId !== id));
-        fetchStats();
-      }
-    } catch (error) {
-      console.error('Erreur:', error);
-    }
-  };
+      setMessages(prev => prev.map(msg => 
+        msg._id === messageId ? result.contact : msg
+      ));
 
-  // Actions groupées
-  const markSelectedAsRead = () => {
-    selectedMessages.forEach(id => markAsRead(id));
-    setSelectedMessages([]);
-  };
-
-  const markSelectedAsUnread = () => {
-    selectedMessages.forEach(id => markAsUnread(id));
-    setSelectedMessages([]);
-  };
-
-  // Filtrage et recherche
-  const filteredMessages = useMemo(() => {
-    return messages.filter(message => {
-      const matchesSearch = 
-        message.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        message.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        message.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        message.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        message.message.toLowerCase().includes(searchTerm.toLowerCase());
-
-      const matchesStatus = statusFilter === 'all' || message.status === statusFilter;
-      const matchesPriority = priorityFilter === 'all' || message.priority === priorityFilter;
-      const matchesRead = readFilter === 'all' || 
-        (readFilter === 'read' && message.isRead) || 
-        (readFilter === 'unread' && !message.isRead);
-
-      return matchesSearch && matchesStatus && matchesPriority && matchesRead;
-    });
-  }, [messages, searchTerm, statusFilter, priorityFilter, readFilter]);
-
-  // Tri
-  const sortedMessages = useMemo(() => {
-    return [...filteredMessages].sort((a, b) => {
-      let aValue: any = a[sortBy];
-      let bValue: any = b[sortBy];
-
-      if (sortBy === 'createdAt') {
-        aValue = new Date(aValue).getTime();
-        bValue = new Date(bValue).getTime();
-      } else if (sortBy === 'priority') {
-        const priorityOrder = { high: 3, medium: 2, low: 1 };
-        aValue = priorityOrder[aValue as keyof typeof priorityOrder];
-        bValue = priorityOrder[bValue as keyof typeof priorityOrder];
+      if (selectedMessage?._id === messageId) {
+        setSelectedMessage(result.contact);
       }
 
-      return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
-    });
-  }, [filteredMessages, sortBy, sortOrder]);
-
-  // Pagination
-  const paginatedMessages = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return sortedMessages.slice(startIndex, startIndex + itemsPerPage);
-  }, [sortedMessages, currentPage, itemsPerPage]);
-
-  const totalPages = Math.ceil(sortedMessages.length / itemsPerPage);
-
-  // Sélection/désélection de tous les messages de la page
-  const toggleSelectAll = () => {
-    if (selectedMessages.length === paginatedMessages.length) {
-      setSelectedMessages([]);
-    } else {
-      setSelectedMessages(paginatedMessages.map(msg => msg._id));
+      setReplyText('');
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de l\'envoi de la réponse');
+    } finally {
+      setReplying(false);
     }
   };
 
-  // Toggle de sélection individuelle
-  const toggleMessageSelection = (id: string) => {
-    setSelectedMessages(prev =>
-      prev.includes(id)
-        ? prev.filter(msgId => msgId !== id)
-        : [...prev, id]
-    );
-  };
-
-  // Fonction pour obtenir la couleur du statut
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'new': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'read': return 'bg-gray-100 text-gray-800 border-gray-200';
-      case 'in_progress': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'resolved': return 'bg-green-100 text-green-800 border-green-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  // Fonction pour obtenir la couleur de la priorité
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'bg-red-100 text-red-800 border-red-200';
-      case 'medium': return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'low': return 'bg-green-100 text-green-800 border-green-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* En-tête avec statistiques */}
-        <div className="mb-6 md:mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-4 md:mb-6">
-            Messages de contact
-          </h1>
-          
-          {stats && (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 md:gap-4">
-              <StatCard 
-                title="Total" 
-                value={stats.total} 
-                color="bg-sky-500" 
-              />
-              <StatCard 
-                title="Non lus" 
-                value={stats.unread} 
-                color="bg-blue-500" 
-              />
-              <StatCard 
-                title="Lus" 
-                value={stats.read} 
-                color="bg-green-500" 
-              />
-              <StatCard 
-                title="Répondu" 
-                value={stats.responded} 
-                color="bg-emerald-500" 
-              />
-              <StatCard 
-                title="Ce mois" 
-                value={stats.thisMonth} 
-                color="bg-purple-500" 
-              />
-              <StatCard 
-                title="Mois dernier" 
-                value={stats.lastMonth} 
-                color="bg-gray-500" 
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Barre de contrôle */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 md:p-6 mb-6">
-          <div className="flex flex-col lg:flex-row gap-4 mb-4">
-            {/* Recherche */}
-            <div className="flex-1">
-              <div className="relative">
-                <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="Rechercher dans les messages..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded border border-gray-300 bg-gray-50 focus:border-sky-500 hover:border-sky-400 transition-colors"
-                />
-              </div>
-            </div>
-
-            {/* Filtres */}
-            <div className="flex flex-wrap gap-2">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 rounded border border-gray-300 bg-gray-50 focus:border-sky-500 hover:border-sky-400 transition-colors"
-              >
-                <option value="all">Tous les statuts</option>
-                <option value="new">Nouveau</option>
-                <option value="read">Lu</option>
-                <option value="in_progress">En cours</option>
-                <option value="resolved">Résolu</option>
-              </select>
-
-              <select
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-                className="px-3 py-2 rounded border border-gray-300 bg-gray-50 focus:border-sky-500 hover:border-sky-400 transition-colors"
-              >
-                <option value="all">Toutes priorités</option>
-                <option value="high">Haute</option>
-                <option value="medium">Moyenne</option>
-                <option value="low">Basse</option>
-              </select>
-
-              <select
-                value={readFilter}
-                onChange={(e) => setReadFilter(e.target.value)}
-                className="px-3 py-2 rounded border border-gray-300 bg-gray-50 focus:border-sky-500 hover:border-sky-400 transition-colors"
-              >
-                <option value="all">Tous</option>
-                <option value="read">Lus</option>
-                <option value="unread">Non lus</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Actions groupées */}
-          {selectedMessages.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 p-3 bg-sky-50 rounded-lg border border-sky-200">
-              <span className="text-sm text-sky-800 font-medium">
-                {selectedMessages.length} message(s) sélectionné(s)
-              </span>
-              <div className="flex gap-2 ml-auto">
-                <button
-                  onClick={markSelectedAsRead}
-                  className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                >
-                  <FiCheck className="w-4 h-4" />
-                  Marquer comme lu
-                </button>
-                <button
-                  onClick={markSelectedAsUnread}
-                  className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
-                >
-                  <FiEyeOff className="w-4 h-4" />
-                  Marquer non lu
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Liste des messages */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          {/* En-tête du tableau */}
-          <div className="hidden md:grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700">
-            <div className="col-span-1">
-              <input
-                type="checkbox"
-                checked={selectedMessages.length === paginatedMessages.length && paginatedMessages.length > 0}
-                onChange={toggleSelectAll}
-                className="rounded border-gray-300 text-sky-500 focus:border-sky-500"
-              />
-            </div>
-            <div className="col-span-3">Expéditeur</div>
-            <div className="col-span-3">Sujet</div>
-            <div 
-              className="col-span-2 flex items-center gap-1 cursor-pointer"
-              onClick={() => {
-                setSortBy('priority');
-                setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-              }}
-            >
-              Priorité
-              {sortBy === 'priority' && (
-                sortOrder === 'asc' ? <FiChevronUp /> : <FiChevronDown />
-              )}
-            </div>
-            <div 
-              className="col-span-2 flex items-center gap-1 cursor-pointer"
-              onClick={() => {
-                setSortBy('createdAt');
-                setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-              }}
-            >
-              Date
-              {sortBy === 'createdAt' && (
-                sortOrder === 'asc' ? <FiChevronUp /> : <FiChevronDown />
-              )}
-            </div>
-            <div className="col-span-1">Actions</div>
-          </div>
-
-          {/* Messages */}
-          {paginatedMessages.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <FiMail className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <p>Aucun message trouvé</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {paginatedMessages.map((message) => (
-                <MessageItem
-                  key={message._id}
-                  message={message}
-                  isSelected={selectedMessages.includes(message._id)}
-                  onSelect={() => toggleMessageSelection(message._id)}
-                  isExpanded={expandedMessage === message._id}
-                  onToggleExpand={() => setExpandedMessage(
-                    expandedMessage === message._id ? null : message._id
-                  )}
-                  isReplying={replyingTo === message._id}
-                  onStartReply={() => setReplyingTo(message._id)}
-                  onCancelReply={() => {
-                    setReplyingTo(null);
-                    setReplyText('');
-                  }}
-                  replyText={replyText}
-                  onReplyTextChange={setReplyText}
-                  onSendReply={() => sendReply(message._id)}
-                  onMarkAsRead={() => markAsRead(message._id)}
-                  onMarkAsUnread={() => markAsUnread(message._id)}
-                  onDelete={() => deleteMessage(message._id)}
-                  getStatusColor={getStatusColor}
-                  getPriorityColor={getPriorityColor}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between p-4 border-t border-gray-200">
-              <div className="text-sm text-gray-700">
-                Page {currentPage} sur {totalPages} • {sortedMessages.length} message(s)
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="flex items-center gap-2 px-3 py-2 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <FiArrowLeft className="w-4 h-4" />
-                  Précédent
-                </button>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="flex items-center gap-2 px-3 py-2 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Suivant
-                  <FiArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Composant de carte de statistique
-const StatCard: React.FC<{ title: string; value: number; color: string }> = ({ 
-  title, 
-  value, 
-  color 
-}) => (
-  <div className="bg-white rounded-lg border border-gray-200 p-3 md:p-4 text-center">
-    <div className={`inline-flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-full ${color} text-white mb-2`}>
-      <span className="text-sm md:text-base font-bold">{value}</span>
-    </div>
-    <div className="text-xs md:text-sm text-gray-600 font-medium">{title}</div>
-  </div>
-);
-
-// Composant d'élément de message
-const MessageItem: React.FC<{
-  message: ContactMessage;
-  isSelected: boolean;
-  onSelect: () => void;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
-  isReplying: boolean;
-  onStartReply: () => void;
-  onCancelReply: () => void;
-  replyText: string;
-  onReplyTextChange: (text: string) => void;
-  onSendReply: () => void;
-  onMarkAsRead: () => void;
-  onMarkAsUnread: () => void;
-  onDelete: () => void;
-  getStatusColor: (status: string) => string;
-  getPriorityColor: (priority: string) => string;
-}> = ({
-  message,
-  isSelected,
-  onSelect,
-  isExpanded,
-  onToggleExpand,
-  isReplying,
-  onStartReply,
-  onCancelReply,
-  replyText,
-  onReplyTextChange,
-  onSendReply,
-  onMarkAsRead,
-  onMarkAsUnread,
-  onDelete,
-  getStatusColor,
-  getPriorityColor,
-}) => {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('fr-FR', {
       day: '2-digit',
@@ -584,243 +216,402 @@ const MessageItem: React.FC<{
     });
   };
 
+  const formatDateMobile = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const openMessage = (message: ContactMessage) => {
+    setSelectedMessage(message);
+    setIsModalOpen(true);
+    if (!message.isRead) {
+      handleMarkAsRead(message._id);
+    }
+  };
+
+  const closeMessage = () => {
+    setIsModalOpen(false);
+    setSelectedMessage(null);
+    setReplyText('');
+  };
+
+  // Fermer la modal avec la touche Échap
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeMessage();
+      }
+    };
+
+    if (isModalOpen) {
+      document.addEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isModalOpen]);
+
+  if (loading && messages.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`p-4 hover:bg-gray-50 transition-colors ${!message.isRead ? 'bg-blue-50' : ''}`}>
-      {/* Version mobile */}
-      <div className="md:hidden space-y-3">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={onSelect}
-              className="rounded border-gray-300 text-sky-500 focus:border-sky-500 mt-1"
-            />
-            <div>
-              <div className="font-medium text-gray-900">
-                {message.firstName} {message.lastName}
-              </div>
-              <div className="text-sm text-gray-500">{message.email}</div>
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+      <div className="max-w-6xl mx-auto">
+        {/* Header avec info de débogage en développement */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="text-sm text-blue-800">
+              <strong>Debug:</strong> User: {user?.email} | Role: {user?.role} | 
+              Token: {token ? '✓' : '✗'} | Admin: {user?.role === 'admin' ? '✓' : '✗'}
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-gray-500">{formatDate(message.createdAt)}</div>
-            <span className={`inline-block px-2 py-1 text-xs rounded-full border ${getPriorityColor(message.priority)}`}>
-              {message.priority}
-            </span>
+        )}
+
+        {/* Header */}
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Messages de contact</h1>
+          <p className="text-gray-600 text-sm sm:text-base">Gérez les messages reçus via le formulaire de contact</p>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className={`mb-4 sm:mb-6 px-4 py-3 rounded-lg text-sm sm:text-base ${
+            error.includes('Non autorisé') 
+              ? 'bg-red-50 border border-red-200 text-red-700' 
+              : 'bg-yellow-50 border border-yellow-200 text-yellow-700'
+          }`}>
+            <div className="flex items-center gap-2">
+              {error.includes('Non autorisé') ? (
+                <>
+                  <span>🔒</span>
+                  <span>{error}. Redirection...</span>
+                </>
+              ) : (
+                <>
+                  <span>⚠️</span>
+                  <span>{error}</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Filtres et statistiques - Version Mobile Optimisée */}
+        <div className="mb-4 sm:mb-6">
+          {/* Filtres en boutons scrollables horizontaux sur mobile */}
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 sm:overflow-visible sm:mx-0 sm:px-0">
+            <div className="flex gap-2 flex-nowrap min-w-max">
+              <button
+                onClick={() => { setFilter('unread'); setCurrentPage(1); }}
+                className={`px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base whitespace-nowrap ${
+                  filter === 'unread'
+                    ? 'bg-sky-500 text-white shadow-sm'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                📩 Non lus
+              </button>
+              <button
+                onClick={() => { setFilter('read'); setCurrentPage(1); }}
+                className={`px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base whitespace-nowrap ${
+                  filter === 'read'
+                    ? 'bg-sky-500 text-white shadow-sm'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                ✓ Lus
+              </button>
+              <button
+                onClick={() => { setFilter('all'); setCurrentPage(1); }}
+                className={`px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base whitespace-nowrap ${
+                  filter === 'all'
+                    ? 'bg-sky-500 text-white shadow-sm'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                📋 Tous
+              </button>
+            </div>
+          </div>
+
+          {/* Statistiques */}
+          <div className="mt-3 flex justify-between items-center">
+            <div className="text-xs sm:text-sm text-gray-600">
+              {messages.length} message{messages.length > 1 ? 's' : ''}
+            </div>
+            <div className="text-xs sm:text-sm text-gray-500">
+              Page {currentPage} sur {totalPages}
+            </div>
           </div>
         </div>
 
-        <div className="font-medium text-gray-800">{message.subject}</div>
-        
-        <div className="flex items-center gap-2">
-          <span className={`inline-block px-2 py-1 text-xs rounded-full border ${getStatusColor(message.status)}`}>
-            {message.status === 'new' ? 'Nouveau' : 
-             message.status === 'read' ? 'Lu' :
-             message.status === 'in_progress' ? 'En cours' : 'Résolu'}
-          </span>
-          {!message.isRead && (
-            <span className="inline-block px-2 py-1 text-xs bg-blue-500 text-white rounded-full">
-              Non lu
-            </span>
+        {/* Liste des messages - Version Mobile Optimisée */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          {messages.length === 0 ? (
+            <div className="text-center py-8 sm:py-12">
+              <div className="text-gray-400 text-4xl sm:text-6xl mb-3 sm:mb-4">📭</div>
+              <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-1 sm:mb-2">Aucun message</h3>
+              <p className="text-gray-600 text-sm sm:text-base px-4">
+                {filter === 'unread' 
+                  ? "Vous n'avez aucun message non lu" 
+                  : filter === 'read'
+                  ? "Vous n'avez aucun message lu"
+                  : "Aucun message n'a été trouvé"}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-200">
+              {messages.map((message) => (
+                <div
+                  key={message._id}
+                  className={`p-4 sm:p-6 hover:bg-gray-50 cursor-pointer transition-colors active:bg-gray-100 ${
+                    !message.isRead ? 'bg-sky-50 border-l-2 sm:border-l-4 border-l-sky-500' : ''
+                  }`}
+                  onClick={() => openMessage(message)}
+                >
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 sm:gap-3 mb-3">
+                    <div className="flex items-start gap-2 sm:gap-3">
+                      {/* Avatar mobile */}
+                      <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 bg-sky-100 rounded-full flex items-center justify-center text-sky-600 font-semibold text-sm sm:text-base">
+                        {message.firstName?.[0]?.toUpperCase() || message.email[0].toUpperCase()}
+                      </div>
+                      
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1 sm:gap-2 mb-1">
+                          <h3 className="font-semibold text-gray-900 text-sm sm:text-base truncate">
+                            {message.firstName} {message.lastName}
+                          </h3>
+                          <div className="flex gap-1 flex-wrap">
+                            {!message.isRead && (
+                              <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800">
+                                Nouveau
+                              </span>
+                            )}
+                            {message.adminResponse && (
+                              <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                Répondu
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-gray-500 text-xs sm:text-sm truncate">{message.email}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="text-right ml-10 sm:ml-0">
+                      <div className="text-xs sm:text-sm text-gray-500">
+                        <span className="sm:hidden">{formatDateMobile(message.createdAt)}</span>
+                        <span className="hidden sm:inline">{formatDate(message.createdAt)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Message preview - version mobile tronquée */}
+                  <p className="text-gray-700 text-sm sm:text-base line-clamp-2 sm:line-clamp-3 mb-2">
+                    {message.message}
+                  </p>
+                  
+                  {/* Badge de réponse sur mobile */}
+                  {message.adminResponse && (
+                    <div className="sm:hidden mt-2">
+                      <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-green-50 text-green-700 border border-green-200">
+                        ✓ Répondu
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* Réponse complète sur desktop */}
+                  {message.adminResponse && (
+                    <div className="hidden sm:block mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-sm font-medium text-gray-700">Votre réponse</span>
+                        <span className="text-xs text-gray-500">
+                          {message.respondedAt && formatDate(message.respondedAt)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 line-clamp-2">{message.adminResponse}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={onToggleExpand}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors"
-          >
-            <FiMessageSquare className="w-4 h-4" />
-            {isExpanded ? 'Réduire' : 'Détails'}
-          </button>
-          <button
-            onClick={onStartReply}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm border border-sky-300 text-sky-600 rounded hover:bg-sky-50 transition-colors"
-          >
-            <FiSend className="w-4 h-4" />
-            Répondre
-          </button>
-        </div>
-      </div>
-
-      {/* Version desktop */}
-      <div className="hidden md:grid md:grid-cols-12 gap-4 items-center">
-        <div className="col-span-1">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={onSelect}
-            className="rounded border-gray-300 text-sky-500 focus:border-sky-500"
-          />
-        </div>
-        
-        <div className="col-span-3">
-          <div className="flex items-center gap-2">
-            <FiUser className="w-4 h-4 text-gray-400" />
-            <div>
-              <div className="font-medium text-gray-900">
-                {message.firstName} {message.lastName}
+        {/* Pagination Mobile Optimisée */}
+        {totalPages > 1 && (
+          <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row gap-3 sm:gap-2 items-center justify-between">
+            <div className="text-xs sm:text-sm text-gray-500 sm:order-1">
+              Page {currentPage} sur {totalPages}
+            </div>
+            
+            <div className="flex gap-1 sm:gap-2 order-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="px-3 sm:px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 text-sm sm:text-base flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                <span className="hidden sm:inline">Précédent</span>
+              </button>
+              
+              {/* Pages réduites sur mobile */}
+              <div className="flex gap-1">
+                {Array.from({ length: Math.min(totalPages, 3) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage === 1) {
+                    pageNum = i + 1;
+                  } else if (currentPage === totalPages) {
+                    pageNum = totalPages - 2 + i;
+                  } else {
+                    pageNum = currentPage - 1 + i;
+                  }
+                  
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`w-8 sm:w-10 h-8 sm:h-10 border rounded-lg text-sm sm:text-base ${
+                        currentPage === pageNum
+                          ? 'bg-sky-500 text-white border-sky-500'
+                          : 'border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                {totalPages > 3 && currentPage < totalPages - 1 && (
+                  <span className="w-8 h-8 flex items-center justify-center text-gray-500">...</span>
+                )}
               </div>
-              <div className="text-sm text-gray-500 truncate">{message.email}</div>
+              
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="px-3 sm:px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 text-sm sm:text-base flex items-center gap-1"
+              >
+                <span className="hidden sm:inline">Suivant</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
             </div>
           </div>
-        </div>
-        
-        <div className="col-span-3">
-          <div className="font-medium text-gray-800 truncate">{message.subject}</div>
-        </div>
-        
-        <div className="col-span-2">
-          <span className={`inline-block px-2 py-1 text-xs rounded-full border ${getPriorityColor(message.priority)}`}>
-            {message.priority}
-          </span>
-        </div>
-        
-        <div className="col-span-2">
-          <div className="text-sm text-gray-600">{formatDate(message.createdAt)}</div>
-        </div>
-        
-        <div className="col-span-1">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onToggleExpand}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-              title="Détails"
-            >
-              <FiMessageSquare className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onStartReply}
-              className="p-2 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded transition-colors"
-              title="Répondre"
-            >
-              <FiSend className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </div>
+        )}
 
-      {/* Détails du message (expandable) */}
-      {isExpanded && (
-        <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Statut</label>
-              <div className="mt-1">
-                <span className={`inline-block px-2 py-1 text-xs rounded-full border ${getStatusColor(message.status)}`}>
-                  {message.status === 'new' ? 'Nouveau' : 
-                   message.status === 'read' ? 'Lu' :
-                   message.status === 'in_progress' ? 'En cours' : 'Résolu'}
-                </span>
+        {/* Modal Mobile First */}
+        {isModalOpen && selectedMessage && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
+            <div className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl w-full h-[90vh] sm:h-auto sm:max-h-[90vh] sm:max-w-2xl flex flex-col">
+              {/* Header sticky */}
+              <div className="p-4 sm:p-6 border-b border-gray-200 sticky top-0 bg-white rounded-t-2xl sm:rounded-t-lg z-10">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <div className="flex-shrink-0 w-10 h-10 bg-sky-100 rounded-full flex items-center justify-center text-sky-600 font-semibold">
+                      {selectedMessage.firstName?.[0]?.toUpperCase() || selectedMessage.email[0].toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-lg sm:text-xl font-bold text-gray-900 truncate">
+                        {selectedMessage.firstName} {selectedMessage.lastName}
+                      </h2>
+                      <p className="text-gray-600 text-sm sm:text-base truncate">{selectedMessage.email}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={closeMessage}
+                    className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors p-1"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="mt-2 text-xs sm:text-sm text-gray-500">
+                  Reçu le {formatDate(selectedMessage.createdAt)}
+                </div>
               </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Priorité</label>
-              <div className="mt-1">
-                <span className={`inline-block px-2 py-1 text-xs rounded-full border ${getPriorityColor(message.priority)}`}>
-                  {message.priority}
-                </span>
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Date</label>
-              <div className="mt-1 text-sm text-gray-600">
-                <FiCalendar className="w-4 h-4 inline mr-1" />
-                {formatDate(message.createdAt)}
-              </div>
-            </div>
-          </div>
 
-          <div className="mb-4">
-            <label className="text-sm font-medium text-gray-700">Message</label>
-            <div className="mt-1 p-3 bg-white rounded border border-gray-200 text-gray-700 whitespace-pre-wrap">
-              {message.message}
-            </div>
-          </div>
+              {/* Content scrollable */}
+              <div className="flex-1 overflow-y-auto">
+                <div className="p-4 sm:p-6 border-b border-gray-200">
+                  <h3 className="font-semibold text-gray-900 mb-3 text-sm sm:text-base">Message :</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <p className="text-gray-700 whitespace-pre-wrap text-sm sm:text-base">{selectedMessage.message}</p>
+                  </div>
+                </div>
 
-          {message.adminResponse && (
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700">Réponse envoyée</label>
-              <div className="mt-1 p-3 bg-green-50 rounded border border-green-200 text-gray-700 whitespace-pre-wrap">
-                {message.adminResponse}
+                {selectedMessage.adminResponse ? (
+                  <div className="p-4 sm:p-6 border-b border-gray-200">
+                    <h3 className="font-semibold text-gray-900 mb-3 text-sm sm:text-base">Votre réponse :</h3>
+                    <div className="bg-sky-50 p-4 rounded-lg border border-sky-200">
+                      <p className="text-gray-700 whitespace-pre-wrap text-sm sm:text-base">{selectedMessage.adminResponse}</p>
+                      <div className="mt-2 text-xs sm:text-sm text-sky-600">
+                        Répondu le {selectedMessage.respondedAt && formatDate(selectedMessage.respondedAt)}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 sm:p-6">
+                    <h3 className="font-semibold text-gray-900 mb-3 text-sm sm:text-base">Répondre :</h3>
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="Réponse à votre message..."
+                      className="w-full h-32 p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-sm sm:text-base"
+                      autoFocus
+                    />
+                  </div>
+                )}
               </div>
-              {message.respondedAt && (
-                <div className="text-xs text-gray-500 mt-1">
-                  Répondu le {formatDate(message.respondedAt)}
+
+              {/* Footer sticky */}
+              {!selectedMessage.adminResponse && (
+                <div className="p-4 sm:p-6 border-t border-gray-200 bg-white sticky bottom-0">
+                  <div className="flex gap-3">
+                    <button
+                      onClick={closeMessage}
+                      className="flex-1 px-4 py-3 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      onClick={() => handleReply(selectedMessage._id)}
+                      disabled={replying || !replyText.trim()}
+                      className="flex-1 px-4 py-3 bg-sky-500 text-white rounded-lg hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
+                    >
+                      {replying ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                          Envoi...
+                        </>
+                      ) : (
+                        'Envoyer'
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
-          )}
-
-          <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-200">
-            {!message.isRead ? (
-              <button
-                onClick={onMarkAsRead}
-                className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-              >
-                <FiCheck className="w-4 h-4" />
-                Marquer comme lu
-              </button>
-            ) : (
-              <button
-                onClick={onMarkAsUnread}
-                className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
-              >
-                <FiEyeOff className="w-4 h-4" />
-                Marquer non lu
-              </button>
-            )}
-            
-            <button
-              onClick={onStartReply}
-              className="flex items-center gap-2 px-3 py-2 text-sm border border-sky-300 text-sky-600 rounded hover:bg-sky-50 transition-colors"
-            >
-              <FiSend className="w-4 h-4" />
-              Répondre
-            </button>
-            
-            <button
-              onClick={onDelete}
-              className="flex items-center gap-2 px-3 py-2 text-sm border border-red-300 text-red-600 rounded hover:bg-red-50 transition-colors ml-auto"
-            >
-              <FiTrash2 className="w-4 h-4" />
-              Supprimer
-            </button>
           </div>
-        </div>
-      )}
-
-      {/* Formulaire de réponse */}
-      {isReplying && (
-        <div className="mt-4 p-4 bg-sky-50 rounded-lg border border-sky-200">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Réponse à {message.firstName} {message.lastName}
-          </label>
-          <textarea
-            value={replyText}
-            onChange={(e) => onReplyTextChange(e.target.value)}
-            placeholder="Tapez votre réponse ici..."
-            rows={4}
-            className="w-full p-3 rounded border border-gray-300 bg-white focus:border-sky-500 hover:border-sky-400 transition-colors resize-none"
-          />
-          <div className="flex gap-2 mt-3">
-            <button
-              onClick={onSendReply}
-              disabled={!replyText.trim()}
-              className="px-4 py-2 bg-sky-500 text-white rounded hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Envoyer la réponse
-            </button>
-            <button
-              onClick={onCancelReply}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-100 transition-colors"
-            >
-              Annuler
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

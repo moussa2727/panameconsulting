@@ -23,7 +23,6 @@ import { AuthService } from './auth.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { RevokedTokenService } from './revoked-token.service';
 import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
 import { Roles } from '../shared/decorators/roles.decorator';
 import { RolesGuard } from '../shared/guards/roles.guard';
@@ -53,10 +52,19 @@ export class AuthController {
       const result = await this.authService.login(req.user);
         
       res.cookie('refresh_token', result.refreshToken, {
-        httpOnly: true, // ← INVISIBLE côté JavaScript
+        httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
+      });
+
+      res.cookie('access_token', result.accessToken, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 15 * 60 * 1000,
+        domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
       });
 
       return res.json({
@@ -89,6 +97,27 @@ export class AuthController {
       }
 
       const result = await this.authService.refresh(refreshToken);
+      if ((result as any)?.sessionExpired) {
+        res.clearCookie('refresh_token');
+        res.clearCookie('access_token');
+        return res.json({ loggedOut: true });
+      }
+      if (result.refreshToken) {
+        res.cookie('refresh_token', result.refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          maxAge: 7 * 24 * 60 * 60 * 1000,
+          domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
+        });
+      }
+      res.cookie('access_token', result.accessToken, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 15 * 60 * 1000,
+        domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
+      });
       
       return res.json({
         accessToken: result.accessToken,
@@ -99,13 +128,7 @@ export class AuthController {
     }
   }
 
-  @Get('validate-token')
-  @UseGuards(JwtAuthGuard)
-  async validateToken(@Request() req: any) {
-    const token = req.headers.authorization?.split(' ')[1];
-    const isValid = await this.authService.validateToken(token);
-    return { valid: isValid };
-  }
+  
 
   @Post('register')
   async register(@Body() registerDto: RegisterDto) {
@@ -131,24 +154,14 @@ export class AuthController {
     
     // Clear the refresh token cookie
     res.clearCookie('refresh_token');
+    res.clearCookie('access_token');
     
     return res.json({ message: 'Déconnexion réussie' });
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Post('logout-automatic')
-  async logoutAutomatic(@Request() req: any) {
-    const userId = req.user.sub;
-    await this.authService.logoutUser(userId, 'Logout automatique');
-    return { message: 'Déconnexion automatique effectuée' };
-  }
+  
 
-  @UseGuards(JwtAuthGuard)
-  @Post('cleanup-sessions')
-  async cleanupSessions() {
-    await this.authService.cleanupExpiredSessions();
-    return { message: 'Sessions expirées nettoyées' };
-  }
+  
 
   @Post('logout-all')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -168,7 +181,7 @@ export class AuthController {
       lastName: user.lastName,
       role: user.role,
       isAdmin: user.role === UserRole.ADMIN,
-      phone: user.phone,
+      telephone: user.telephone,
       isActive: user.isActive
     };
   }
@@ -232,31 +245,7 @@ export class AuthController {
     }
   }
 
-  @Get('health')
-  async checkHealth() {
-    const mongoOk = await this.usersService.checkDatabaseConnection();
-    const emailOk = await this.mailService.checkConnection();
-    
-    return {
-      status: mongoOk && emailOk ? 'OK' : 'Degraded',
-      components: {
-        database: mongoOk ? 'OK' : 'DOWN',
-        email: emailOk ? 'OK' : 'DOWN',
-      },
-      timestamp: new Date(),
-    };
-  }
+  
 
-  @Get('maintenance-status')
-  public async getMaintenanceStatus() {     
-    try {
-      return this.usersService.getMaintenanceStatus();
-    } catch (error) {
-        const isMaintenance = await this.usersService.isMaintenanceMode();
-        return {
-          isActive: isMaintenance,
-          logoutUntil: isMaintenance ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null
-        };
-      }
-  }
+  
 }

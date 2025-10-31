@@ -7,12 +7,14 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { MailModule } from '../mail/mail.module';
 import { UsersModule } from '../users/users.module';
 import { ResetToken, ResetTokenSchema } from '../schemas/reset-token.schema';
+import { RefreshToken, RefreshTokenSchema } from '../schemas/refresh-token.schema';
 import { RevokedToken, RevokedTokenSchema } from '../schemas/revoked-token.schema';
 import { Session, SessionSchema } from '../schemas/session.schema';
 import { ThrottleGuard } from '../shared/guards/throttle.guard';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { CleanupService } from './cleanup.service';
+import { RefreshTokenService } from './refresh-token.service';
 import { RevokedTokenService } from './revoked-token.service';
 import { SessionService } from './session.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -29,11 +31,12 @@ import { AuthGuard } from '../shared/guards/auth.guard';
       { name: RevokedToken.name, schema: RevokedTokenSchema },
       { name: Session.name, schema: SessionSchema },
       { name: ResetToken.name, schema: ResetTokenSchema },
+      { name: RefreshToken.name, schema: RefreshTokenSchema },
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        secret: configService.get('JWT_SECRET') || 'e48d10d0f5d4db3cce7764d4ecb0a3d2d7343d08a8646b5724748edb2c16c3ea5444e85ce6344525db314ad8a085b44147beadf374567c28215392ab8ac241ff', // Ajout d'une valeur par défaut
+        secret: configService.get('JWT_SECRET') , // Ajout d'une valeur par défaut
         signOptions: {
           expiresIn: configService.get('JWT_EXPIRES_IN', '1h'), // Utilisation correcte de la variable
           issuer: configService.get('APP_NAME', 'api-panameconsulting'), // Valeur par défaut
@@ -47,6 +50,7 @@ import { AuthGuard } from '../shared/guards/auth.guard';
   controllers: [AuthController],
   providers: [
     RevokedTokenService,
+    RefreshTokenService,
     AuthService,
     SessionService,
     CleanupService,
@@ -67,6 +71,7 @@ import { AuthGuard } from '../shared/guards/auth.guard';
   exports: [
     AuthService, 
     RevokedTokenService, 
+    RefreshTokenService,
     SessionService, 
     ThrottleGuard,
     AuthGuard,

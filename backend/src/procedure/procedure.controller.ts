@@ -13,7 +13,6 @@ import {
 import { 
   BadRequestException,
   ForbiddenException,
-  NotFoundException 
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
 import { RolesGuard } from '../shared/guards/roles.guard';

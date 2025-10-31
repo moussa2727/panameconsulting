@@ -24,12 +24,9 @@ import MotdePasseoublie from './pages/MotdePasseoublie';
 
 // Pages admin
 import UsersManagement from './pages/admin/UsersManagement';
-import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminLayout from './AdminLayout';
 import AdminMessages from './pages/admin/AdminMessages';
-import HeroAdmin from './pages/admin/HeroAdmin';
 import AdminProfile from './pages/admin/AdminProfile';
-import AdminRendezVous from './pages/admin/AdminRendez-Vous';
 import AdminProcedure from './pages/admin/AdminProcedure';
 import AdminDestinations from './pages/admin/AdminDestinations';
 
@@ -135,17 +132,17 @@ function App() {
             </PublicLayout>
           } />
 
-          {/* Auth - sans Header/Footer communs (garder leurs propres layouts) */}
+          {/* Auth - sans Header/Footer communs */}
           <Route path='/connexion' element={<Connexion />} />
           <Route path='/inscription' element={<Inscription />} />
           <Route path='/mot-de-passe-oublie' element={<MotdePasseoublie />} />
 
           {/* Utilisateur - sans Header/Footer communs */}
-          <Route path='/mes-rendez-vous' element={<MesRendezVous />} />
-          <Route path='/mon-profil' element={<UserProfile />} />
-          <Route path='/ma-procedure' element={<UserProcedure />} />
+          <Route path='/user-rendez-vous' element={<MesRendezVous />} />
+          <Route path='/user-profile' element={<UserProfile />} />
+          <Route path='/user-procedure' element={<UserProcedure />} />
 
-          {/* Administration - utilise AdminLayout qui a son propre Header/Footer */}
+          {/* Administration - utilise AdminLayout */}
           <Route path='/gestionnaire/*' element={
             <RequireAdmin>
               <AdminLayout />
@@ -153,11 +150,10 @@ function App() {
           }>
             <Route index element={<Navigate to="statistiques" replace />} />
             <Route path='utilisateurs' element={<UsersManagement />} />
-            <Route path='statistiques' element={<AdminDashboard />} />
+            {/* <Route path='statistiques' element={<AdminDashboard />} /> */}
             <Route path='messages' element={<AdminMessages />} />
             <Route path='procedures' element={<AdminProcedure />} />
-            <Route path='rendez-vous' element={<AdminRendezVous />} />
-            <Route path='hero' element={<HeroAdmin />} />
+            {/* <Route path='rendez-vous' element={<AdminRendezVous />} /> */}
             <Route path='profil' element={<AdminProfile />} />
             <Route path='destinations' element={<AdminDestinations />} />
           </Route>

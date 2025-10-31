@@ -66,6 +66,20 @@ const HOLIDAYS_2025 = [
         }
     }
 
+    // Dans rendez-vous.service.ts
+async findByEmailAndStatus(email: string, status: string): Promise<{ data: Rendezvous[]; total: number; }> {
+    const data = await this.rendezvousModel.find({ 
+        email,
+        status 
+    })
+    .sort({ date: -1, time: 1 })
+    .exec();
+    
+    const total = await this.rendezvousModel.countDocuments({ email, status });
+    
+    return { data, total };
+}
+
   
     private validateTimeSlot(time: string): void {
         const [hours, minutes] = time.split(':').map(Number);

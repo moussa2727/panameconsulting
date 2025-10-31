@@ -146,7 +146,7 @@ const About = () => {
                   </span>{' '}
                   est votre passerelle vers l'international. Nous transformons
                   l'éducation en opportunités mondiales grâce à un
-                  accompagnement sur-mesure pour vos projets en France, Canada,
+                  accompagnement sur-mesure pour vos projets en France, Russie,
                   Turquie et au-delà.
                 </p>
 

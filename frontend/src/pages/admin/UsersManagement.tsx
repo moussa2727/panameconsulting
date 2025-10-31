@@ -21,7 +21,7 @@ interface User {
   firstName: string;
   lastName: string;
   email: string;
-  phone?: string;
+  telephone?: string;
   role: string;
   isAdmin: boolean;
   isActive: boolean;
@@ -33,13 +33,13 @@ interface NewUser {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
+  telephone: string;
   password: string;
   role: string;
 }
 
 const UsersManagement: React.FC = () => {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, token } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,7 +60,7 @@ const UsersManagement: React.FC = () => {
     firstName: '',
     lastName: '',
     email: '',
-    phone: '',
+    telephone: '',
     password: '',
     role: 'user',
   });
@@ -68,7 +68,7 @@ const UsersManagement: React.FC = () => {
     firstName: '',
     lastName: '',
     email: '',
-    phone: '',
+    telephone: '',
     role: 'user',
   });
 
@@ -86,10 +86,10 @@ const UsersManagement: React.FC = () => {
    const fetchUsers = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/users`,
         {
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -114,10 +114,10 @@ const UsersManagement: React.FC = () => {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/users/stats`,
         {
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -135,10 +135,10 @@ const UsersManagement: React.FC = () => {
 
   const fetchMaintenanceStatus = async () => {
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/users/maintenance-status`,
         {
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -156,11 +156,11 @@ const UsersManagement: React.FC = () => {
 
   const toggleMaintenanceMode = async (enabled: boolean) => {
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/users/maintenance-mode`,
         {
           method: 'POST',
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -185,11 +185,11 @@ const UsersManagement: React.FC = () => {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/users`,
         {
           method: 'POST',
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -206,7 +206,7 @@ const UsersManagement: React.FC = () => {
           firstName: '',
           lastName: '',
           email: '',
-          phone: '',
+          telephone: '',
           password: '',
           role: 'user',
         });
@@ -227,11 +227,11 @@ const UsersManagement: React.FC = () => {
     if (!editingUser) return;
 
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/users/${editingUser._id}`,
         {
           method: 'PATCH',
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -260,11 +260,11 @@ const UsersManagement: React.FC = () => {
 
   const handleDeleteUser = async (userId: string) => {
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/users/${userId}`,
         {
           method: 'DELETE',
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -288,7 +288,6 @@ const UsersManagement: React.FC = () => {
 
   const handleToggleStatus = async (userId: string) => {
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/users/${userId}/toggle-status`,
         {
@@ -316,7 +315,6 @@ const UsersManagement: React.FC = () => {
 
   const handleLogoutAll = async () => {
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/auth/logout-all`,
         {
@@ -345,7 +343,6 @@ const UsersManagement: React.FC = () => {
 
   const checkUserAccess = async (userId: string) => {
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/users/check-access/${userId}`,
         {
@@ -386,8 +383,8 @@ const UsersManagement: React.FC = () => {
       user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (user.phone &&
-        user.phone.toLowerCase().includes(searchTerm.toLowerCase()));
+      (user.telephone &&
+        user.telephone.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesRole =
       roleFilter === 'all' ||
@@ -622,7 +619,7 @@ const UsersManagement: React.FC = () => {
                       </div>
                     </td>
                     <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
-                      {user.phone || 'Non renseigné'}
+                      {user.telephone || 'Non renseigné'}
                     </td>
                     <td className='px-6 py-4 whitespace-nowrap'>
                       <span
@@ -676,7 +673,7 @@ const UsersManagement: React.FC = () => {
                               firstName: user.firstName,
                               lastName: user.lastName,
                               email: user.email,
-                              phone: user.phone || '',
+                              telephone: user.telephone || '',
                               role: user.role,
                             });
                           }}
@@ -772,9 +769,9 @@ const UsersManagement: React.FC = () => {
                   </label>
                   <input
                     type='tel'
-                    value={newUser.phone}
+                    value={newUser.telephone}
                     onChange={e =>
-                      setNewUser({ ...newUser, phone: e.target.value })
+                      setNewUser({ ...newUser, telephone: e.target.value })
                     }
                     className='w-full px-4 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500'
                   />
@@ -905,9 +902,9 @@ const UsersManagement: React.FC = () => {
                   </label>
                   <input
                     type='tel'
-                    value={editForm.phone}
+                    value={editForm.telephone}
                     onChange={e =>
-                      setEditForm({ ...editForm, phone: e.target.value })
+                      setEditForm({ ...editForm, telephone: e.target.value })
                     }
                     className='w-full px-4 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500'
                   />

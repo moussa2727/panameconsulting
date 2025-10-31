@@ -5,7 +5,6 @@ import {
     IsOptional, 
     IsString,
     Matches,
-    IsEnum
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -31,7 +30,7 @@ export class CreateRendezvousDto {
     @ApiProperty({ example: '+33123456789', description: 'Téléphone du client' })
     @IsNotEmpty({ message: 'Le téléphone est obligatoire' })
     @IsString({ message: 'Le téléphone doit être une chaîne de caractères' })
-    phone: string;
+    telephone: string;
 
     @ApiProperty({ 
         enum: ['Algérie', 'Turquie', 'Maroc', 'France', 'Tunisie', 'Chine', 'Russie', 'Autre'],
