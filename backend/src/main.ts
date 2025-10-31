@@ -100,8 +100,8 @@ async function bootstrap() {
       'http://localhost:5173',
       'http://localhost:3000',
       'https://panameconsulting.com',
-      'https://panameconsulting.vercel.app',
-      'https://www.panameconsulting.vercel.app',
+      'https://panameconsulting.netlify.app',
+      'https://www.panameconsulting.netlify.app',
       'https://www.panameconsulting.com'
     ],
     methods: ['GET', 'POST', 'HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
