@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   FiMail,
   FiMapPin,
@@ -7,16 +7,40 @@ import {
   FiUser,
 } from 'react-icons/fi';
 
-const Form = () => {
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<{
-    success?: boolean;
-    message?: string;
-  }>({});
-  const formRef = useRef<HTMLFormElement>(null);
-  const API_URL = (import.meta as any).env.VITE_API_URL;
+// Types pour TypeScript
+interface FormData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  message: string;
+}
 
+interface ValidationErrors {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  message?: string;
+}
+
+interface SubmitStatus {
+  success?: boolean;
+  message?: string;
+}
+
+const Form = () => {
+  const [errors, setErrors] = useState<ValidationErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<SubmitStatus>({});
+  const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
+  const formRef = useRef<HTMLFormElement>(null);
+  
+  // Gestion sécurisée des variables d'environnement
+  const API_URL = import.meta.env.VITE_API_URL;
+  if (!API_URL) {
+    console.error('VITE_API_URL is not defined');
+  }
+
+  // Effet de nettoyage avec gestion d'erreur
   useEffect(() => {
     if (submitStatus.message) {
       const timer = setTimeout(() => setSubmitStatus({}), 5000);
@@ -24,85 +48,170 @@ const Form = () => {
     }
   }, [submitStatus]);
 
-  const validateField = (name: string, value: string): string => {
-    if (!value && (name === 'email' || name === 'message')) {
+  // Validation mémoïsée pour la performance
+  const validateField = useCallback((name: string, value: string): string => {
+    const trimmedValue = value.trim();
+    
+    if (!trimmedValue && (name === 'email' || name === 'message')) {
       return 'Ce champ est obligatoire';
     }
 
     switch (name) {
       case 'email':
-        return /\S+@\S+\.\S+/.test(value) ? '' : 'Email invalide';
+        if (!trimmedValue) return 'Email obligatoire';
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedValue) 
+          ? '' 
+          : 'Email invalide';
       case 'message':
-        return value.trim().length >= 10
+        if (!trimmedValue) return 'Message obligatoire';
+        return trimmedValue.length >= 10
           ? ''
           : 'Le message doit contenir au moins 10 caractères';
       case 'firstName':
       case 'lastName':
-        return value && !/^[a-zA-ZÀ-ÿ\s-]+$/.test(value)
+        return trimmedValue && !/^[a-zA-ZÀ-ÿ\s-]+$/.test(trimmedValue)
           ? 'Caractères invalides'
           : '';
       default:
         return '';
     }
-  };
+  }, []);
 
-  const handleBlur = (
+  // Gestion des champs touchés
+  const handleBlur = useCallback((
     e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
+    setTouchedFields(prev => new Set(prev).add(name));
     setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }));
-  };
+  }, [validateField]);
 
+  // Gestion de la soumission avec validation complète
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!formRef.current) return;
+    
     setIsSubmitting(true);
 
-    const formData = new FormData(formRef.current!);
-    const data = {
-      firstName: formData.get('firstName') as string,
-      lastName: formData.get('lastName') as string,
-      email: formData.get('email') as string,
-      message: formData.get('message') as string,
+    const formData = new FormData(formRef.current);
+    const data: FormData = {
+      firstName: (formData.get('firstName') as string) || '',
+      lastName: (formData.get('lastName') as string) || '',
+      email: (formData.get('email') as string) || '',
+      message: (formData.get('message') as string) || '',
     };
 
-    const newErrors = {
-      email: data.email
-        ? validateField('email', data.email)
-        : 'Email obligatoire',
-      message: data.message
-        ? validateField('message', data.message)
-        : 'Message obligatoire',
+    // Validation complète avant soumission
+    const newErrors: ValidationErrors = {
+      email: validateField('email', data.email),
+      message: validateField('message', data.message),
+      firstName: validateField('firstName', data.firstName),
+      lastName: validateField('lastName', data.lastName),
     };
+
     setErrors(newErrors);
+    setTouchedFields(new Set(['email', 'message', 'firstName', 'lastName']));
 
-    if (Object.values(newErrors).some(Boolean)) {
+    if (Object.values(newErrors).some(error => error)) {
       setIsSubmitting(false);
+      
+      // Focus sur le premier champ en erreur
+      const firstErrorField = Object.keys(newErrors).find(key => newErrors[key as keyof ValidationErrors]);
+      if (firstErrorField) {
+        const errorElement = document.getElementById(firstErrorField);
+        errorElement?.focus();
+      }
       return;
     }
 
     try {
+      if (!API_URL) {
+        throw new Error('URL API non configurée');
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // Timeout de 10s
+
       const response = await fetch(`${API_URL}/api/contact`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify(data),
+        signal: controller.signal
       });
 
-      if (!response.ok) throw new Error("Échec de l'envoi");
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Erreur HTTP: ${response.status}`);
+      }
 
       setSubmitStatus({
         success: true,
         message: 'Message envoyé ! Vous recevrez une confirmation par email.',
       });
-      formRef.current?.reset();
+      formRef.current.reset();
+      setTouchedFields(new Set());
+      
     } catch (error) {
+      console.error('Erreur soumission formulaire:', error);
+      
+      let errorMessage = "Erreur lors de l'envoi. Veuillez réessayer.";
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          errorMessage = "La requête a pris trop de temps. Veuillez réessayer.";
+        } else {
+          errorMessage = error.message || errorMessage;
+        }
+      }
+
       setSubmitStatus({
         success: false,
-        message: "Erreur lors de l'envoi. Veuillez réessayer.",
+        message: errorMessage,
       });
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  // Rendu conditionnel pour éviter les erreurs d'hydratation
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  if (!isClient) {
+    return (
+      <main className='py-8 md:py-12 px-2 sm:px-4 lg:px-8 bg-gray-50'>
+        <div className='max-w-7xl mx-auto'>
+          <div className='bg-white rounded shadow-xl overflow-hidden'>
+            <div className='flex flex-col md:flex-row'>
+              {/* Squelette de chargement */}
+              <div className="w-full md:w-2/3 p-8 lg:p-12">
+                <div className="animate-pulse">
+                  <div className="h-8 bg-gray-200 rounded w-1/3 mb-8"></div>
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="h-12 bg-gray-200 rounded"></div>
+                      <div className="h-12 bg-gray-200 rounded"></div>
+                    </div>
+                    <div className="h-12 bg-gray-200 rounded"></div>
+                    <div className="h-32 bg-gray-200 rounded"></div>
+                    <div className="h-12 bg-gray-200 rounded"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className='py-8 md:py-12 px-2 sm:px-4 lg:px-8 bg-gray-50'>
@@ -110,41 +219,44 @@ const Form = () => {
         <div className='bg-white rounded shadow-xl overflow-hidden'>
           <div className='flex flex-col md:flex-row'>
 
-           {/* SECTION GAUCHE ULTRAMODERNE */}
-<section
-  className='relative w-full md:w-1/3 text-white space-y-6 p-8 lg:p-12 
-  overflow-hidden rounded-br-[60px] md:rounded-br-none md:rounded-tl-[60px]
-  bg-gradient-to-tr from-sky-600 via-sky-500 to-sky-400
-  before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_30%_40%,rgba(255,255,255,0.2),transparent_50%)]
-  before:animate-[pulse_6s_ease-in-out_infinite]
-  after:absolute after:inset-0 after:bg-[url("https://www.transparenttextures.com/patterns/cubes.png")]
-  after:opacity-10 after:mix-blend-overlay
-  backdrop-blur-md z-10'
->
-
-              <h2 className='text-2xl font-bold drop-shadow-lg'>Paname Consulting</h2>
-              <div className='space-y-4'>
+            {/* SECTION GAUCHE - Améliorations accessibilité */}
+            <section
+              className='relative w-full md:w-1/3 text-white space-y-6 p-8 lg:p-12 
+              overflow-hidden rounded-br-[60px] md:rounded-br-none md:rounded-tl-[60px]
+              bg-gradient-to-tr from-sky-600 via-sky-500 to-sky-400
+              before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_30%_40%,rgba(255,255,255,0.2),transparent_50%)]
+              before:animate-[pulse_6s_ease-in-out_infinite]
+              after:absolute after:inset-0 after:bg-[url("https://www.transparenttextures.com/patterns/cubes.png")]
+              after:opacity-10 after:mix-blend-overlay
+              backdrop-blur-md z-10'
+              aria-labelledby="contact-info-title"
+            >
+              <h2 id="contact-info-title" className='text-2xl font-bold drop-shadow-lg'>
+                Paname Consulting
+              </h2>
+              
+              <div className='space-y-4' role="list">
                 <ContactInfo
-                  icon={<FiMapPin className='w-5 h-5 mt-1 text-sky-100' />}
+                  icon={<FiMapPin className='w-5 h-5 mt-1 text-sky-100' aria-hidden="true" />}
                   title='Adresse'
                   content='Kalaban Coura, Imm.Bore <br/>en face de l&apos;hôtel Wassulu'
                 />
                 <ContactInfo
-                  icon={<FiPhone className='w-5 h-5 mt-1 text-sky-100' />}
+                  icon={<FiPhone className='w-5 h-5 mt-1 text-sky-100' aria-hidden="true" />}
                   title='Téléphone'
                   content={
-                    <a href='tel:+22391830941' className='hover:underline'>
+                    <a href='tel:+22391830941' className='hover:underline focus:outline-none focus:ring-2 focus:ring-white rounded'>
                       +223 91 83 09 41
                     </a>
                   }
                 />
                 <ContactInfo
-                  icon={<FiMail className='w-5 h-5 mt-1 text-sky-100' />}
+                  icon={<FiMail className='w-5 h-5 mt-1 text-sky-100' aria-hidden="true" />}
                   title='Email'
                   content={
                     <a
                       href='mailto:panameconsulting906@gmail.com'
-                      className='hover:underline'
+                      className='hover:underline focus:outline-none focus:ring-2 focus:ring-white rounded'
                     >
                       panameconsulting906@gmail.com
                     </a>
@@ -152,34 +264,39 @@ const Form = () => {
                 />
               </div>
 
-              <div className='mt-8 h-48 md:h-56 rounded-xl overflow-hidden shadow-lg'>
+              <div className='mt-8 h-48 md:h-56 rounded-xl overflow-hidden shadow-lg' 
+                   role="application" aria-label="Carte de localisation">
                 <iframe
                   src='https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3894.010270463331!2d-7.993864324930176!3d12.581574287699127!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xe51cf2248975979%3A0xa90fabf3b7838312!2sImmeuble%20BORE!5e0!3m2!1sfr!2sma!4v1750297669135!5m2!1sfr!2sma'
                   className='w-full h-full'
                   loading='lazy'
-                  title='Localisation Paname Consulting'
-                  style={{ touchAction: 'manipulation' }}
+                  title='Localisation Paname Consulting - Kalaban Coura, Immeuble BORE en face de l&apos;hôtel Wassulu'
+                  style={{ border: 0 }}
+                  aria-label='Carte interactive montrant la localisation de Paname Consulting'
                 />
               </div>
             </section>
 
-            {/* FORMULAIRE */}
+            {/* FORMULAIRE - Améliorations accessibilité */}
             <form
               ref={formRef}
               onSubmit={handleSubmit}
               className='w-full md:w-2/3 p-8 lg:p-12'
               noValidate
+              aria-labelledby="contact-form-title"
             >
-              <h2 className='text-2xl font-bold text-gray-800 mb-8'>
+              <h2 id="contact-form-title" className='text-2xl font-bold text-gray-800 mb-8'>
                 Contactez-nous
               </h2>
 
               {submitStatus.message && (
                 <div
+                  role="alert"
+                  aria-live="polite"
                   className={`mb-6 p-4 rounded-lg ${
                     submitStatus.success
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-red-100 text-red-800'
+                      ? 'bg-green-100 text-green-800 border border-green-200'
+                      : 'bg-red-100 text-red-800 border border-red-200'
                   }`}
                 >
                   {submitStatus.message}
@@ -193,20 +310,22 @@ const Form = () => {
                     label='Prénom'
                     name='firstName'
                     onBlur={handleBlur}
-                    error={errors.firstName}
+                    error={touchedFields.has('firstName') ? errors.firstName : undefined}
                     required={false}
-                    icon={<FiUser className='text-gray-400' />}
+                    icon={<FiUser className='text-gray-400' aria-hidden="true" />}
                     placeholder='Votre prénom'
+                    disabled={isSubmitting}
                   />
                   <InputField
                     id='lastName'
                     label='Nom'
                     name='lastName'
                     onBlur={handleBlur}
-                    error={errors.lastName}
+                    error={touchedFields.has('lastName') ? errors.lastName : undefined}
                     required={false}
-                    icon={<FiUser className='text-gray-400' />}
+                    icon={<FiUser className='text-gray-400' aria-hidden="true" />}
                     placeholder='Votre nom de famille'
+                    disabled={isSubmitting}
                   />
                 </div>
                 <InputField
@@ -215,20 +334,23 @@ const Form = () => {
                   name='email'
                   type='email'
                   onBlur={handleBlur}
-                  error={errors.email}
+                  error={touchedFields.has('email') ? errors.email : undefined}
                   required={true}
-                  icon={<FiMail className='text-gray-400' />}
+                  icon={<FiMail className='text-gray-400' aria-hidden="true" />}
                   placeholder='exemple@entreprise.com'
+                  disabled={isSubmitting}
+                  autoComplete="email"
                 />
                 <TextAreaField
                   id='message'
                   label='Message'
                   name='message'
                   onBlur={handleBlur}
-                  error={errors.message}
+                  error={touchedFields.has('message') ? errors.message : undefined}
                   required={true}
-                  icon={<FiMessageSquare className='text-gray-400' />}
+                  icon={<FiMessageSquare className='text-gray-400' aria-hidden="true" />}
                   placeholder='Votre message, avis ou commentaire...'
+                  disabled={isSubmitting}
                 />
                 <SubmitButton isSubmitting={isSubmitting} />
               </div>
@@ -240,9 +362,15 @@ const Form = () => {
   );
 };
 
-/* --- Autres composants inchangés --- */
-const ContactInfo = ({ icon, title, content }: any) => (
-  <div className='flex space-x-3'>
+// Composants avec typage TypeScript
+interface ContactInfoProps {
+  icon: React.ReactNode;
+  title: string;
+  content: string | React.ReactNode;
+}
+
+const ContactInfo = ({ icon, title, content }: ContactInfoProps) => (
+  <div className='flex space-x-3' role="listitem">
     {icon}
     <div>
       <p className='font-medium'>{title}</p>
@@ -257,7 +385,23 @@ const ContactInfo = ({ icon, title, content }: any) => (
   </div>
 );
 
-const InputField = ({ id, label, name, type = 'text', error, onBlur, required, icon, placeholder }: any) => (
+interface InputFieldProps {
+  id: string;
+  label: string;
+  name: string;
+  type?: string;
+  error?: string;
+  onBlur: (e: React.FocusEvent<HTMLInputElement>) => void;
+  required: boolean;
+  icon: React.ReactNode;
+  placeholder: string;
+  disabled?: boolean;
+  autoComplete?: string;
+}
+
+const InputField = ({ 
+  id, label, name, type = 'text', error, onBlur, required, icon, placeholder, disabled, autoComplete 
+}: InputFieldProps) => (
   <div>
     <label htmlFor={id} className='block text-sm font-medium text-gray-700 mb-1'>
       {label} {required && '*'}
@@ -272,16 +416,38 @@ const InputField = ({ id, label, name, type = 'text', error, onBlur, required, i
         type={type}
         onBlur={onBlur}
         placeholder={placeholder}
+        disabled={disabled}
+        autoComplete={autoComplete}
+        aria-invalid={error ? 'true' : 'false'}
+        aria-describedby={error ? `${id}-error` : undefined}
         className={`w-full pl-10 pr-4 py-3 rounded border ${
           error ? 'border-red-500 bg-red-50' : 'border-gray-300 bg-gray-50'
-        } focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-colors`}
+        } focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
       />
     </div>
-    {error && <p className='mt-1 text-sm text-red-600'>{error}</p>}
+    {error && (
+      <p id={`${id}-error`} className='mt-1 text-sm text-red-600' role="alert">
+        {error}
+      </p>
+    )}
   </div>
 );
 
-const TextAreaField = ({ id, label, name, error, onBlur, required, icon, placeholder }: any) => (
+interface TextAreaFieldProps {
+  id: string;
+  label: string;
+  name: string;
+  error?: string;
+  onBlur: (e: React.FocusEvent<HTMLTextAreaElement>) => void;
+  required: boolean;
+  icon: React.ReactNode;
+  placeholder: string;
+  disabled?: boolean;
+}
+
+const TextAreaField = ({ 
+  id, label, name, error, onBlur, required, icon, placeholder, disabled 
+}: TextAreaFieldProps) => (
   <div>
     <label htmlFor={id} className='block text-sm font-medium text-gray-700 mb-1'>
       {label} {required && '*'}
@@ -294,12 +460,19 @@ const TextAreaField = ({ id, label, name, error, onBlur, required, icon, placeho
         rows={5}
         onBlur={onBlur}
         placeholder={placeholder}
+        disabled={disabled}
+        aria-invalid={error ? 'true' : 'false'}
+        aria-describedby={error ? `${id}-error` : undefined}
         className={`w-full pl-10 pr-4 py-3 rounded border ${
           error ? 'border-red-500 bg-red-50' : 'border-gray-300 bg-gray-50'
-        } focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-colors resize-none`}
+        } focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-colors resize-none disabled:opacity-50 disabled:cursor-not-allowed`}
       />
     </div>
-    {error && <p className='mt-1 text-sm text-red-600'>{error}</p>}
+    {error && (
+      <p id={`${id}-error`} className='mt-1 text-sm text-red-600' role="alert">
+        {error}
+      </p>
+    )}
   </div>
 );
 
@@ -307,7 +480,8 @@ const SubmitButton = ({ isSubmitting }: { isSubmitting: boolean }) => (
   <button
     type='submit'
     disabled={isSubmitting}
-    className='w-full px-6 py-3 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded transition-colors disabled:opacity-70'
+    className='w-full px-6 py-3 bg-sky-500 hover:bg-sky-600 disabled:bg-sky-300 text-white font-semibold rounded transition-colors disabled:opacity-70 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2'
+    aria-live="polite"
   >
     {isSubmitting ? (
       <span className='flex items-center justify-center'>
@@ -326,6 +500,7 @@ const Spinner = () => (
     xmlns='http://www.w3.org/2000/svg'
     fill='none'
     viewBox='0 0 24 24'
+    aria-hidden="true"
   >
     <circle className='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' strokeWidth='4'></circle>
     <path
