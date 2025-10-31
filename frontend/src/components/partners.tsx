@@ -83,16 +83,6 @@ const Partners = () => {
           transition={{ duration: 0.6 }}
           className='text-center mb-16 sm:mb-20'
         >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.2 }}
-            className='inline-flex items-center gap-2 text-sky-600 bg-sky-100 px-4 py-2 rounded-full font-semibold text-sm uppercase tracking-wide mb-4'
-          >
-            <FiStar className="w-4 h-4" />
-            Partenariats Stratégiques
-          </motion.div>
           
           <motion.h2
             id='partners-heading'

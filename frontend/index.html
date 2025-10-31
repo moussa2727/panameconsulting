@@ -33,7 +33,7 @@
   <meta name="twitter:title" content="Paname Consulting - Services d'Accompagnement International" />
   <meta name="twitter:description"
     content="Expert en accompagnement étudiant, voyages d'affaires et demandes de visa" />
-  <meta name="twitter:image" content="https://panameconsulting.com/images/paname-consulting.ico" />
+  <meta name="twitter:image" content="https://panameconsulting.com/paname-consulting.ico" />
   <meta name="twitter:image:alt" content="Paname Consulting - Votre partenaire international" />
 
   <!-- Favicons et icônes -->
@@ -77,15 +77,14 @@
   </script>
 
 <!-- Politiques de sécurité modernes - CSP CORRIGÉE -->
-  <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; 
-             script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://plausible.io; 
-             script-src-elem 'self' 'unsafe-inline' https://maps.googleapis.com https://plausible.io;
-             style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; 
-             font-src 'self' https://fonts.gstatic.com; 
-             img-src 'self' data: https: http://localhost:3000 https://maps.googleapis.com; 
-             connect-src 'self' https://maps.googleapis.com https://paname-consulting.com https://plausible.io;
-             frame-src https://www.google.com;" />
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self'; 
+           script-src 'self' 'unsafe-inline' https://maps.googleapis.com ; 
+           style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; 
+           font-src 'self' https://fonts.gstatic.com; 
+           img-src 'self' data: https: http:; 
+           connect-src 'self' http://localhost:3000 https://maps.googleapis.com https://panameconsulting.com https://panameconsulting.netlify.app;
+           frame-src https://www.google.com;" />
   
   <!-- SUPPRIMER X-Frame-Options depuis meta - doit être géré par le serveur -->
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
