@@ -42,7 +42,7 @@ const AdminProcedures: React.FC = () => {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null);
 
-  const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const VITE_API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
   useEffect(() => {
     fetchUserProcedures();

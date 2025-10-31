@@ -40,7 +40,7 @@ const AdminProfile: React.FC = () => {
     setMessage(null);
 
     try {
-      const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const VITE_API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000';
       const token = localStorage.getItem('token');
 
       const response = await fetch(`${VITE_API_URL}/api/auth/update-password`, {

@@ -218,32 +218,6 @@ const Partners = () => {
             </motion.article>
           ))}
         </div>
-
-        {/* Section d'appel à l'action */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ delay: 0.6 }}
-          className='text-center mt-12 sm:mt-16'
-        >
-          <div className='bg-white/60 backdrop-blur-sm rounded-2xl p-6 sm:p-8 border border-white/20 shadow-lg'>
-            <h3 className='text-2xl font-bold text-gray-900 mb-3'>
-              Devenir Partenaire ?
-            </h3>
-            <p className='text-gray-600 mb-6 max-w-2xl mx-auto'>
-              Rejoignez notre réseau d'institutions partenaires et participez à des projets éducatifs innovants.
-            </p>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className='inline-flex items-center gap-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl'
-            >
-              <FiStar className="w-4 h-4" />
-              Nous Contacter
-            </motion.button>
-          </div>
-        </motion.div>
       </div>
     </section>
   );

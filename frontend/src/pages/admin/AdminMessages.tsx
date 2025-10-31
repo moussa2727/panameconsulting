@@ -31,7 +31,7 @@ const AdminMessages: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const VITE_API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
   // Fonction de débogage du token
   const debugToken = () => {

@@ -48,7 +48,7 @@ const defaultDestinations: Destination[] = [
   }
 ];
 
-const VITE_API_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:3000';
+const VITE_API_URL = (import.meta as any).env.VITE_API_BASE_URL || '';
 
 const Destination = () => {
   const [destinations, setDestinations] = useState<Destination[]>(defaultDestinations);
@@ -56,19 +56,19 @@ const Destination = () => {
 
 const getFullImageUrl = (imagePath: string) => {
   if (!imagePath) return '/placeholder-image.jpg';
-  
-  // Si c'est une URL complète (http/data:)
+
   if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
     return imagePath;
   }
 
-  // Pour les images en développement (Vite)
-  if (import.meta.env.DEV) {
+  if (!import.meta.env.DEV) {
+    if (imagePath.startsWith('/uploads')) {
+      return `${VITE_API_URL}${imagePath}`;
+    }
     return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
   }
 
-  // Pour la production
-  return `${VITE_API_URL}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
+  return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
 };
 
   const fetchDestinations = async () => {

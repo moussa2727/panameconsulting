@@ -3,7 +3,7 @@ import RequireAdmin from '../../utils/RequireAdmin';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../utils/AuthContext';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // Fonction getFullImageUrl conforme à ta demande
 const getFullImageUrl = (imagePath: string) => {
@@ -11,10 +11,13 @@ const getFullImageUrl = (imagePath: string) => {
   if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
     return imagePath;
   }
-  if (import.meta.env.DEV) {
+  if (!import.meta.env.DEV) {
+    if (imagePath.startsWith('/uploads')) {
+      return `${API_URL}${imagePath}`;
+    }
     return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
   }
-  return `${API_URL}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
+  return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
 };
 
 interface Destination {

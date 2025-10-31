@@ -35,7 +35,7 @@ const Form = () => {
   const formRef = useRef<HTMLFormElement>(null);
   
   // Gestion sécurisée des variables d'environnement
-  const API_URL = import.meta.env.VITE_API_URL;
+  const API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
   if (!API_URL) {
     console.error('VITE_API_URL is not defined');
   }
