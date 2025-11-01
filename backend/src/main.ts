@@ -95,23 +95,32 @@ async function bootstrap() {
   );
 
   // CORS
+  const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://panameconsulting.com',
+    'https://www.panameconsulting.com',
+    'https://panameconsulting.netlify.app',
+    'https://www.panameconsulting.netlify.app',
+  ];
+  const netlifyPreviewRegex = /^https?:\/\/([a-z0-9-]+--)?panameconsulting\.netlify\.app$/i;
+  const localhostRegex = /^http:\/\/localhost:\d+$/i;
+  const isAllowedOrigin = (o: string) =>
+    allowedOrigins.includes(o) || netlifyPreviewRegex.test(o) || localhostRegex.test(o);
+
   app.enableCors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'https://panameconsulting.com',
-      'https://panameconsulting.netlify.app',
-      'https://www.panameconsulting.netlify.app',
-      'https://www.panameconsulting.com'
-    ],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error('Not allowed by CORS'));
+    },
     methods: ['GET', 'POST', 'HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', ' Cache-Control', 'X-Requested-With', 'X-HTTP-Method-Override'],
+    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'Cache-Control', 'X-Requested-With', 'X-HTTP-Method-Override'],
     credentials: true,
     preflightContinue: false,
     optionsSuccessStatus: 204,
     maxAge: 86400,
     exposedHeaders: ['set-cookie'],
-    
   });
 
   // Fichiers statiques
@@ -121,9 +130,17 @@ async function bootstrap() {
     console.log(`📁 Dossier uploads créé: ${uploadsDir}`);
   }
 
-  app.use('/uploads', (req: any, res: { header: (arg0: string, arg1: string) => void; }, next: () => void) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET');
+  app.use('/uploads', (req: any, res: any, next: () => void) => {
+    const origin = req.headers.origin as string | undefined;
+    if (origin && isAllowedOrigin(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Vary', 'Origin');
+      res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.header('Access-Control-Allow-Credentials', 'true');
+    }
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
     next();
   });
 
