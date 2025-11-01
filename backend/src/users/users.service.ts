@@ -8,7 +8,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import * as bcrypt from 'bcrypt';
 import { Model } from 'mongoose';
-import { CreateUserDto } from '../auth/dto/register.dto';
+import { RegisterDto } from '../auth/dto/register.dto';
 import { UpdatePasswordDto } from '../auth/dto/update-password.dto';
 import { UpdateUserDto } from '../auth/dto/update-user.dto';
 import { User, UserRole } from '../schemas/user.schema';
@@ -115,7 +115,7 @@ export class UsersService {
     return null;
   }
 
-async create(createUserDto: CreateUserDto): Promise<User> {
+async create(createUserDto: RegisterDto): Promise<User> {
     const existingUser = await this.findByEmail(createUserDto.email);
     if (existingUser) {
       throw new BadRequestException('Un utilisateur avec cet email existe déjà');

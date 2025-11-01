@@ -44,5 +44,4 @@ export class UpdateRendezvousDto extends PartialType(CreateRendezvousDto) {
     message: 'Le commentaire ne doit pas dépasser 1000 caractères'
   })
   adminComment?: string;
-    horaire: any;
 }

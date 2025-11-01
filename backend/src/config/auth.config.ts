@@ -28,5 +28,5 @@ export interface AuthConfig {
     jwtExpiresIn: getEnv('JWT_EXPIRES_IN', '1h'),
     refreshSecret: getEnv('REFRESH_SECRET'),
     refreshExpiresIn: getEnv('REFRESH_EXPIRES_IN', '7d'),
-    maxSessions: parseInt(getEnv('MAX_SESSIONS', '10'), 10),
+    maxSessions: parseInt(getEnv('MAX_SESSIONS', '2'), 2),
   };

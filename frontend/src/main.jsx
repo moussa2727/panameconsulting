@@ -6,6 +6,18 @@ import { AuthProvider } from './utils/AuthContext';
 import App from './App';
 import './index.css';
 
+// Filter out harmless Google Maps analytics errors in development
+if (import.meta.env.DEV) {
+  const originalError = console.error;
+  console.error = (...args) => {
+    const message = args[0]?.toString?.() || '';
+    if (message.includes('gen_204') || message.includes('ERR_BLOCKED_BY_CLIENT')) {
+      return; // Suppress Google Maps analytics errors
+    }
+    originalError.apply(console, args);
+  };
+}
+
 // Optimisation des event listeners pour les événements tactiles
 const originalAddEventListener = EventTarget.prototype.addEventListener;
 EventTarget.prototype.addEventListener = function (type, listener, options) {

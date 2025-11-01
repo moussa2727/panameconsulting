@@ -84,17 +84,7 @@ async function bootstrap() {
     next();
   });
 
-  // Rate limiting ajusté
-  app.use(
-    rateLimit({
-      windowMs: 15 * 60 * 1000,
-      max: 500,
-      message: 'Too many requests from this IP, please try again later.',
-      skip: (req) => req.method === 'OPTIONS',
-    }),
-  );
-
-  // CORS
+  // CORS (MUST come before rate limiting)
   const allowedOrigins = [
     'http://localhost:5173',
     'http://localhost:3000',
@@ -122,6 +112,35 @@ async function bootstrap() {
     maxAge: 86400,
     exposedHeaders: ['set-cookie'],
   });
+
+  // Rate limiting (AFTER CORS with handler that mirrors CORS headers)
+  app.use(
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: process.env.NODE_ENV === 'production' ? 500 : 1000,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: (req) => {
+        if (req.method === 'OPTIONS') return true;
+        // Skip rate limiting for auth endpoints in development
+        if (process.env.NODE_ENV !== 'production' && 
+            (req.path === '/api/auth/login' || req.path === '/api/auth/register')) {
+          return true;
+        }
+        return false;
+      },
+      handler: (req: any, res: any) => {
+        // Mirror CORS headers on 429 responses
+        const origin = req.headers.origin as string | undefined;
+        if (origin && isAllowedOrigin(origin)) {
+          res.setHeader('Access-Control-Allow-Origin', origin);
+          res.setHeader('Vary', 'Origin');
+          res.setHeader('Access-Control-Allow-Credentials', 'true');
+        }
+        res.status(429).json({ message: 'Too many requests from this IP, please try again later.' });
+      },
+    }),
+  );
 
   // Fichiers statiques
   const uploadsDir = join(__dirname, '..', 'uploads');
@@ -158,6 +177,12 @@ async function bootstrap() {
     maxAge: '30d',
   });
   app.use((req: { path: string | string[]; headers: { authorization: any; }; }, res: { status: (arg0: number) => { (): any; new(): any; json: { (arg0: { message: string; }): any; new(): any; }; }; }, next: () => void) => {
+  // Allow CORS preflight to pass without Authorization
+  // so browsers can complete OPTIONS before sending actual request
+  // and avoid false 401 causing CORS errors.
+  if ((req as any).method === 'OPTIONS') {
+    return next();
+  }
   if (req.path.includes('/stats') && !req.headers.authorization) {
     return res.status(401).json({ message: 'Unauthorized' });
   }

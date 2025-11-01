@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import { ApiProperty } from '@nestjs/swagger';
 import { Rendezvous } from './rendezvous.schema';
 
 export type ProcedureDocument = Procedure & Document;
@@ -27,22 +28,18 @@ export enum StepName {
 @Schema({
   timestamps: true,
   collection: 'procedures',
-  toJSON: {
-    virtuals: true,
-    transform: (doc: any, ret: { __v: any; id: any; _id: any; }) => {
-      delete ret.__v;
-      ret.id = ret._id;
-      delete ret._id;
-    }
-  }
+  versionKey: false
 })
 export class Procedure {
+  @ApiProperty({ example: 'Jean', description: 'Prénom du client' })
   @Prop({ required: true, trim: true, maxlength: 50 })
   prenom: string;
 
+  @ApiProperty({ example: 'Dupont', description: 'Nom du client' })
   @Prop({ required: true, trim: true, maxlength: 50 })
   nom: string;
 
+  @ApiProperty({ example: 'jean.dupont@example.com', description: 'Email du client' })
   @Prop({
     required: true,
     lowercase: true,
@@ -51,13 +48,23 @@ export class Procedure {
   })
   email: string;
 
+  @ApiProperty({ 
+    example: 'France', 
+    description: 'Destination de la procédure',
+    enum: ['Algérie', 'Turquie', 'Maroc', 'France', 'Tunisie', 'Chine', 'Russie', 'Autre']
+  })
   @Prop({
     required: true,
-    enum: ['Algérie', 'Tunisie', 'Maroc', 'France', 'Chine', 'Russie', 'Chypre'],
+    enum: ['Algérie', 'Turquie', 'Maroc', 'France', 'Tunisie', 'Chine', 'Russie', 'Autre'],
     default: 'France'
   })
   destination: string;
 
+  @ApiProperty({ 
+    example: 'En cours', 
+    description: 'Statut global de la procédure',
+    enum: ProcedureStatus 
+  })
   @Prop({
     required: true,
     enum: Object.values(ProcedureStatus),
@@ -65,30 +72,24 @@ export class Procedure {
   })
   statut: ProcedureStatus;
 
+  @ApiProperty({ description: 'Étapes de la procédure' })
   @Prop({
     type: [{
       nom: { type: String, enum: Object.values(StepName), required: true },
       statut: { 
         type: String, 
         enum: Object.values(StepStatus), 
-        default: function(this: any) {
-          return this.nom === StepName.ADMISSION ? StepStatus.IN_PROGRESS : StepStatus.PENDING;
-        }
+        default: StepStatus.PENDING
       },
       raisonRefus: { 
         type: String,
-        required: function(this: any) {
-          return this.statut === StepStatus.REJECTED;
-        },
+        required: false,
         trim: true,
         maxlength: 500
       },
       dateMaj: { type: Date, default: Date.now }
     }],
-    validate: {
-      validator: (steps: any[]) => steps.length === Object.values(StepName).length,
-      message: 'Toutes les étapes doivent être présentes'
-    }
+    default: []
   })
   steps: {
     nom: StepName;
@@ -97,7 +98,8 @@ export class Procedure {
     dateMaj: Date;
   }[];
 
-  @Prop({ type: Types.ObjectId, ref: 'Rendezvous', required: true })
+  @ApiProperty({ description: 'Rendez-vous associé' })
+  @Prop({ type: Types.ObjectId, ref: 'Rendezvous', required: true, unique: true })
   rendezVousId: Types.ObjectId | Rendezvous;
 
   @Prop({ default: false })
@@ -106,19 +108,30 @@ export class Procedure {
   @Prop()
   deletedAt?: Date;
 
-  @Prop()
+  @Prop({ trim: true, maxlength: 500 })
   deletionReason?: string;
 
-  // Méthodes virtuelles
-  public getProgressPercentage?: () => number;
+  // Virtuals
+  readonly id: string;
+  readonly progress: number;
+  readonly currentStep: any;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 }
 
 export const ProcedureSchema = SchemaFactory.createForClass(Procedure);
 
-// Méthode virtuelle pour calculer la progression
+// Virtual pour la progression
 ProcedureSchema.virtual('progress').get(function(this: ProcedureDocument) {
   const completedSteps = this.steps.filter(step => step.statut === StepStatus.COMPLETED).length;
   return Math.round((completedSteps / this.steps.length) * 100);
+});
+
+// Virtual pour l'étape en cours
+ProcedureSchema.virtual('currentStep').get(function(this: ProcedureDocument) {
+  return this.steps.find(step => step.statut === StepStatus.IN_PROGRESS) || 
+         this.steps.find(step => step.statut === StepStatus.PENDING) ||
+         this.steps[this.steps.length - 1];
 });
 
 // Hook pré-sauvegarde pour initialiser les étapes
@@ -131,21 +144,6 @@ ProcedureSchema.pre<ProcedureDocument>('save', function(next) {
     }));
   }
   next();
-});
-
-// Hook post-sauvegarde pour mettre à jour le statut global
-ProcedureSchema.post<ProcedureDocument>('save', function(doc) {
-  if (doc.steps.some(step => step.statut === StepStatus.REJECTED)) {
-    doc.statut = ProcedureStatus.REJECTED;
-  } else if (doc.steps.every(step => step.statut === StepStatus.COMPLETED)) {
-    doc.statut = ProcedureStatus.COMPLETED;
-  } else {
-    doc.statut = ProcedureStatus.IN_PROGRESS;
-  }
-
-  if (doc.isModified('statut')) {
-    doc.save();
-  }
 });
 
 // Index pour optimiser les requêtes

@@ -90,6 +90,7 @@ const Register: React.FC = () => {
                       placeholder="Votre prénom"
                       required
                       disabled={isLoading}
+                      autoComplete="given-name"
                     />
                   </div>
                 </div>
@@ -112,6 +113,7 @@ const Register: React.FC = () => {
                       placeholder="Votre nom"
                       required
                       disabled={isLoading}
+                      autoComplete="family-name"
                     />
                   </div>
                 </div>
@@ -135,6 +137,7 @@ const Register: React.FC = () => {
                     placeholder="votre@email.com"
                     required
                     disabled={isLoading}
+                    autoComplete="email"
                   />
                 </div>
               </div>
@@ -157,6 +160,7 @@ const Register: React.FC = () => {
                     placeholder="+33 6 12 34 56 78"
                     required
                     disabled={isLoading}
+                    autoComplete="tel"
                   />
                 </div>
               </div>

@@ -88,6 +88,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshInFlightRef = useRef<Promise<boolean> | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const refreshTimeoutRef = useRef<number | null>(null);
@@ -264,67 +265,66 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
  
 
  const refreshTokenFunction = async (): Promise<boolean> => {
-  if (isRefreshing) {
-    return false;
+  if (isRefreshing || refreshInFlightRef.current) {
+    // Coalesce: return existing in-flight promise
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
   }
   setIsRefreshing(true);
-  
-  try {
-    const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include' // Important pour envoyer les cookies
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        // silencieux
-        return false;
-      }
-      if (response.status >= 500) {
-        return false;
-      }
-      return false;
-    }
-
-    const data: RefreshResponse = await response.json();
-    
-    if (data.loggedOut) {
-      // Déconnexion silencieuse après cap 25min
-      logout('/', true);
-      return false;
-    }
-    
-    if (!data.accessToken) {
-      return false;
-    }
-
-    // Mettre à jour le token
-    localStorage.setItem('token', data.accessToken);
-    setToken(data.accessToken);
-
-    // Configurer le prochain rafraîchissement
+  const doRefresh = (async () => {
     try {
-      const decoded = jwtDecode<JwtPayload>(data.accessToken);
-      setupTokenRefresh(decoded.exp);
+      const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Clear potentially stale tokens on 401
+          localStorage.removeItem('token');
+          setToken(null);
+          return false;
+        }
+        if (response.status >= 500) {
+          return false;
+        }
+        return false;
+      }
+
+      const data: RefreshResponse = await response.json();
       
-      // Rafraîchir les données utilisateur
-      await fetchUserData(data.accessToken);
-      saveSessionMetadata();
-      return true;
-    } catch (decodeError) {
-      // silencieux
+      if (data.loggedOut) {
+        logout('/', true);
+        return false;
+      }
+      
+      if (!data.accessToken) {
+        return false;
+      }
+
+      localStorage.setItem('token', data.accessToken);
+      setToken(data.accessToken);
+
+      try {
+        const decoded = jwtDecode<JwtPayload>(data.accessToken);
+        setupTokenRefresh(decoded.exp);
+        await fetchUserData(data.accessToken);
+        saveSessionMetadata();
+        return true;
+      } catch {
+        return false;
+      }
+    } catch {
       return false;
+    } finally {
+      setIsRefreshing(false);
+      refreshInFlightRef.current = null;
     }
-    
-  } catch (err: any) {
-    // silencieux; en cas d'erreur réseau, ne pas déconnecter immédiatement
-    return false;
-  } finally {
-    setIsRefreshing(false);
-  }
+  })();
+  refreshInFlightRef.current = doRefresh;
+  return doRefresh;
 };
 
   // === INITIALISATION ET NETTOYAGE ===

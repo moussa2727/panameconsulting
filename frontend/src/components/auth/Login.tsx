@@ -95,7 +95,7 @@ const Login: React.FC = () => {
                     placeholder="votre@email.com"
                     required
                     disabled={isLoading}
-                    autoComplete="email"
+                    autoComplete="username"
                     aria-describedby="email-description"
                   />
                 </div>

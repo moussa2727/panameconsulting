@@ -1,15 +1,14 @@
 import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpException,
-  HttpStatus,
-  Param,
-  Patch,
-  Post,
-  Request,
-  UseGuards
+    Body,
+    Controller,
+    Delete,
+    Get,
+    Param,
+    Patch,
+    Post,
+    Query,
+    UseGuards,
+    Req
 } from '@nestjs/common';
 import { UserRole } from '../schemas/user.schema';
 import { Roles } from '../shared/decorators/roles.decorator';
@@ -18,155 +17,82 @@ import { RolesGuard } from '../shared/guards/roles.guard';
 import { ContactService } from './contact.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 
-@Controller('')
+@Controller('contact')
 export class ContactController {
-  constructor(private readonly contactService: ContactService) { }
+    constructor(private readonly contactService: ContactService) { }
 
-  @Post('contact')
-  async create(@Body() createContactDto: CreateContactDto) {
-    try {
-      const contact = await this.contactService.create(createContactDto);
-      return {
-        message: 'Message envoyé avec succès',
-        contact
-      };
-    } catch (error) {
-      throw new HttpException(
-        {
-          status: HttpStatus.BAD_REQUEST,
-          error: 'Échec de l\'envoi du message',
-          message: error.message,
-        },
-        HttpStatus.BAD_REQUEST,
-      );
+    @Post()
+    async create(@Body() createContactDto: CreateContactDto) {
+        const contact = await this.contactService.create(createContactDto);
+        return {
+            message: 'Message envoyé avec succès',
+            contact
+        };
     }
-  }
 
-  // Endpoints admin - protégés par authentification et rôle admin
-  @Get('admin/contact')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  async getAllMessages() {
-    try {
-      const messages = await this.contactService.findAll();
-      return messages;
-    } catch (error) {
-      throw new HttpException(
-        {
-          status: HttpStatus.INTERNAL_SERVER_ERROR,
-          error: 'Erreur lors de la récupération des messages',
-          message: error.message,
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+    @Get()
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.ADMIN)
+    async findAll(
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10,
+        @Query('isRead') isRead?: boolean,
+        @Query('search') search?: string
+    ) {
+        return this.contactService.findAll(page, limit, isRead, search);
     }
-  }
 
-  @Get('admin/contact/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  async getMessage(@Param('id') id: string) {
-    try {
-      const message = await this.contactService.findOne(id);
-      return message;
-    } catch (error) {
-      throw new HttpException(
-        {
-          status: HttpStatus.NOT_FOUND,
-          error: 'Message non trouvé',
-          message: error.message,
-        },
-        HttpStatus.NOT_FOUND,
-      );
+    @Get('stats')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.ADMIN)
+    async getStats() {
+        return this.contactService.getStats();
     }
-  }
 
-  @Patch('admin/contact/:id/read')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  async markAsRead(@Param('id') id: string) {
-    try {
-      const message = await this.contactService.markAsRead(id);
-      return {
-        message: 'Message marqué comme lu',
-        contact: message
-      };
-    } catch (error) {
-      throw new HttpException(
-        {
-          status: HttpStatus.BAD_REQUEST,
-          error: 'Erreur lors du marquage',
-          message: error.message,
-        },
-        HttpStatus.BAD_REQUEST,
-      );
+    @Get(':id')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.ADMIN)
+    async findOne(@Param('id') id: string) {
+        return this.contactService.findOne(id);
     }
-  }
 
-  @Post('admin/contact/:id/reply')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  async replyToMessage(
-    @Param('id') id: string,
-    @Body() body: { reply: string },
-    @Request() req: any
-  ) {
-    try {
-      const adminEmail = req.user.email;
-      const message = await this.contactService.replyToMessage(id, body.reply, adminEmail);
-      return {
-        message: 'Réponse envoyée avec succès',
-        contact: message
-      };
-    } catch (error) {
-      throw new HttpException(
-        {
-          status: HttpStatus.BAD_REQUEST,
-          error: 'Erreur lors de l\'envoi de la réponse',
-          message: error.message,
-        },
-        HttpStatus.BAD_REQUEST,
-      );
+    @Patch(':id/read')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.ADMIN)
+    async markAsRead(@Param('id') id: string) {
+        const message = await this.contactService.markAsRead(id);
+        return {
+            message: 'Message marqué comme lu',
+            contact: message
+        };
     }
-  }
 
-  @Delete('admin/contact/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  async deleteMessage(@Param('id') id: string) {
-    try {
-      await this.contactService.remove(id);
-      return {
-        message: 'Message supprimé avec succès'
-      };
-    } catch (error) {
-      throw new HttpException(
-        {
-          status: HttpStatus.BAD_REQUEST,
-          error: 'Erreur lors de la suppression',
-          message: error.message,
-        },
-        HttpStatus.BAD_REQUEST,
-      );
+    @Post(':id/reply')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.ADMIN)
+    async replyToMessage(
+        @Param('id') id: string,
+        @Body() body: { reply: string },
+        @Req() req: any
+    ) {
+        const message = await this.contactService.replyToMessage(
+            id, 
+            body.reply, 
+            req.user
+        );
+        return {
+            message: 'Réponse envoyée avec succès',
+            contact: message
+        };
     }
-  }
 
-  @Get('admin/contact/stats')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  async getContactStats() {
-    try {
-      const stats = await this.contactService.getStats();
-      return stats;
-    } catch (error) {
-      throw new HttpException(
-        {
-          status: HttpStatus.INTERNAL_SERVER_ERROR,
-          error: 'Erreur lors de la récupération des statistiques',
-          message: error.message,
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+    @Delete(':id')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.ADMIN)
+    async deleteMessage(@Param('id') id: string) {
+        await this.contactService.remove(id);
+        return {
+            message: 'Message supprimé avec succès'
+        };
     }
-  }
 }

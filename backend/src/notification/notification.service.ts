@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class NotificationService {
+  [x: string]: any;
   private readonly logger = new Logger(NotificationService.name);
   private transporter: nodemailer.Transporter;
 

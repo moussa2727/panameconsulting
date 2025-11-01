@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -22,13 +22,14 @@ import Connexion from './pages/Connexion';
 import Inscription from './pages/Inscription';
 import MotdePasseoublie from './pages/MotdePasseoublie';
 
-// Pages admin
-import UsersManagement from './pages/admin/UsersManagement';
-import AdminLayout from './AdminLayout';
-import AdminMessages from './pages/admin/AdminMessages';
-import AdminProfile from './pages/admin/AdminProfile';
-import AdminProcedure from './pages/admin/AdminProcedure';
-import AdminDestinations from './pages/admin/AdminDestinations';
+// Pages admin (lazy loaded)
+const UsersManagement = lazy(() => import('./pages/admin/UsersManagement'));
+const AdminLayout = lazy(() => import('./AdminLayout'));
+const AdminMessages = lazy(() => import('./pages/admin/AdminMessages'));
+const AdminProfile = lazy(() => import('./pages/admin/AdminProfile'));
+const AdminProcedure = lazy(() => import('./pages/admin/AdminProcedure'));
+const AdminDestinations = lazy(() => import('./pages/admin/AdminDestinations'));
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 
 // Restrictions admin
 import RequireAdmin from './utils/RequireAdmin';
@@ -145,17 +146,42 @@ function App() {
           {/* Administration - utilise AdminLayout */}
           <Route path='/gestionnaire/*' element={
             <RequireAdmin>
-              <AdminLayout />
+              <Suspense fallback={<Loader />}>
+                <AdminLayout />
+              </Suspense>
             </RequireAdmin>
           }>
             <Route index element={<Navigate to="statistiques" replace />} />
-            <Route path='utilisateurs' element={<UsersManagement />} />
-            {/* <Route path='statistiques' element={<AdminDashboard />} /> */}
-            <Route path='messages' element={<AdminMessages />} />
-            <Route path='procedures' element={<AdminProcedure />} />
-            {/* <Route path='rendez-vous' element={<AdminRendezVous />} /> */}
-            <Route path='profil' element={<AdminProfile />} />
-            <Route path='destinations' element={<AdminDestinations />} />
+            <Route path='utilisateurs' element={
+              <Suspense fallback={<Loader />}>
+                <UsersManagement />
+              </Suspense>
+            } />
+            <Route path='statistiques' element={
+              <Suspense fallback={<Loader />}>
+                <AdminDashboard />
+              </Suspense>
+            } />
+            <Route path='messages' element={
+              <Suspense fallback={<Loader />}>
+                <AdminMessages />
+              </Suspense>
+            } />
+            <Route path='procedures' element={
+              <Suspense fallback={<Loader />}>
+                <AdminProcedure />
+              </Suspense>
+            } />
+            <Route path='profil' element={
+              <Suspense fallback={<Loader />}>
+                <AdminProfile />
+              </Suspense>
+            } />
+            <Route path='destinations' element={
+              <Suspense fallback={<Loader />}>
+                <AdminDestinations />
+              </Suspense>
+            } />
           </Route>
 
           {/* Route de protection contre accès non autorisé ou fausses routes */}

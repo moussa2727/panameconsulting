@@ -11,7 +11,7 @@ import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ContactModule } from './contact/contact.module';
-import { DestinationsModule } from './destination/destination.module';
+import { DestinationModule } from './destination/destination.module';
 import { MailModule } from './mail/mail.module';
 import { RendezvousModule } from './rendez-vous/rendez-vous.module';
 import { NotificationModule } from './notification/notification.module';
@@ -43,7 +43,7 @@ import { ProcedureModule } from './procedure/procedure.module';
     // 4. Modules fonctionnels
     AuthModule,       // Module d'authentification (doit être avant les modules protégés)
     UsersModule,      // Gestion des utilisateurs
-    DestinationsModule, // Destinations phares
+    DestinationModule, // Destinations phares
     ContactModule,    // Formulaire de contact
     MailModule,       // Envoi d'emails
     ProcedureModule,  // Gestion des procédures

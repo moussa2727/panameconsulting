@@ -5,11 +5,14 @@ import {
   HttpException, 
   HttpStatus 
 } from '@nestjs/common';
-import { AuthService } from '../../auth/auth.service';
 
 @Injectable()
 export class ThrottleGuard implements CanActivate {
-  constructor(private readonly authService: AuthService) {}
+  private readonly loginAttempts = new Map<string, {
+    attempts: number,
+    lastAttempt: Date,
+    ttl: Date
+  }>();
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -22,13 +25,14 @@ export class ThrottleGuard implements CanActivate {
       );
     }
 
-    const key = `login_attempts:${email}`;
-    const { attempts, lastAttempt } = await this.authService.getLoginAttempts(key);
+    const key = email;
+    const attempts = this.getLoginAttempts(key);
     const now = new Date();
-    const timeSinceLastAttempt = (now.getTime() - lastAttempt.getTime()) / (1000 * 60); // en minutes
+    const timeSinceLastAttempt = attempts.lastAttempt ? 
+      (now.getTime() - attempts.lastAttempt.getTime()) / (1000 * 60) : 999; // en minutes
 
     // Si plus de 5 tentatives dans les dernières 15 minutes
-    if (attempts >= 5 && timeSinceLastAttempt < 15) {
+    if (attempts.attempts >= 5 && timeSinceLastAttempt < 15) {
       const remainingTime = Math.ceil(15 - timeSinceLastAttempt);
       throw new HttpException(
         {
@@ -43,10 +47,46 @@ export class ThrottleGuard implements CanActivate {
 
     // Réinitialiser le compteur si la dernière tentative date de plus de 15 minutes
     if (timeSinceLastAttempt >= 15) {
-      await this.authService.resetLoginAttempts(key);
+      this.resetLoginAttempts(key);
     }
 
-    await this.authService.incrementLoginAttempts(key);
+    this.incrementLoginAttempts(key);
     return true;
+  }
+
+  private getLoginAttempts(email: string): { attempts: number, lastAttempt: Date } {
+    this.cleanupExpiredAttempts();
+    const data = this.loginAttempts.get(email);
+    return data ? { 
+      attempts: data.attempts, 
+      lastAttempt: data.lastAttempt 
+    } : { attempts: 0, lastAttempt: new Date(0) };
+  }
+
+  private incrementLoginAttempts(email: string): void {
+    const current = this.loginAttempts.get(email) || { 
+      attempts: 0, 
+      lastAttempt: new Date(0),
+      ttl: new Date()
+    };
+    
+    current.attempts++;
+    current.lastAttempt = new Date();
+    current.ttl = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    
+    this.loginAttempts.set(email, current);
+  }
+
+  private resetLoginAttempts(email: string): void {
+    this.loginAttempts.delete(email);
+  }
+
+  private cleanupExpiredAttempts(): void {
+    const now = new Date();
+    for (const [email, data] of this.loginAttempts.entries()) {
+      if (data.ttl < now) {
+        this.loginAttempts.delete(email);
+      }
+    }
   }
 }

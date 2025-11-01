@@ -1,4 +1,3 @@
-// create-rendezvous.dto.ts
 import { 
     IsEmail, 
     IsNotEmpty, 
@@ -8,8 +7,8 @@ import {
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-const TIME_SLOT_REGEX = /^(09|1[0-6]):(00|30)$/; // 09:00 à 16:30, par pas de 30 min
-const DATE_REGEX = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/; // YYYY-MM-DD
+const TIME_SLOT_REGEX = /^(09|1[0-6]):(00|30)$/;
+const DATE_REGEX = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
 
 export class CreateRendezvousDto {
     @ApiProperty({ example: 'Jean', description: 'Prénom du client' })

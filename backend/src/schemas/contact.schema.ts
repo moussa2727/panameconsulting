@@ -1,30 +1,46 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
-@Schema({ timestamps: true })
-export class Contact extends Document {
-  @Prop()
-  firstName?: string;
+export type ContactDocument = Contact & Document;
 
-  @Prop()
-  lastName?: string;
+@Schema({ 
+    timestamps: true, 
+    collection: 'contacts',
+    versionKey: false
+})
+export class Contact {
+    @Prop({ trim: true, maxlength: 50 })
+    firstName?: string;
 
-  @Prop({ required: true })
-  email: string;
+    @Prop({ trim: true, maxlength: 50 })
+    lastName?: string;
 
-  @Prop({ required: true })
-  message: string;
+    @Prop({ 
+        required: true,
+        lowercase: true,
+        trim: true,
+        match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    })
+    email: string;
 
-  @Prop({ default: false })
-  isRead: boolean;
+    @Prop({ 
+        required: true,
+        minlength: 10,
+        maxlength: 2000 
+    })
+    message: string;
 
-  @Prop()
-  adminResponse?: string;
+    @Prop({ default: false })
+    isRead: boolean;
 
-  @Prop()
-  respondedAt?: Date;
+    @Prop({ maxlength: 2000 })
+    adminResponse?: string;
 
+    @Prop()
+    respondedAt?: Date;
+
+    @Prop({ type: Types.ObjectId, ref: 'User' })
+    respondedBy?: Types.ObjectId;
 }
 
 export const ContactSchema = SchemaFactory.createForClass(Contact);
-export type ContactDocument = Contact & Document;

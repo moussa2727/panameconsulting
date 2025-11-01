@@ -1,4 +1,3 @@
-// rendez-vous.controller.ts
 import {
     BadRequestException,
     Body,
@@ -12,14 +11,13 @@ import {
     UseGuards,
     Req
 } from '@nestjs/common';
-import { AuthGuard } from '../shared/guards/auth.guard';
+import { JwtAuthGuard } from '@/shared/guards/jwt-auth.guard';
+import { RolesGuard } from '@/shared/guards/roles.guard';
 import { CreateRendezvousDto } from './dto/create-rendezvous.dto';
 import { UpdateRendezvousDto } from './dto/update-rendezvous.dto';
 import { RendezvousService } from './rendez-vous.service';
 import { UserRole } from '@/schemas/user.schema';
 import { Roles } from '@/shared/decorators/roles.decorator';
-import { JwtAuthGuard } from '@/shared/guards/jwt-auth.guard';
-import { RolesGuard } from '@/shared/guards/roles.guard';
 
 @Controller('rendezvous')
 export class RendezvousController {
@@ -27,7 +25,7 @@ export class RendezvousController {
 
     @Post()
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN, UserRole.USER) // Ou enlever complètement les gardes pour rester public
+    @Roles(UserRole.ADMIN, UserRole.USER)
     create(@Body() createDto: CreateRendezvousDto, @Req() req: any) {
         return this.rendezvousService.create(createDto);
     }
@@ -36,22 +34,26 @@ export class RendezvousController {
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)
     findAll(
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
-    @Query('status') status?: string,
-    @Query('date') date?: string,
-    @Query('search') search?: string
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10,
+        @Query('status') status?: string,
+        @Query('date') date?: string,
+        @Query('search') search?: string
     ) {
-     return this.rendezvousService.findAll(page, limit, status, date, search);
+        return this.rendezvousService.findAll(page, limit, status, date, search);
     }
 
     @Get('user')
-    @UseGuards(AuthGuard)
+    @UseGuards(JwtAuthGuard)
     findByUser(
         @Query('email') email: string,
         @Query('page') page: number = 1,
-        @Query('limit') limit: number = 10
+        @Query('limit') limit: number = 10,
+        @Query('status') status?: string
     ) {
+        if (status) {
+            return this.rendezvousService.findByEmailAndStatus(email, status, page, limit);
+        }
         return this.rendezvousService.findByEmail(email, page, limit);
     }
 
@@ -74,15 +76,15 @@ export class RendezvousController {
     @UseGuards(JwtAuthGuard)
     async findOne(@Param('id') id: string) {
         if (id === 'stats') {
-        throw new BadRequestException('Invalid rendezvous ID');
+            throw new BadRequestException('Invalid rendezvous ID');
         }
         return this.rendezvousService.findOne(id);
     }
 
     @Put(':id')
-    @UseGuards(AuthGuard)
-    update(@Param('id') id: string, @Body() updateDto: UpdateRendezvousDto) {
-        return this.rendezvousService.update(id, updateDto);
+    @UseGuards(JwtAuthGuard)
+    update(@Param('id') id: string, @Body() updateDto: UpdateRendezvousDto, @Req() req: any) {
+        return this.rendezvousService.update(id, updateDto, req.user);
     }
 
     @Put(':id/status')
@@ -91,55 +93,29 @@ export class RendezvousController {
     updateStatus(
         @Param('id') id: string,
         @Body('status') status: string,
-        @Req() req: any, // Déplacez req avant les paramètres optionnels
-        @Body('avisAdmin') avisAdmin?: string
+        @Body('avisAdmin') avisAdmin?: string,
+        @Req() req?: any
     ) {
         return this.rendezvousService.updateStatus(id, status, avisAdmin, req.user);
     }
 
     @Delete(':id')
-    @UseGuards(AuthGuard)
+    @UseGuards(JwtAuthGuard)
     remove(@Param('id') id: string, @Req() req: any) {
-        return this.rendezvousService.removeWithPolicy(id, req.user?.role === 'admin');
+        return this.rendezvousService.removeWithPolicy(id, req.user);
     }
 
-    // Dans rendez-vous.controller.ts
-@Get('user/completed')
-@UseGuards(AuthGuard)
-async findCompletedByUser(
-    @Query('email') email: string
-) {
-    return this.rendezvousService.findByEmailAndStatus(email, 'Terminé');
-}
-
-@Get('user/cancelled')
-@UseGuards(AuthGuard)
-async findCancelledByUser(
-    @Query('email') email: string
-) {
-    return this.rendezvousService.findByEmailAndStatus(email, 'Annulé');
-}
-
-
-    @Get('stats')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN)
-    async getStats(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
-        return this.rendezvousService.getDashboardStats(startDate, endDate);
-    }
-    
     @Get('stats/dashboard')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)
-    async getDashboardStats() {
-        return this.rendezvousService.getDashboardStats();
+    async getDashboardStats(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+        return this.rendezvousService.getDashboardStats(startDate, endDate);
     }
 
     @Get('stats/detailed')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)
     async getDetailedStats(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
-     return this.rendezvousService.getStats(startDate, endDate);
+        return this.rendezvousService.getDetailedStats(startDate, endDate);
     }
-
 }
