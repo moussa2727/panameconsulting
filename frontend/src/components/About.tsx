@@ -15,15 +15,18 @@ const About = () => {
   const location = useLocation();
   const isAboutPage = location.pathname === '/a-propos';
 
-  // Optimisation du chargement AOS
+  // AOS is now initialized globally in App.tsx
+  
+  // Ensure component is visible on mobile
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      AOS.init({
-        once: true,
-        duration: 600,
-        easing: 'ease-out-cubic',
-        offset: 50,
-        delay: 0,
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      // Force visibility of AOS elements on mobile
+      const aosElements = document.querySelectorAll('[data-aos]');
+      aosElements.forEach(element => {
+        const htmlElement = element as HTMLElement;
+        htmlElement.style.opacity = '1';
+        htmlElement.style.transform = 'none';
+        htmlElement.style.visibility = 'visible';
       });
     }
   }, []);
@@ -72,6 +75,12 @@ const About = () => {
       className='bg-gradient-to-b from-white via-sky-50/70 to-white'
       role="main"
       aria-label="À propos de Paname Consulting"
+      style={{
+        // Ensure visibility on mobile even if AOS fails
+        opacity: 1,
+        transform: 'none',
+        visibility: 'visible'
+      }}
     >
       <section
         id='a-propos'

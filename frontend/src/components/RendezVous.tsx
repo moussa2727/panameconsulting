@@ -1,571 +1,689 @@
-import { useState, useEffect } from 'react';
-import { Listbox } from '@headlessui/react';
-import { Helmet } from 'react-helmet-async';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { FiMapPin, FiUser, FiMail, FiPhone, FiCalendar, FiClock, FiBook } from 'react-icons/fi';
-import { FaGraduationCap } from 'react-icons/fa';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../utils/AuthContext';
 import { toast } from 'react-toastify';
+import { 
+  Calendar, 
+  Clock, 
+  MapPin, 
+  User, 
+  Mail, 
+  Phone, 
+  GraduationCap, 
+  BookOpen,
+  ChevronDown,
+  Loader2,
+  CheckCircle2
+} from 'lucide-react';
 
-const RendezVous = () => {
-  const { user, isAuthenticated, token, refreshToken, logout } = useAuth();
+interface AvailableDate {
+  date: string;
+  available: boolean;
+}
+
+interface FormData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  telephone: string;
+  destination: string;
+  destinationAutre: string;
+  niveauEtude: string;
+  filiere: string;
+  filiereAutre: string;
+  date: string;
+  time: string;
+}
+
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+
+const RendezVous: React.FC = () => {
+  const { user, token, isAuthenticated, refreshToken, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [initialDestination, setInitialDestination] = useState('');
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/connexion');
-    }
-  }, [isAuthenticated, navigate]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const urlDestination = params.get('destination');
-    
-    if (urlDestination) {
-      setInitialDestination(decodeURIComponent(urlDestination));
-    }
-  }, [location]);
-
-  const [formData, setFormData] = useState({
-    destination: initialDestination ,
+  
+  const [formData, setFormData] = useState<FormData>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    telephone: '',
+    destination: '',
     destinationAutre: '',
-    nom: '',
-    prenom: '',
-    email: user?.email || '',
-    niveauEtude: 'Bac',
-    filiere: 'Informatique',
+    niveauEtude: '',
+    filiere: '',
     filiereAutre: '',
     date: '',
-    horaire: '',
-    telephone: ''
+    time: ''
   });
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<{ success?: boolean; message?: string }>({});
-  const [occupiedSlots, setOccupiedSlots] = useState<string[]>([]);
-  const [showFiliereAutre, setShowFiliereAutre] = useState(false);
-  const [showDestinationAutre, setShowDestinationAutre] = useState(false);
-  const API_URL = (import.meta as any).env.VITE_API_URL || (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:3000';
+  const [availableDates, setAvailableDates] = useState<AvailableDate[]>([]);
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingDates, setLoadingDates] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [showDestinationOther, setShowDestinationOther] = useState(false);
+  const [showFiliereOther, setShowFiliereOther] = useState(false);
 
-  useEffect(() => {
-    setFormData(prev => ({
-      ...prev,
-      destination: initialDestination,
-      email: user?.email || ''
-    }));
-  }, [initialDestination, user]);
+  // Destinations et filières prédéfinies
+  const destinations = [
+    'Algérie', 'Turquie', 'Maroc', 'France', 'Tunisie', 'Chine', 'Russie', 'Autre'
+  ];
 
+  const niveauxEtude = [
+    'Bac', 'Bac+1', 'Bac+2', 'Licence', 'Master I', 'Master II', 'Doctorat'
+  ];
+
+  const filieres = [
+    'Informatique', 'Médecine', 'Ingénierie', 'Droit', 'Commerce', 'Autre'
+  ];
+
+  // Pré-remplir avec les données utilisateur si connecté
   useEffect(() => {
-    if (submitStatus.message) {
-      const timer = setTimeout(() => {
-        setSubmitStatus({});
-      }, 5000);
-      return () => clearTimeout(timer);
+    if (isAuthenticated && user) {
+      setFormData(prev => ({
+        ...prev,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        telephone: user.telephone || ''
+      }));
     }
-  }, [submitStatus]);
+  }, [isAuthenticated, user]);
 
+  // Pré-sélectionner la destination depuis la navigation
   useEffect(() => {
-    if (formData.date && token) {
-      fetchOccupiedSlots(formData.date);
-    } else if (!formData.date) {
-      setOccupiedSlots([]);
+    const preselectedDestination = location.state?.preselectedDestination;
+    if (preselectedDestination && destinations.includes(preselectedDestination)) {
+      setFormData(prev => ({ ...prev, destination: preselectedDestination }));
     }
-  }, [formData.date, token]);
+  }, [location.state]);
 
-  const fetchOccupiedSlots = async (date: string) => {
+  // Gérer les changements de destination et filière
+  useEffect(() => {
+    setShowDestinationOther(formData.destination === 'Autre');
+    setShowFiliereOther(formData.filiere === 'Autre');
+  }, [formData.destination, formData.filiere]);
+
+  // Vérifier si une date est passée
+  const isDatePassed = (dateStr: string): boolean => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selectedDate = new Date(dateStr);
+    selectedDate.setHours(0, 0, 0, 0);
+    return selectedDate < today;
+  };
+
+  // Vérifier si un créneau horaire est passé pour aujourd'hui
+  const isTimePassed = (timeStr: string, dateStr: string): boolean => {
+    const today = new Date();
+    const selectedDate = new Date(dateStr);
+    
+    if (selectedDate.toDateString() !== today.toDateString()) {
+      return false;
+    }
+
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const selectedTime = new Date();
+    selectedTime.setHours(hours, minutes, 0, 0);
+    
+    return selectedTime < today;
+  };
+
+  // Charger les dates disponibles
+  const fetchAvailableDates = useCallback(async () => {
+    setLoadingDates(true);
     try {
-      const bearer = token || localStorage.getItem('token');
-      let response = await fetch(`${API_URL}/api/rendezvous/occupied?date=${date}`, {
-        headers: { 'Authorization': `Bearer ${bearer}` },
-        credentials: 'include',
-      });
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const retryBearer = localStorage.getItem('token');
-          response = await fetch(`${API_URL}/api/rendezvous/occupied?date=${date}`, {
-            headers: { 'Authorization': `Bearer ${retryBearer}` },
-            credentials: 'include',
-          });
-        } else {
-          logout('/', true);
-          return;
-        }
-      }
-      if (!response.ok) return;
-      const data = await response.json();
-      setOccupiedSlots(Array.isArray(data.occupied) ? data.occupied : []);
+      const response = await fetch(`${API_URL}/api/rendezvous/available-dates`);
+      if (!response.ok) throw new Error('Erreur lors du chargement des dates');
+      
+      const dates = await response.json();
+      
+      const today = new Date().toISOString().split('T')[0];
+      const filteredDates = dates
+        .filter((date: string) => !isDatePassed(date))
+        .sort((a: string, b: string) => new Date(a).getTime() - new Date(b).getTime());
+      
+      setAvailableDates(filteredDates.map((date: string) => ({ 
+        date, 
+        available: true 
+      })));
     } catch (error) {
-      console.error("Erreur lors de la récupération des créneaux occupés:", error);
+      toast.error('Impossible de charger les dates disponibles');
+    } finally {
+      setLoadingDates(false);
+    }
+  }, []);
+
+  // Charger les créneaux horaires disponibles
+  const fetchAvailableSlots = useCallback(async (date: string) => {
+    if (!date) return;
+    
+    setLoadingSlots(true);
+    try {
+      const response = await fetch(`${API_URL}/api/rendezvous/available-slots?date=${date}`);
+      if (!response.ok) throw new Error('Erreur lors du chargement des créneaux');
+      
+      let slots = await response.json();
+      
+      if (date === new Date().toISOString().split('T')[0]) {
+        slots = slots.filter((slot: string) => !isTimePassed(slot, date));
+      }
+      
+      setAvailableSlots(slots);
+    } catch (error) {
+      toast.error('Impossible de charger les créneaux disponibles');
+    } finally {
+      setLoadingSlots(false);
+    }
+  }, []);
+
+  // Initialiser les dates disponibles
+  useEffect(() => {
+    fetchAvailableDates();
+  }, [fetchAvailableDates]);
+
+  // Charger les créneaux quand la date change
+  useEffect(() => {
+    if (formData.date) {
+      fetchAvailableSlots(formData.date);
+    }
+  }, [formData.date, fetchAvailableSlots]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const formatDateDisplay = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('fr-FR', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short'
+    });
+  };
+
+  const isStepValid = (step: number): boolean => {
+    switch (step) {
+      case 1:
+        return !!(formData.firstName && formData.lastName && formData.email && formData.telephone);
+      case 2:
+        if (formData.destination === 'Autre' && !formData.destinationAutre) return false;
+        if (formData.filiere === 'Autre' && !formData.filiereAutre) return false;
+        return !!(formData.destination && formData.niveauEtude && formData.filiere);
+      case 3:
+        return !!(formData.date && formData.time);
+      default:
+        return false;
     }
   };
 
-  const destinations = ['Algérie', 'Turquie', 'Maroc', 'France', 'Tunisie', 'Chine', 'Russie', 'Autre'];
-  const niveauxEtude = ['Bac', 'Bac+1', 'Bac+2', 'Licence', 'Master I', 'Master II', 'Doctorat'];
-  const filieres = ['Informatique', 'Médecine', 'Ingénierie', 'Droit', 'Commerce', 'Autre'];
-
-  const generateTimeSlots = (): string[] => {
-    const slots: string[] = [];
-    const startMinutes = 9 * 60; // 09:00
-    const endMinutes = 16 * 60 + 30; // 16:30
-    for (let m = startMinutes; m <= endMinutes; m += 30) {
-      const h = Math.floor(m / 60).toString().padStart(2, '0');
-      const min = (m % 60).toString().padStart(2, '0');
-      slots.push(`${h}:${min}`);
+  const nextStep = () => {
+    if (isStepValid(currentStep)) {
+      setCurrentStep(prev => Math.min(prev + 1, 3));
     }
-    return slots;
   };
 
-  const handleChange = (field: string, value: string) => {
-    if (field === 'filiere') {
-      setShowFiliereAutre(value === 'Autre');
-      if (value !== 'Autre') {
-        setFormData(prev => ({ ...prev, filiereAutre: '', [field]: value }));
-        return;
-      }
-    }
-    
-    if (field === 'destination') {
-      setShowDestinationAutre(value === 'Autre');
-      if (value !== 'Autre') {
-        setFormData(prev => ({ ...prev, destinationAutre: '', [field]: value }));
-        return;
-      }
-    }
-    
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const prevStep = () => {
+    setCurrentStep(prev => Math.max(prev - 1, 1));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
-    setSubmitStatus({});
+    
+    if (!isAuthenticated) {
+      toast.error('Veuillez vous connecter pour prendre un rendez-vous');
+      navigate('/connexion');
+      return;
+    }
 
-    const payload = {
-      firstName: formData.prenom,
-      lastName: formData.nom,
-      email: formData.email,
-      telephone: formData.telephone,
-      destination: formData.destination, 
-      destinationAutre: formData.destination === 'Autre' ? formData.destinationAutre : undefined,
-      niveauEtude: formData.niveauEtude,
-      filiere: formData.filiere, 
-      filiereAutre: formData.filiere === 'Autre' ? formData.filiereAutre : undefined,
-      date: formData.date, 
-      time: formData.horaire 
-    };
+    // 🔥 CORRECTION: Vérifier que token n'est pas null
+    if (!token) {
+      toast.error('Session invalide. Veuillez vous reconnecter.');
+      logout('/connexion');
+      return;
+    }
+
+    setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/rendezvous`, {
-        method: "POST",
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
+      const submitData = {
+        ...formData,
+        destination: formData.destination === 'Autre' ? formData.destinationAutre : formData.destination,
+        filiere: formData.filiere === 'Autre' ? formData.filiereAutre : formData.filiere
+      };
 
-      const data = await response.json();
+      const makeRequest = async (currentToken: string): Promise<Response> => {
+        return fetch(`${API_URL}/api/rendezvous`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${currentToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(submitData),
+        });
+      };
 
-      if (!response.ok) throw new Error(data.message || "Échec de l'envoi");
+      let response = await makeRequest(token);
 
-      setSubmitStatus({
-        success: true,
-        message: "Demande de rendez-vous envoyée avec succès !",
-      });
+      // Si token expiré, rafraîchir et réessayer
+      if (response.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const newToken = localStorage.getItem('token');
+          if (newToken) {
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error('Token non disponible après rafraîchissement');
+          }
+        } else {
+          throw new Error('Session expirée. Veuillez vous reconnecter.');
+        }
+      }
 
-      toast.success('Rendez-vous créé avec succès!');
-      navigate('/mes-rendezvous');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors de la création du rendez-vous');
+      }
 
-      setFormData({
-        destination: initialDestination,
-        destinationAutre: '',
-        nom: '',
-        prenom: '',
-        email: user?.email || '',
-        niveauEtude: 'Bac',
-        filiere: 'Informatique',
-        filiereAutre: '',
-        date: '',
-        horaire: '',
-        telephone: ''
-      });
-      setShowFiliereAutre(false);
-      setShowDestinationAutre(false);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Erreur lors de l'envoi de la demande de rendez-vous";
-      setSubmitStatus({
-        success: false,
-        message: errorMessage,
-      });
-      toast.error(errorMessage);
+      toast.success('Rendez-vous créé avec succès !');
+      setTimeout(() => navigate('/user-rendez-vous'), 1500);
+
+    } catch (error: any) {
+      console.error('❌ Erreur création rendez-vous:', error);
+      
+      if (error.message.includes('Session expirée') || error.message.includes('Token invalide')) {
+        toast.error('Session expirée. Redirection...');
+        setTimeout(() => logout('/connexion'), 1500);
+      } else {
+        toast.error(error.message || 'Erreur lors de la création du rendez-vous');
+      }
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
-  const isFormValid = Object.entries(formData).every(([key, value]) => {
-    if (key === 'filiereAutre' && formData.filiere === 'Autre') {
-      return value.trim() !== '';
-    }
-    if (key === 'destinationAutre' && formData.destination === 'Autre') {
-      return value.trim() !== '';
-    }
-    return key === 'filiereAutre' || key === 'destinationAutre' || value.trim() !== '';
-  });
+  // Étape 1: Informations personnelles
+  const renderStep1 = () => (
+    <div className="space-y-4">
+      <div className="text-center mb-6">
+        <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-3">
+          <User className="w-6 h-6 text-sky-600" />
+        </div>
+        <h3 className="text-xl font-bold text-gray-900">Informations Personnelles</h3>
+      </div>
 
-  if (!isAuthenticated) {
-    return null; // Ou un loader pendant la redirection
-  }
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Prénom *</label>
+          <input
+            type="text"
+            name="firstName"
+            value={formData.firstName}
+            onChange={handleInputChange}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
+            placeholder="Votre prénom"
+          />
+        </div>
 
-  return (
-    <>
-      <Helmet>
-        <title>Prendre Rendez-Vous </title>
-        <meta name="description" content="Prenez rendez-vous avec un conseiller Paname Consulting pour discuter de votre projet d'études à l'étranger. Choisissez votre destination, date et horaire préférés." />
-        <meta name="keywords" content="rendez-vous, études à l'étranger, conseiller, orientation, Algérie, Maroc, Turquie, Chine, Russie" />
-        <link rel="icon" href="/panameconsulting.ico" sizes="any" />
-        <link rel="canonical" href="https://panameconsulting.com/rendez-vous" />
-      </Helmet>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Nom *</label>
+          <input
+            type="text"
+            name="lastName"
+            value={formData.lastName}
+            onChange={handleInputChange}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
+            placeholder="Votre nom"
+          />
+        </div>
 
-      <div className="min-h-screen bg-gray-50 p-2 sm:p-3">
-        {submitStatus.message && (
-          <div
-            className={`mb-4 p-3 rounded-lg mx-auto max-w-md ${
-              submitStatus.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-            }`}
-            role="alert"
-            aria-live="polite"
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Email *</label>
+          <input
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleInputChange}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
+            placeholder="votre@email.com"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Téléphone *</label>
+          <input
+            type="tel"
+            name="telephone"
+            value={formData.telephone}
+            onChange={handleInputChange}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
+            placeholder="+33 1 23 45 67 89"
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  // Étape 2: Destination et études
+  const renderStep2 = () => (
+    <div className="space-y-4">
+      <div className="text-center mb-6">
+        <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-3">
+          <MapPin className="w-6 h-6 text-sky-600" />
+        </div>
+        <h3 className="text-xl font-bold text-gray-900">Destination et Parcours</h3>
+      </div>
+
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Destination *</label>
+          <select
+            name="destination"
+            value={formData.destination}
+            onChange={handleInputChange}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none  transition-colors appearance-none bg-white"
           >
-            {submitStatus.message}
+            <option value="">Choisir une destination</option>
+            {destinations.map(dest => (
+              <option key={dest} value={dest}>{dest}</option>
+            ))}
+          </select>
+        </div>
+
+        {showDestinationOther && (
+          <div className="space-y-2 animate-fade-in">
+            <label className="text-sm font-medium text-gray-700">Autre destination *</label>
+            <input
+              type="text"
+              name="destinationAutre"
+              value={formData.destinationAutre}
+              onChange={handleInputChange}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
+              placeholder="Ex: Canada, Belgique..."
+            />
           </div>
         )}
-        
-        <form 
-          onSubmit={handleSubmit} 
-          className="mx-auto max-w-md space-y-3 rounded-xl bg-white p-3 shadow-lg sm:p-4" 
-          aria-labelledby="form-heading"
-        >
-          <h1 id="form-heading" className="text-xl font-bold text-sky-600 sm:text-2xl">📅 Rendez-vous</h1>
 
-          {/* Destination */}
-          <div>
-            <label htmlFor="destination-button" className="mb-1 block text-xs font-medium text-gray-600 sm:text-sm">
-              <span className="flex items-center gap-1">
-                <FiMapPin className="text-sky-500" aria-hidden="true" />
-                Destination
-              </span>
-            </label>
-            <Listbox 
-              value={formData.destination} 
-              onChange={(val) => handleChange('destination', val)} 
-              name="destination"
-            >
-              <Listbox.Button 
-                id="destination-button"
-                className="w-full rounded border border-gray-200 p-1.5 text-xs transition-colors hover:border-sky-400 focus:border-sky-600 focus:ring-none focus:outline-none sm:p-2 sm:text-sm"
-                aria-label="Sélectionner une destination"
-              >
-                {formData.destination || 'Choisissez...'}
-              </Listbox.Button>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Niveau d'étude *</label>
+          <select
+            name="niveauEtude"
+            value={formData.niveauEtude}
+            onChange={handleInputChange}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none  transition-colors appearance-none bg-white"
+          >
+            <option value="">Choisir votre niveau</option>
+            {niveauxEtude.map(niveau => (
+              <option key={niveau} value={niveau}>{niveau}</option>
+            ))}
+          </select>
+        </div>
 
-              <Listbox.Options className="mt-1 flex max-w-full overflow-x-auto space-x-2 rounded border-2 border-gray-200 bg-white px-2 py-1 text-xs sm:text-sm">
-                {destinations.map((dest) => (
-                  <Listbox.Option
-                    key={dest}
-                    value={dest}
-                    className={({ active }) =>
-                      `shrink-0 cursor-pointer focus:outline-none focus:ring-none whitespace-nowrap rounded px-3 py-1.5 sm:px-4 sm:py-2 transition-colors ${active ? 'bg-sky-100' : 'bg-white'}`
-                    }
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Filière *</label>
+          <select
+            name="filiere"
+            value={formData.filiere}
+            onChange={handleInputChange}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors appearance-none bg-white"
+          >
+            <option value="">Choisir une filière</option>
+            {filieres.map(filiere => (
+              <option key={filiere} value={filiere}>{filiere}</option>
+            ))}
+          </select>
+        </div>
+
+        {showFiliereOther && (
+          <div className="space-y-2 animate-fade-in">
+            <label className="text-sm font-medium text-gray-700">Autre filière *</label>
+            <input
+              type="text"
+              name="filiereAutre"
+              value={formData.filiereAutre}
+              onChange={handleInputChange}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
+              placeholder="Ex: Architecture, Design..."
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Étape 3: Date et heure
+  const renderStep3 = () => (
+    <div className="space-y-4">
+      <div className="text-center mb-6">
+        <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-3">
+          <Calendar className="w-6 h-6 text-sky-600" />
+        </div>
+        <h3 className="text-xl font-bold text-gray-900">Date et Heure</h3>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Dates */}
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-gray-700">Date *</label>
+          
+          {loadingDates ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="w-5 h-5 animate-spin text-sky-600" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto">
+              {availableDates.map(({ date, available }) => (
+                <button
+                  key={date}
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, date, time: '' }))}
+                  disabled={!available}
+                  className={`p-3 text-left rounded-lg border transition-colors ${
+                    formData.date === date
+                      ? 'border-sky-500 bg-sky-50 text-sky-700'
+                      : available
+                      ? 'border-gray-300 hover:border-sky-400 hover:bg-sky-25'
+                      : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <div className="font-medium text-sm">{formatDateDisplay(date)}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Heures */}
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-gray-700">Heure *</label>
+          
+          {!formData.date ? (
+            <div className="text-center py-6 text-gray-500">
+              <Calendar className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Choisir une date d'abord</p>
+            </div>
+          ) : loadingSlots ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="w-5 h-5 animate-spin text-sky-600" />
+            </div>
+          ) : availableSlots.length === 0 ? (
+            <div className="text-center py-6 text-gray-500">
+              <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Aucun créneau disponible</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+              {availableSlots.map(slot => {
+                const isTimeDisabled = isTimePassed(slot, formData.date);
+                return (
+                  <button
+                    key={slot}
+                    type="button"
+                    onClick={() => !isTimeDisabled && setFormData(prev => ({ ...prev, time: slot }))}
+                    disabled={isTimeDisabled}
+                    className={`p-2 text-center rounded-lg border transition-colors text-sm ${
+                      formData.time === slot
+                        ? 'border-sky-500 bg-sky-50 text-sky-700 font-medium'
+                        : isTimeDisabled
+                        ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'border-gray-300 hover:border-sky-400 hover:bg-sky-25'
+                    }`}
                   >
-                    {dest}
-                  </Listbox.Option>
-                ))}
-              </Listbox.Options>
-            </Listbox>
-            
-            {showDestinationAutre && (
-              <div className="mt-2">
-                <label htmlFor="destinationAutre" className="mb-1 block text-xs font-medium text-gray-600 sm:text-sm">
-                  Saisissez votre destination
-                </label>
-                <input
-                  type="text"
-                  value={formData.destinationAutre}
-                  placeholder="Votre destination"
-                  id="destinationAutre"
-                  name="destinationAutre"
-                  onChange={(e) => handleChange('destinationAutre', e.target.value)}
-                  className="w-full rounded border focus:ring-none border-gray-200 p-1.5 text-xs transition-colors hover:border-sky-400 focus:border-sky-600 focus:outline-none sm:p-2 sm:text-sm"
-                  autoComplete="off"
-                  required={formData.destination === 'Autre'}
-                />
-              </div>
+                    {slot}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Récapitulatif */}
+      {formData.date && formData.time && (
+        <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 animate-fade-in">
+          <h4 className="font-semibold text-sky-800 text-sm mb-1">Rendez-vous sélectionné :</h4>
+          <div className="flex items-center gap-2 text-sky-700 text-sm">
+            <Calendar className="w-4 h-4" />
+            <span>{formatDateDisplay(formData.date)}</span>
+            <Clock className="w-4 h-4 ml-2" />
+            <span>{formData.time}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // Indicateur de progression compact
+  const ProgressSteps = () => (
+    <div className="flex justify-between items-center mb-6 relative">
+      {[1, 2, 3].map(step => (
+        <div key={step} className="flex flex-col items-center z-10">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-colors ${
+            step === currentStep
+              ? 'border-sky-500 bg-sky-500 text-white'
+              : step < currentStep
+              ? 'border-sky-500 bg-sky-500 text-white'
+              : 'border-gray-300 bg-white text-gray-400'
+          }`}>
+            {step < currentStep ? (
+              <CheckCircle2 className="w-4 h-4" />
+            ) : (
+              <span className="text-xs font-medium">{step}</span>
             )}
           </div>
+          <span className={`text-xs mt-1 ${step === currentStep ? 'text-sky-600' : 'text-gray-500'}`}>
+            Étape {step}
+          </span>
+        </div>
+      ))}
+      <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200 -z-10">
+        <div 
+          className="h-full bg-sky-500 transition-all duration-500"
+          style={{ width: `${((currentStep - 1) / 2) * 100}%` }}
+        />
+      </div>
+    </div>
+  );
 
-          {/* Nom et Prénom */}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div>
-              <label htmlFor="nom" className="mb-1 block text-xs font-medium text-gray-600 sm:text-sm">
-                <span className="flex items-center gap-1">
-                  <FiUser className="text-sky-500" aria-hidden="true" />
-                  Nom
-                </span>
-              </label>
-              <input
-                type="text"
-                value={formData.nom}
-                placeholder="Nom"
-                id="nom"
-                name="nom"
-                onChange={(e) => handleChange('nom', e.target.value)}
-                className="w-full rounded border border-gray-200 p-1.5 text-xs transition-colors hover:border-sky-400 focus:border-sky-600 focus:outline-none focus:ring-none sm:p-2 sm:text-sm"
-                required
-                aria-required="true"
-                autoComplete="family-name"
-              />
-            </div>
-            <div>
-              <label htmlFor="prenom" className="mb-1 block text-xs font-medium text-gray-600 sm:text-sm">
-                <span className="flex items-center gap-1">
-                  <FiUser className="text-sky-500" aria-hidden="true" />
-                  Prénom
-                </span>
-              </label>
-              <input
-                type="text"
-                value={formData.prenom}
-                placeholder="Prénom"
-                id="prenom"
-                name="prenom"
-                onChange={(e) => handleChange('prenom', e.target.value)}
-                className="w-full rounded border focus:ring-none border-gray-200 p-1.5 text-xs transition-colors hover:border-sky-400 focus:border-sky-600 focus:outline-none sm:p-2 sm:text-sm"
-                required
-                aria-required="true"
-                autoComplete="given-name"
-              />
-            </div>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 py-6">
+      <div className="container mx-auto px-4 max-w-2xl">
+        {/* En-tête compact */}
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold text-sky-600 mb-2">
+            Prendre un Rendez-vous
+          </h1>
+          <p className="text-gray-600 text-sm">
+            Consultation personnalisée pour vos études à l'étranger
+          </p>
+        </div>
+
+        {/* Carte principale compacte */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="p-4 border-b border-gray-200">
+            <ProgressSteps />
           </div>
 
-          {/* Email et Téléphone */}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div>
-              <label htmlFor="email" className="mb-1 block text-xs font-medium text-gray-600 sm:text-sm">
-                <span className="flex items-center gap-1">
-                  <FiMail className="text-sky-500" aria-hidden="true" />
-                  Email
-                </span>
-              </label>
-              <input
-                type="email"
-                value={formData.email}
-                placeholder="exemple@email.com"
-                id="email"
-                name="email"
-                onChange={(e) => handleChange('email', e.target.value)}
-                className="w-full rounded border focus:ring-none border-gray-200 p-1.5 text-xs transition-colors hover:border-sky-400 focus:border-sky-600 focus:outline-none sm:p-2 sm:text-sm"
-                required
-                aria-required="true"
-                autoComplete="email"
-              />
+          <form onSubmit={handleSubmit} className="p-4">
+            <div className="min-h-[300px]">
+              {currentStep === 1 && renderStep1()}
+              {currentStep === 2 && renderStep2()}
+              {currentStep === 3 && renderStep3()}
             </div>
-            <div>
-              <label htmlFor="telephone" className="mb-1 block text-xs font-medium text-gray-600 sm:text-sm">
-                <span className="flex items-center gap-1">
-                  <FiPhone className="text-sky-500" aria-hidden="true" />
-                  Téléphone
-                </span>
-              </label>
-              <input
-                type="tel"
-                value={formData.telephone}
-                placeholder="+228 XX XX XX XX"
-                id="telephone"
-                name="telephone"
-                onChange={(e) => handleChange('telephone', e.target.value)}
-                className="w-full rounded border focus:ring-none border-gray-200 p-1.5 text-xs transition-colors hover:border-sky-400 focus:border-sky-600 focus:outline-none sm:p-2 sm:text-sm"
-                required
-                aria-required="true"
-                autoComplete="tel"
-              />
-            </div>
-          </div>
 
-          {/* Niveau et Filière */}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div>
-              <label htmlFor="niveauEtude" className="mb-1 block text-xs font-medium text-gray-600 sm:text-sm">
-                <span className="flex items-center gap-1">
-                  <FaGraduationCap className="text-sky-500" aria-hidden="true" />
-                  Niveau
-                </span>
-              </label>
-              <select
-                value={formData.niveauEtude}
-                id="niveauEtude"
-                name="niveauEtude"
-                onChange={(e) => handleChange('niveauEtude', e.target.value)}
-                className="w-full rounded border focus:ring-none border-gray-200 p-1.5 text-xs transition-colors hover:border-sky-400 focus:border-sky-600 focus:outline-none sm:p-2 sm:text-sm"
-                required
-                aria-required="true"
-                autoComplete="education-level"
+            {/* Boutons de navigation compacts */}
+            <div className="flex justify-between pt-4 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={prevStep}
+                disabled={currentStep === 1}
+                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:border-sky-400 hover:bg-sky-50 disabled:opacity-50 transition-colors text-sm"
               >
-                {niveauxEtude.map((niv) => (
-                  <option key={niv} value={niv}>{niv}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="filiere" className="mb-1 block text-xs font-medium text-gray-600 sm:text-sm">
-                <span className="flex items-center gap-1">
-                  <FiBook className="text-sky-500" aria-hidden="true" />
-                  Filière
-                </span>
-              </label>
-              <select
-                value={formData.filiere}
-                id="filiere"
-                name="filiere"
-                onChange={(e) => handleChange('filiere', e.target.value)}
-                className="w-full rounded border focus:ring-none border-gray-200 p-1.5 text-xs transition-colors hover:border-sky-400 focus:border-sky-600 focus:outline-none sm:p-2 sm:text-sm"
-                required
-                aria-required="true"
-                autoComplete="organization-title"
-              >
-                {filieres.map((fil) => (
-                  <option key={fil} value={fil}>{fil}</option>
-                ))}
-              </select>
-              
-              {showFiliereAutre && (
-                <div className="mt-2">
-                  <label htmlFor="filiereAutre" className="mb-1 block text-xs font-medium text-gray-600 sm:text-sm">
-                    Saisissez votre filière voulue
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.filiereAutre}
-                    placeholder="Votre filière"
-                    id="filiereAutre"
-                    name="filiereAutre"
-                    onChange={(e) => handleChange('filiereAutre', e.target.value)}
-                    className="w-full rounded border focus:ring-none border-gray-200 p-1.5 text-xs transition-colors hover:border-sky-400 focus:border-sky-600 focus:outline-none sm:p-2 sm:text-sm"
-                    autoComplete="organization"
-                    required={formData.filiere === 'Autre'}
-                  />
-                </div>
+                Précédent
+              </button>
+
+              {currentStep < 3 ? (
+                <button
+                  type="button"
+                  onClick={nextStep}
+                  disabled={!isStepValid(currentStep)}
+                  className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 disabled:opacity-50 transition-colors text-sm flex items-center gap-1"
+                >
+                  Suivant
+                  <ChevronDown className="w-3 h-3 rotate-270" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!isStepValid(3) || loading}
+                  className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 disabled:opacity-50 transition-colors text-sm flex items-center gap-1"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Création...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3 h-3" />
+                      Confirmer
+                    </>
+                  )}
+                </button>
               )}
             </div>
-          </div>
+          </form>
+        </div>
 
-          {/* Date et Horaire */}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div>
-              <label htmlFor="date" className="mb-1 block text-xs font-medium text-gray-600 sm:text-sm">
-                <span className="flex items-center gap-1">
-                  <FiCalendar className="text-sky-500" aria-hidden="true" />
-                  Date
-                </span>
-              </label>
-              <input
-                type="date"
-                value={formData.date}
-                id="date"
-                name="date"
-                onChange={(e) => handleChange('date', e.target.value)}
-                className="w-full rounded border focus:ring-none border-gray-200 p-1.5 text-xs transition-colors hover:border-sky-400 focus:border-sky-600 focus:outline-none sm:p-2 sm:text-sm"
-                required
-                aria-required="true"
-                min={new Date().toISOString().split('T')[0]}
-                autoComplete="off"
-              />
-            </div>
-            <div>
-              <label htmlFor="horaire" className="mb-1 block text-xs font-medium text-gray-600 sm:text-sm">
-                <span className="flex items-center gap-1">
-                  <FiClock className="text-sky-500" aria-hidden="true" />
-                  Horaire
-                </span>
-              </label>
-              <input
-                type="text"
-                id="horaire"
-                name="horaire"
-                value={formData.horaire}
-                readOnly
-                hidden
-                tabIndex={-1}
-                autoComplete="off"
-              />
-              <div 
-                className="h-20 overflow-y-auto rounded border-2 border-gray-200 p-1 focus-within:border-sky-600" 
-                aria-labelledby="horaire-label"
-              >
-                <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
-                  {generateTimeSlots().map((time) => {
-                    const isOccupied = occupiedSlots.includes(time);
-                    const isSelected = formData.horaire === time;
-                    // Désactiver les créneaux passés si la date sélectionnée est aujourd'hui
-                    let isPast = false;
-                    if (formData.date) {
-                      const todayStr = new Date().toISOString().split('T')[0];
-                      if (formData.date === todayStr) {
-                        const now = new Date();
-                        const [hh, mm] = time.split(':').map(Number);
-                        const slotMinutes = hh * 60 + mm;
-                        const nowMinutes = now.getHours() * 60 + now.getMinutes();
-                        isPast = slotMinutes <= nowMinutes;
-                      }
-                    }
-
-                    return (
-                      <button
-                        key={time}
-                        type="button"
-                        onClick={() => !isOccupied && !isPast && handleChange('horaire', time)}
-                        className={`text-xxs rounded p-0 focus:ring-none focus:outline-none transition-colors sm:text-xs ${
-                          isSelected
-                            ? 'bg-sky-600 text-white'
-                            : (isOccupied || isPast)
-                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                              : 'bg-gray-100 hover:bg-sky-100'
-                        }`}
-                        aria-pressed={isSelected}
-                        aria-label={`Horaire ${time}${isOccupied ? ' (Indisponible)' : ''}${isPast ? ' (Passé)' : ''}`}
-                        disabled={isOccupied || isPast}
-                      >
-                        {time}
-                        {isOccupied && <span className="sr-only"> (Indisponible)</span>}
-                        {isPast && <span className="sr-only"> (Passé)</span>}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              <span id="horaire-label" className="sr-only">Sélection d'horaire</span>
-            </div>
-          </div>
-
-          {/* Soumission */}
-          <button
-            type="submit"
-            disabled={!isFormValid || isSubmitting}
-            className={`w-full rounded focus:ring-none focus:outline-none p-2 text-xs font-semibold text-white transition-colors sm:p-2.5 sm:text-sm ${
-              isFormValid && !isSubmitting
-                ? 'bg-sky-600 hover:bg-sky-700'
-                : 'cursor-not-allowed bg-gray-300'
-            }`}
-            aria-disabled={!isFormValid || isSubmitting}
-          >
-            {isSubmitting ? 'Envoi en cours...' : 'Confirmer ➔'}
-          </button>
-        </form>
+        {/* Informations supplémentaires compactes */}
+        <div className="mt-4 text-center text-xs text-gray-500">
+          <p>Confirmation par email • Horaires : lun-ven, 9h-16h30</p>
+        </div>
       </div>
-    </>
-  )
+
+      {/* Styles d'animation */}
+      <style>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(5px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.2s ease-out;
+        }
+      `}</style>
+    </div>
+  );
 };
+
 export default RendezVous;

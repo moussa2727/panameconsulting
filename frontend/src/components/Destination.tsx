@@ -74,7 +74,7 @@ const getFullImageUrl = (imagePath: string) => {
   const fetchDestinations = async () => {
   try {
     setLoading(true);
-    const response = await fetch(`${VITE_API_URL}/api/destination`, {
+    const response = await fetch(`${VITE_API_URL}/api/destinations`, {
       credentials: 'include',
       headers: { Accept: 'application/json' }
     });
@@ -118,7 +118,7 @@ const getFullImageUrl = (imagePath: string) => {
   }
 
   return (
-    <section className='px-5 py-20 bg-gradient-to-b from-sky-50 to-white lg:py-20'>
+    <section className='px-5 py-20 md:pt-12 bg-gradient-to-b from-sky-50 to-white lg:py-20'>
       <ToastContainer position='bottom-right' />
       <div className='max-w-7xl mx-auto'>
         <div className='text-center mb-16'>

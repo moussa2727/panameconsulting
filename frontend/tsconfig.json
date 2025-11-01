@@ -28,7 +28,7 @@
    "include": [
       "**/*.ts",
       "**/*.tsx"
-, "src/main.jsx", "src/pages/Rendez-Vous.jsx", "src/pages/Accueil.jsx", "src/components/DestinationQuiz.tsx", "src/pages/admin/AdminDestinations.jsx", "src/pages/admin/AdminDashboard.jsx"   ],
+, "src/main.jsx", "src/pages/user/Rendez-Vous.jsx", "src/pages/Accueil.jsx", "src/components/DestinationQuiz.tsx", "src/pages/admin/AdminDestinations.jsx", "src/pages/admin/AdminDashboard.jsx"   ],
    "exclude": [
       "node_modules"
    ]

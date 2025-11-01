@@ -15,7 +15,6 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-  // Fonctions sessionStorage sécurisées
   saveToSession: (key: string, data: any) => void;
   getFromSession: (key: string) => any;
   removeFromSession: (key: string) => void;
@@ -262,16 +261,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
- 
-
  const refreshTokenFunction = async (): Promise<boolean> => {
-  if (isRefreshing || refreshInFlightRef.current) {
-    // Coalesce: return existing in-flight promise
-    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+  // Éviter les refresh multiples simultanés
+  if (isRefreshing && refreshInFlightRef.current) {
+    console.log('🔄 Refresh déjà en cours, attente...');
+    return refreshInFlightRef.current;
   }
+  
   setIsRefreshing(true);
   const doRefresh = (async () => {
+    let refreshSuccessful = false;
+    
     try {
+      console.log('🔄 Début du rafraîchissement du token...');
+      
       const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
         method: 'POST',
         headers: { 
@@ -280,53 +283,114 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         credentials: 'include'
       });
 
+      console.log('📡 Statut réponse refresh:', response.status, response.statusText);
+
+      // Gestion des erreurs HTTP
       if (!response.ok) {
         if (response.status === 401) {
-          // Clear potentially stale tokens on 401
-          localStorage.removeItem('token');
-          setToken(null);
-          return false;
+          console.log('❌ Refresh token expiré ou invalide (401)');
+          throw new Error('REFRESH_TOKEN_EXPIRED');
         }
+        
         if (response.status >= 500) {
-          return false;
+          console.error('❌ Erreur serveur lors du refresh:', response.status);
+          throw new Error('SERVER_ERROR');
         }
-        return false;
+        
+        console.error('❌ Erreur lors du refresh:', response.status);
+        throw new Error('REFRESH_FAILED');
       }
 
       const data: RefreshResponse = await response.json();
       
+      // Vérifier si l'utilisateur est déconnecté côté serveur
       if (data.loggedOut) {
-        logout('/', true);
-        return false;
+        console.log('🔒 Utilisateur déconnecté côté serveur');
+        throw new Error('USER_LOGGED_OUT');
       }
       
+      // Vérifier la présence du token
       if (!data.accessToken) {
-        return false;
+        console.error('❌ Aucun token reçu dans la réponse');
+        throw new Error('NO_TOKEN_RECEIVED');
       }
 
+      console.log('✅ Nouveau token reçu avec succès');
+      
+      // 🔥 SAUVEGARDE CRITIQUE DU TOKEN
       localStorage.setItem('token', data.accessToken);
       setToken(data.accessToken);
+      
+      // Vérification de la sauvegarde
+      const savedToken = localStorage.getItem('token');
+      if (savedToken !== data.accessToken) {
+        console.error('❌ Échec de la sauvegarde du token, nouvelle tentative...');
+        localStorage.setItem('token', data.accessToken);
+        setToken(data.accessToken);
+        
+        // Vérification finale
+        const finalToken = localStorage.getItem('token');
+        if (finalToken !== data.accessToken) {
+          throw new Error('TOKEN_SAVE_FAILED');
+        }
+      }
 
+      // Décoder et configurer le nouveau token
       try {
         const decoded = jwtDecode<JwtPayload>(data.accessToken);
+        console.log('⏰ Nouveau token expire dans', 
+          Math.floor((decoded.exp * 1000 - Date.now()) / 1000 / 60), 
+          'minutes'
+        );
+        
+        // Configurer le prochain rafraîchissement automatique
         setupTokenRefresh(decoded.exp);
+        
+        // Recharger les données utilisateur
         await fetchUserData(data.accessToken);
+        
+        // Mettre à jour les métadonnées de session
         saveSessionMetadata();
+        
+        console.log('✅ Refresh token complété avec succès');
+        refreshSuccessful = true;
         return true;
-      } catch {
-        return false;
+        
+      } catch (decodeError) {
+        console.error('❌ Erreur décodage token:', decodeError);
+        throw new Error('TOKEN_DECODE_FAILED');
       }
-    } catch {
+      
+    } catch (error: any) {
+      console.error('💥 Erreur lors du rafraîchissement:', error.message);
+      
+      // Nettoyer les données d'authentification en cas d'échec
+      localStorage.removeItem('token');
+      setToken(null);
+      setUser(null);
+      
+      // Déclencher une déconnexion propre seulement pour certaines erreurs
+      if (['REFRESH_TOKEN_EXPIRED', 'USER_LOGGED_OUT', 'NO_TOKEN_RECEIVED'].includes(error.message)) {
+        console.log('🔒 Déconnexion forcée après échec du refresh');
+        logout('/', true);
+      }
+      
       return false;
+      
     } finally {
       setIsRefreshing(false);
       refreshInFlightRef.current = null;
+      
+      if (!refreshSuccessful) {
+        console.log('❌ Refresh token échoué');
+      }
     }
   })();
+  
   refreshInFlightRef.current = doRefresh;
   return doRefresh;
 };
-
+ 
   // === INITIALISATION ET NETTOYAGE ===
 
   useEffect(() => {
@@ -534,7 +598,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }).catch(() => {});
     }
 
-    saveSessionMetadata();
+    // Mettre à jour explicitement les métadonnées de session avec hasActiveSession: false
+    saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
+      sessionStart: Date.now(),
+      sessionId: Math.random().toString(36).substring(2, 15),
+      userAgent: navigator.userAgent.substring(0, 50),
+      hasActiveSession: false // Explicitement false lors de la déconnexion
+    });
+    
     navigate(redirectPath ?? '/');
   };
 
@@ -552,6 +623,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const savedToken = localStorage.getItem('token');
     
     if (!savedToken) {
+      // S'assurer que les métadonnées de session reflètent l'absence de session active
+      saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
+        sessionStart: Date.now(),
+        sessionId: Math.random().toString(36).substring(2, 15),
+        userAgent: navigator.userAgent.substring(0, 50),
+        hasActiveSession: false
+      });
       setIsLoading(false);
       return;
     }

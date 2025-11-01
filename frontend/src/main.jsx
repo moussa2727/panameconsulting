@@ -18,6 +18,11 @@ if (import.meta.env.DEV) {
   };
 }
 
+// Polyfill for HeadlessUI user agent detection issue
+if (typeof navigator !== 'undefined' && navigator.userAgentData && !navigator.userAgentData.brands) {
+  navigator.userAgentData.brands = [];
+}
+
 // Optimisation des event listeners pour les événements tactiles
 const originalAddEventListener = EventTarget.prototype.addEventListener;
 EventTarget.prototype.addEventListener = function (type, listener, options) {

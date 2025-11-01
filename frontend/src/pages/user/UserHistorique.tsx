@@ -28,7 +28,7 @@ interface UserStats {
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 const UserHistorique = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, token, refreshToken } = useAuth();
   const navigate = useNavigate();
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [completedRendezvous, setCompletedRendezvous] = useState<Rendezvous[]>([]);
@@ -46,30 +46,63 @@ const UserHistorique = () => {
     }
   }, [isAuthenticated, navigate]);
 
-  const fetchUserStats = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(
+const fetchUserStats = async () => {
+  setIsLoading(true);
+  try {
+    const makeRequest = async (currentToken: string): Promise<Response> => {
+      return fetch(
         `${API_URL}/api/rendezvous/user/stats?email=${user?.email}`,
         {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Authorization': `Bearer ${currentToken}`
           }
         }
       );
-      
-      if (!response.ok) {
-        throw new Error('Erreur lors de la récupération des statistiques');
-      }
-      
-      const data = await response.json();
-      setUserStats(data);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
-    } finally {
-      setIsLoading(false);
+    };
+
+    if (!token) {
+      throw new Error('Token non disponible. Veuillez vous reconnecter.');
     }
-  };
+
+    let response = await makeRequest(token);
+
+    // Si token expiré, rafraîchir et réessayer
+    if (response.status === 401) {
+      const refreshed = await refreshToken();
+      if (refreshed) {
+        const newToken = localStorage.getItem('token');
+        if (newToken) {
+          response = await makeRequest(newToken);
+        } else {
+          throw new Error('Token non disponible après rafraîchissement');
+        }
+      } else {
+        throw new Error('Session expirée. Veuillez vous reconnecter.');
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error('Erreur lors de la récupération des statistiques');
+    }
+    
+    const data = await response.json();
+    setUserStats(data);
+  } catch (error) {
+    console.error('❌ Erreur fetchUserStats:', error);
+    
+    if (error instanceof Error && (
+      error.message.includes('Session expirée') || 
+      error.message.includes('Token invalide')
+    )) {
+      toast.error('Session expirée. Redirection...');
+      setTimeout(() => navigate('/connexion'), 2000);
+    } else {
+      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const fetchCompletedRendezvous = async () => {
     if (completedRendezvous.length > 0) return;

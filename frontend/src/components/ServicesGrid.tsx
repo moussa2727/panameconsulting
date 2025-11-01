@@ -7,23 +7,9 @@ import {
   FiUsers,
   FiBriefcase,
 } from 'react-icons/fi';
-import AOS from 'aos';
-import 'aos/dist/aos.css';
+// AOS is now initialized globally in App.tsx
 
 const ServicesGrid = () => {
-  // Optimisation du chargement AOS
-  useEffect(() => {
-    // Chargement conditionnel de AOS uniquement si nécessaire
-    if (typeof window !== 'undefined') {
-      AOS.init({
-        duration: 600, // Réduction pour mobile
-        once: true,
-        easing: 'ease-out-cubic',
-        offset: 50, // Meilleur déclenchement sur mobile
-        delay: 0, // Réduction des délais pour mobile
-      });
-    }
-  }, []);
 
   // Mémoization des services pour éviter les recréations inutiles
   const services = React.useMemo(() => [
@@ -78,7 +64,7 @@ const ServicesGrid = () => {
 
   return (
     <section 
-      className='py-12 sm:py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white via-sky-50/70 to-white'
+      className='pt-6 pb-12 sm:pt-8 sm:pb-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white via-sky-50/70 to-white'
       aria-labelledby="services-heading"
     >
       <div className='max-w-7xl mx-auto'>

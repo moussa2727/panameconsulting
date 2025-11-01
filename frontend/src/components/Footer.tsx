@@ -7,18 +7,9 @@ import {
 } from 'react-icons/fa';
 import { SiWhatsapp } from 'react-icons/si';
 import { Link } from 'react-router-dom';
-import { useEffect } from 'react';
-import AOS from 'aos';
-import 'aos/dist/aos.css';
+// AOS is now initialized globally in App.tsx
 
 export default function Footer() {
-  useEffect(() => {
-    AOS.init({
-      duration: 800,
-      once: true,
-      disable: window.innerWidth < 768, // Désactive AOS sur mobile
-    });
-  }, []);
 
   return (
     <footer

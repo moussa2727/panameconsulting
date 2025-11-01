@@ -377,7 +377,7 @@ const DestinationQuiz: React.FC = () => {
   // Écran de résultats
   if (results.length > 0) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 py-8 px-4 sm:px-6 lg:px-8 md:pb-2">
         <div className="max-w-6xl mx-auto">
           {/* En-tête des résultats */}
           <div className="text-center mb-12">
@@ -440,7 +440,7 @@ const DestinationQuiz: React.FC = () => {
   // Écran de chargement
   if (isCalculating) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 flex items-center justify-center md:pb-2">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-sky-600 mx-auto mb-4"></div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">
@@ -458,7 +458,7 @@ const DestinationQuiz: React.FC = () => {
   const currentQuestion = questions[currentStep];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 py-8 px-4 sm:px-6 lg:px-8 md:pb-2">
       <div className="max-w-2xl mx-auto">
         {/* Barre de progression */}
         <div className="mb-8">

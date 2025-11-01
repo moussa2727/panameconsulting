@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import AOS from 'aos';
+import 'aos/dist/aos.css';
 import ErrorBoundary from './components/ErrorBoundary';
 import { useAuth } from './utils/AuthContext';
 
@@ -15,7 +17,7 @@ import Contact from './pages/Contact';
 import Propos from './pages/Propos';
 import Services from './pages/Services';
 import NotFound from './pages/Notfound';
-import RendezVous from './pages/Rendez-Vous';
+import RendezVous from './pages/user/Rendez-Vous';
 
 // Pages de connexion, inscription, mot de passe oublié
 import Connexion from './pages/Connexion';
@@ -50,6 +52,17 @@ const PublicLayout = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+// Layout minimal sans Header ni Footer
+const MinimalLayout = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <div className='flex flex-col min-h-screen w-full overflow-x-hidden touch-pan-y'>
+      <main className='flex-1'>
+        {children}
+      </main>
+    </div>
+  );
+};
+
 function App() {
   const location = useLocation();
   const [navigationKey, setNavigationKey] = useState(0);
@@ -79,6 +92,26 @@ function App() {
       window.removeEventListener('popstate', handlePopState);
     };
   }, [location.pathname, safeScrollToTop]);
+
+  // Initialize AOS once for the entire application
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      AOS.init({
+        duration: window.innerWidth < 768 ? 300 : 600, // Shorter duration on mobile
+        once: true,
+        easing: 'ease-out-cubic',
+        disable: false, // Enable AOS on all devices
+        offset: window.innerWidth < 768 ? 20 : 50, // Smaller offset on mobile
+        delay: 0,
+        // Disable animations that might cause issues on mobile
+        disableMutationObserver: window.innerWidth < 768
+      });
+    }
+
+    return () => {
+      AOS.refresh();
+    };
+  }, []);
 
   return (
     <ErrorBoundary>
@@ -127,10 +160,12 @@ function App() {
               <Propos />
             </PublicLayout>
           } />
+          
+          {/* RendezVous - sans Header/Footer */}
           <Route path='/rendez-vous' element={
-            <PublicLayout>
+            <MinimalLayout>
               <RendezVous />
-            </PublicLayout>
+            </MinimalLayout>
           } />
 
           {/* Auth - sans Header/Footer communs */}

@@ -25,6 +25,22 @@ class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Erreur capturée par ErrorBoundary:', error, errorInfo);
 
+    // Handle DOM manipulation errors silently (common with third-party libraries)
+    if (
+      error.message.includes('removeChild') ||
+      error.message.includes('Node') ||
+      error.name === 'NotFoundError'
+    ) {
+      console.warn('DOM manipulation error detected, attempting recovery...');
+      // Try to recover by refreshing AOS if available
+      if (typeof window !== 'undefined' && (window as any).AOS) {
+        setTimeout(() => {
+          (window as any).AOS.refresh();
+        }, 100);
+      }
+      return;
+    }
+
     // Log l'erreur silencieusement sans afficher d'alerte
     if (
       error.message.includes('500') ||

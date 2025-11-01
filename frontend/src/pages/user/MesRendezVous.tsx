@@ -18,7 +18,7 @@ interface Rendezvous {
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 const MesRendezVous = () => {
-  const { user, isAuthenticated, token } = useAuth();
+  const { user, isAuthenticated, token, refreshToken } = useAuth();
   const navigate = useNavigate();
   const [rendezvous, setRendezvous] = useState<Rendezvous[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -34,42 +34,98 @@ const MesRendezVous = () => {
     }
   }, [isAuthenticated, navigate, page]);
 
-  const fetchRendezvous = async () => {
-    if (!user?.email) return;
-    
-    setIsLoading(true);
-    try {
-      const response = await fetch(
+const fetchRendezvous = async () => {
+  if (!user?.email) return;
+  
+  setIsLoading(true);
+  try {
+    const makeRequest = async (currentToken: string): Promise<Response> => {
+      return fetch(
         `${API_URL}/api/rendezvous/user?email=${user.email}&page=${page}&limit=5`,
         {
           headers: {
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${currentToken}`
           }
         }
       );
-      
-      if (!response.ok) {
-        throw new Error('Erreur lors de la récupération des rendez-vous');
-      }
-      
-      const data = await response.json();
-      setRendezvous(data.data);
-      setTotalPages(Math.ceil(data.total / 5));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
-    } finally {
-      setIsLoading(false);
+    };
+
+    if (!token) {
+      throw new Error('Token non disponible');
     }
-  };
+
+    let response = await makeRequest(token);
+
+    // Si token expiré, rafraîchir et réessayer
+    if (response.status === 401) {
+      const refreshed = await refreshToken();
+      if (refreshed) {
+        const newToken = localStorage.getItem('token');
+        if (newToken) {
+          response = await makeRequest(newToken);
+        } else {
+          throw new Error('Token non disponible après rafraîchissement');
+        }
+      } else {
+        throw new Error('Session expirée. Veuillez vous reconnecter.');
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error('Erreur lors de la récupération des rendez-vous');
+    }
+    
+    const data = await response.json();
+    setRendezvous(data.data);
+    setTotalPages(Math.ceil(data.total / 5));
+  } catch (error) {
+    console.error('❌ Erreur fetchRendezvous:', error);
+    
+    if (error instanceof Error && (
+      error.message.includes('Session expirée') || 
+      error.message.includes('Token invalide')
+    )) {
+      toast.error('Session expirée. Redirection...');
+    } else {
+      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleCancel = async (id: string) => {
+    if (!token) {
+      toast.error('Vous devez être connecté pour effectuer cette action');
+      return;
+    }
+
     try {
-      const response = await fetch(`${API_URL}/api/rendezvous/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
+      const makeRequest = async (currentToken: string): Promise<Response> => {
+        return fetch(`${API_URL}/api/rendezvous/${id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${currentToken}`
+          }
+        });
+      };
+
+      let response = await makeRequest(token);
+
+      // Si token expiré, rafraîchir et réessayer
+      if (response.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const newToken = localStorage.getItem('token');
+          if (newToken) {
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error('Token non disponible après rafraîchissement');
+          }
+        } else {
+          throw new Error('Session expirée. Veuillez vous reconnecter.');
         }
-      });
+      }
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -79,7 +135,16 @@ const MesRendezVous = () => {
       toast.success('Rendez-vous annulé avec succès');
       fetchRendezvous();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
+      console.error('❌ Erreur annulation rendez-vous:', error);
+      
+      if (error instanceof Error && (
+        error.message.includes('Session expirée') || 
+        error.message.includes('Token invalide')
+      )) {
+        toast.error('Session expirée. Redirection...');
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
+      }
     } finally {
       setConfirmId(null);
     }

@@ -1,3 +1,21 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Ensure AOS elements are visible on mobile */
+@media (max-width: 767px) {
+  [data-aos] {
+    opacity: 1 !important;
+    transform: none !important;
+    visibility: visible !important;
+  }
+  
+  /* Fallback for AOS animations on mobile */
+  [data-aos="fade-up"] {
+    animation: none !important;
+  }
+  
+  [data-aos="fade-in"] {
+    animation: none !important;
+  }
+}

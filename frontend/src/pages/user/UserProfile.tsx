@@ -50,51 +50,53 @@ const UserProfile: React.FC = () => {
     confirmPassword: '',
   });
 
-  const loadUserProfile = async () => {
-    if (!token) return; // attendre le token
-    try {
-      const response = await fetch(`${API_URL}/api/auth/me`, {
+ // UserProfile.tsx - Modifier loadUserProfile
+const loadUserProfile = async () => {
+  if (!token) return;
+
+  try {
+    const makeRequest = async (currentToken: string): Promise<Response> => {
+      return fetch(`${API_URL}/api/auth/me`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${currentToken}`,
         },
         credentials: 'include',
       });
-      if (response.ok) {
-        const profile = await response.json();
-        setFormData({
-          firstName: profile.firstName || user?.firstName || '',
-          lastName: profile.lastName || user?.lastName || '',
-          email: profile.email || user?.email || '',
-          telephone: profile.phone || profile.telephone || user?.telephone || '',
-        });
-      } else if (response.status === 401) {
-        // Tenter un rafraîchissement du token puis relancer une fois
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const retry = await fetch(`${API_URL}/api/auth/me`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-            credentials: 'include',
-          });
-          if (retry.ok) {
-            const profile = await retry.json();
-            setFormData({
-              firstName: profile.firstName || user?.firstName || '',
-              lastName: profile.lastName || user?.lastName || '',
-              email: profile.email || user?.email || '',
-              telephone: profile.phone || profile.telephone || user?.telephone || '',
-            });
-            return;
-          }
+    };
+
+    if (!token) {
+      throw new Error('Token non disponible');
+    }
+
+    let response = await makeRequest(token);
+
+    // Si token expiré, rafraîchir et réessayer
+    if (response.status === 401) {
+      const refreshed = await refreshToken();
+      if (refreshed) {
+        const newToken = localStorage.getItem('token');
+        if (newToken) {
+          response = await makeRequest(newToken);
+        } else {
+          throw new Error('Token non disponible après rafraîchissement');
         }
-        // Si on arrive ici, on est toujours non autorisé: déconnecter proprement
-        logout('/', true);
-        setFormData(prev => ({
-          ...prev,
-          telephone: user?.telephone || prev.telephone || ''
-        }));
-      } else if (user) {
+      } else {
+        throw new Error('Session expirée');
+      }
+    }
+
+    if (response.ok) {
+      const profile = await response.json();
+      setFormData({
+        firstName: profile.firstName || user?.firstName || '',
+        lastName: profile.lastName || user?.lastName || '',
+        email: profile.email || user?.email || '',
+        telephone: profile.phone || profile.telephone || user?.telephone || '',
+      });
+    } else {
+      // Si autre erreur, utiliser les données du contexte
+      if (user) {
         setFormData({
           firstName: user.firstName || '',
           lastName: user.lastName || '',
@@ -102,10 +104,25 @@ const UserProfile: React.FC = () => {
           telephone: user.telephone || '',
         });
       }
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (error) {
+    console.error('❌ Erreur chargement profil:', error);
+    
+    if (error instanceof Error && error.message.includes('Session expirée')) {
+      logout('/', true);
+    } else if (user) {
+      // Fallback aux données du contexte
+      setFormData({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        telephone: user.telephone || '',
+      });
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Charger les données utilisateur
   useEffect(() => {
@@ -127,7 +144,8 @@ const UserProfile: React.FC = () => {
     setPasswordData(prev => ({ ...prev, [name]: value }));
   };
 
- const handleProfileSubmit = async (e: React.FormEvent) => {
+ // UserProfile.tsx - Modifier la fonction handleProfileSubmit
+const handleProfileSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   
   if (!token) {
@@ -137,31 +155,11 @@ const UserProfile: React.FC = () => {
   }
 
   try {
-    // première tentative
-    let response = await fetch(`${API_URL}/api/users/profile/me`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        email: formData.email,
-        telephone: formData.telephone,
-      }),
-    });
-
-    if (!response.ok && response.status === 401) {
-      const refreshed = await refreshToken();
-      if (!refreshed) {
-        toast.error('Session expirée. Veuillez vous reconnecter.');
-        logout('/', true);
-        return;
-      }
-      response = await fetch(`${API_URL}/api/users/profile/me`, {
+    const makeRequest = async (currentToken: string): Promise<Response> => {
+      return fetch(`${API_URL}/api/users/profile/me`, {
         method: 'PATCH',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${currentToken}`,
           'Content-Type': 'application/json',
         },
         credentials: 'include',
@@ -170,6 +168,32 @@ const UserProfile: React.FC = () => {
           telephone: formData.telephone,
         }),
       });
+    };
+
+    if (!token) {
+      throw new Error('Token non disponible');
+    }
+
+    // Première tentative avec le token actuel
+    let response = await makeRequest(token);
+
+    // Si token expiré, rafraîchir et réessayer
+    if (response.status === 401) {
+      console.log('🔄 Token expiré, tentative de rafraîchissement...');
+      const refreshed = await refreshToken();
+      
+      if (refreshed) {
+        // Récupérer le nouveau token
+        const newToken = localStorage.getItem('token');
+        if (newToken) {
+          console.log('✅ Nouveau token, réessai de la requête...');
+          response = await makeRequest(newToken);
+        } else {
+          throw new Error('Token non disponible après rafraîchissement');
+        }
+      } else {
+        throw new Error('Session expirée. Veuillez vous reconnecter.');
+      }
     }
 
     if (!response.ok) {
@@ -187,12 +211,27 @@ const UserProfile: React.FC = () => {
     toast.success('Profil mis à jour avec succès');
     setIsEditing(false);
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : 'Erreur lors de la mise à jour');
+    console.error('❌ Erreur mise à jour profil:', error);
+    
+    if (error instanceof Error && (
+      error.message.includes('Session expirée') || 
+      error.message.includes('Token invalide')
+    )) {
+      toast.error('Session expirée. Redirection...');
+      setTimeout(() => logout('/connexion'), 2000);
+    } else {
+      toast.error(error instanceof Error ? error.message : 'Erreur lors de la mise à jour');
+    }
   }
 };
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!token) {
+      toast.error('Vous devez être connecté pour effectuer cette action');
+      return;
+    }
     
     try {
       if (passwordData.newPassword !== passwordData.confirmPassword) {
@@ -205,17 +244,36 @@ const UserProfile: React.FC = () => {
         return;
       }
 
-      const response = await fetch(`${API_URL}/api/auth/update-password`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          currentPassword: passwordData.currentPassword,
-          newPassword: passwordData.newPassword,
-        }),
-      });
+      const makeRequest = async (currentToken: string): Promise<Response> => {
+        return fetch(`${API_URL}/api/auth/update-password`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${currentToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            currentPassword: passwordData.currentPassword,
+            newPassword: passwordData.newPassword,
+          }),
+        });
+      };
+
+      let response = await makeRequest(token);
+
+      // Si token expiré, rafraîchir et réessayer
+      if (response.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const newToken = localStorage.getItem('token');
+          if (newToken) {
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error('Token non disponible après rafraîchissement');
+          }
+        } else {
+          throw new Error('Session expirée. Veuillez vous reconnecter.');
+        }
+      }
 
       if (!response.ok) {
         const error = await response.json();
@@ -230,7 +288,17 @@ const UserProfile: React.FC = () => {
         confirmPassword: '',
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erreur lors de la mise à jour du mot de passe');
+      console.error('❌ Erreur mise à jour mot de passe:', error);
+      
+      if (error instanceof Error && (
+        error.message.includes('Session expirée') || 
+        error.message.includes('Token invalide')
+      )) {
+        toast.error('Session expirée. Redirection...');
+        setTimeout(() => logout('/connexion'), 2000);
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Erreur lors de la mise à jour du mot de passe');
+      }
     }
   };
 
