@@ -1,9 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../utils/AuthContext';
-
-
-
 import { toast } from 'react-toastify';
+import { 
+  Calendar, 
+  CheckCircle, 
+  Clock, 
+  Eye, 
+  FileText, 
+  Home, 
+  Play, 
+  XCircle, 
+  User, 
+  MapPin,
+  ChevronRight,
+  BarChart3,
+  RefreshCw,
+  History
+} from 'lucide-react';
 
 interface Procedure {
   _id: string;
@@ -11,372 +25,548 @@ interface Procedure {
   nom: string;
   email: string;
   destination: string;
-  statut: 'En cours' | 'Terminée' | 'Annulée' | 'Refusée';
+  statut: 'En cours' | 'Refusée' | 'Annulée' | 'Terminée';
   steps: Array<{
     nom: string;
-    statut: string;
+    statut: 'En attente' | 'En cours' | 'Refusé' | 'Terminé';
+    raisonRefus?: string;
     dateMaj: string;
   }>;
+  rendezVousId?: {
+    _id: string;
+    date: string;
+    time: string;
+    status: string;
+  };
   createdAt: string;
+  updatedAt: string;
   progress: number;
+  currentStep: any;
 }
 
-interface ProcedureStats {
-  total: number;
-  inProgress: number;
-  completed: number;
-  cancelled: number;
-}
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
-const AdminProcedures: React.FC = () => {
-  const { user, token } = useAuth();
+const UserProcedure: React.FC = () => {
+  const { user, token, refreshToken } = useAuth();
   const [procedures, setProcedures] = useState<Procedure[]>([]);
-  const [stats, setStats] = useState<ProcedureStats>({
-    total: 0,
-    inProgress: 0,
-    completed: 0,
-    cancelled: 0
-  });
   const [loading, setLoading] = useState(true);
-  const [cancellingProcedure, setCancellingProcedure] = useState<string | null>(null);
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-  const VITE_API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const getStatusInfo = (status: string) => {
+    switch (status) {
+      case 'En cours':
+        return { 
+          label: 'En cours', 
+          color: 'bg-blue-100 text-blue-800 border-blue-200', 
+          icon: <Play className='w-4 h-4' /> 
+        };
+      case 'Terminée':
+        return { 
+          label: 'Terminée', 
+          color: 'bg-green-100 text-green-800 border-green-200', 
+          icon: <CheckCircle className='w-4 h-4' /> 
+        };
+      case 'Refusée':
+        return { 
+          label: 'Refusée', 
+          color: 'bg-red-100 text-red-800 border-red-200', 
+          icon: <XCircle className='w-4 h-4' /> 
+        };
+      case 'Annulée':
+        return { 
+          label: 'Annulée', 
+          color: 'bg-yellow-100 text-yellow-800 border-yellow-200', 
+          icon: <XCircle className='w-4 h-4' /> 
+        };
+      default:
+        return { 
+          label: 'Inconnue', 
+          color: 'bg-gray-100 text-gray-800 border-gray-200', 
+          icon: <Eye className='w-4 h-4' /> 
+        };
+    }
+  };
 
-  useEffect(() => {
-    fetchUserProcedures();
-  }, [user]);
+  const getStepStatusInfo = (status: string) => {
+    switch (status) {
+      case 'En attente':
+        return { color: 'bg-gray-100 text-gray-800', icon: Clock };
+      case 'En cours':
+        return { color: 'bg-blue-100 text-blue-800', icon: Play };
+      case 'Terminé':
+        return { color: 'bg-green-100 text-green-800', icon: CheckCircle };
+      case 'Refusé':
+        return { color: 'bg-red-100 text-red-800', icon: XCircle };
+      default:
+        return { color: 'bg-gray-100 text-gray-800', icon: Clock };
+    }
+  };
 
-  const fetchUserProcedures = async () => {
-    if (!user?.email) return;
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('fr-FR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
 
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('fr-FR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const fetchProcedures = useCallback(async () => {
+    if (!user?.email || !token) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await fetch(`${VITE_API_URL}/api/procedures/user/${user.email}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+      const makeRequest = async (currentToken: string): Promise<Response> => {
+        return fetch(`${API_URL}/api/procedures/user?page=1&limit=50`, {
+          headers: { 
+            'Authorization': `Bearer ${currentToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      };
+
+      let response = await makeRequest(token);
+
+      // Si token expiré, rafraîchir et réessayer
+      if (response.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const newToken = localStorage.getItem('token');
+          if (newToken) {
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error('Token non disponible après rafraîchissement');
+          }
+        } else {
+          throw new Error('Session expirée. Veuillez vous reconnecter.');
         }
-      });
+      }
 
       if (!response.ok) {
-        throw new Error('Erreur lors de la récupération des procédures');
+        if (response.status === 404) {
+          // Aucune procédure trouvée - ce n'est pas une erreur
+          setProcedures([]);
+          return;
+        }
+        throw new Error('Erreur lors du chargement de vos procédures');
       }
 
       const data = await response.json();
       setProcedures(data.data || []);
-      calculateStats(data.data || []);
+      
     } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Impossible de charger vos procédures');
+      console.error('Erreur fetchProcedures:', error);
+      if (error instanceof Error && !error.message.includes('404')) {
+        toast.error(error.message || 'Erreur lors du chargement des procédures');
+      }
     } finally {
       setLoading(false);
     }
+  }, [user?.email, token, refreshToken]);
+
+  useEffect(() => {
+    fetchProcedures();
+  }, [fetchProcedures]);
+
+  const stats = {
+    inProgress: procedures.filter(p => p.statut === 'En cours').length,
+    completed: procedures.filter(p => p.statut === 'Terminée').length,
+    cancelled: procedures.filter(p => p.statut === 'Annulée').length,
+    rejected: procedures.filter(p => p.statut === 'Refusée').length,
+    total: procedures.length
   };
 
-  const calculateStats = (proceduresList: Procedure[]) => {
-    const statsData: ProcedureStats = {
-      total: proceduresList.length,
-      inProgress: proceduresList.filter(p => p.statut === 'En cours').length,
-      completed: proceduresList.filter(p => p.statut === 'Terminée').length,
-      cancelled: proceduresList.filter(p => p.statut === 'Annulée').length
-    };
-    setStats(statsData);
+  const handleRefresh = () => {
+    fetchProcedures();
   };
 
-  const handleCancelClick = (procedure: Procedure) => {
+  const handleViewDetails = (procedure: Procedure) => {
     setSelectedProcedure(procedure);
-    setShowCancelConfirm(true);
+    setShowDetailsModal(true);
   };
 
-  const confirmCancel = async () => {
-    if (!selectedProcedure) return;
-
-    try {
-      setCancellingProcedure(selectedProcedure._id);
-      
-      const response = await fetch(`${VITE_API_URL}/api/procedures/${selectedProcedure._id}/cancel`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          email: user?.email,
-          reason: 'Annulée par l\'utilisateur'
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de l\'annulation');
-      }
-
-      toast.success('Procédure annulée avec succès');
-      await fetchUserProcedures(); // Recharger les données
-    } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur lors de l\'annulation de la procédure');
-    } finally {
-      setCancellingProcedure(null);
-      setShowCancelConfirm(false);
-      setSelectedProcedure(null);
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'En cours': return 'bg-sky-100 text-sky-800 border-sky-200';
-      case 'Terminée': return 'bg-green-100 text-green-800 border-green-200';
-      case 'Annulée': return 'bg-red-100 text-red-800 border-red-200';
-      case 'Refusée': return 'bg-orange-100 text-orange-800 border-orange-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  const getStepStatus = (steps: any[]) => {
-    const currentStep = steps.find(step => step.statut === 'En cours');
-    return currentStep ? currentStep.nom : 'Terminé';
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-sky-50 to-blue-100 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="animate-pulse">
-            <div className="h-8 bg-sky-200 rounded w-1/4 mb-8"></div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="bg-white rounded-lg shadow p-6">
-                  <div className="h-4 bg-sky-200 rounded w-1/2 mb-2"></div>
-                  <div className="h-6 bg-sky-200 rounded w-1/4"></div>
+  return (
+    <div className='min-h-screen bg-gradient-to-br from-slate-50 to-blue-50'>
+      {/* Navigation utilisateur améliorée */}
+      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center space-x-4 md:space-x-8">
+              <Link 
+                to="/" 
+                className="flex items-center text-sky-600 hover:text-sky-700 transition-colors group"
+              >
+                <div className="p-2 bg-sky-100 rounded-lg group-hover:bg-sky-200 transition-colors">
+                  <Home className="w-5 h-5" />
                 </div>
-              ))}
+                <span className="ml-2 font-medium hidden sm:inline">Accueil</span>
+              </Link>
+              
+              <nav className="flex space-x-1 md:space-x-2">
+                {[
+                  { to: '/user-profile', icon: User, label: 'Profil' },
+                  { to: '/user-rendez-vous', icon: Calendar, label: 'Rendez-vous' },
+                  { to: '/user-procedure', icon: FileText, label: 'Procédures', active: true },
+                  { to: '/user-historique', icon: History, label: 'Historique' }
+                ].map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={`flex items-center px-3 py-2 rounded-xl transition-all duration-200 ${
+                      item.active 
+                        ? 'bg-sky-500 text-white shadow-lg shadow-sky-200' 
+                        : 'text-slate-600 hover:text-sky-600 hover:bg-sky-50'
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline text-sm font-medium">{item.label}</span>
+                  </Link>
+                ))}
+              </nav>
             </div>
-            <div className="bg-white rounded-lg shadow">
-              <div className="h-64 bg-sky-200 rounded"></div>
-            </div>
+            
+            <button
+              onClick={handleRefresh}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white text-slate-700 rounded-xl border border-slate-300 hover:bg-slate-50 transition-colors font-medium shadow-sm"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <span className="hidden xs:inline">Actualiser</span>
+            </button>
           </div>
         </div>
       </div>
-    );
-  }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 to-blue-100 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        {/* En-tête */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-sky-900 mb-2">
-            Mes Procédures
-          </h1>
-          <p className="text-sky-700">
-            Suivez l'avancement de vos procédures en cours
-          </p>
-        </div>
-
-        {/* Cartes de statistiques */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow-lg border border-sky-100 p-6">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-sky-100 text-sky-600 mr-4">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-sky-600">Total</p>
-                <p className="text-2xl font-bold text-sky-900">{stats.total}</p>
-              </div>
+      <div className='py-8 px-4 sm:px-6 lg:px-8'>
+        <div className='max-w-7xl mx-auto'>
+          {/* En-tête amélioré */}
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-sky-100 rounded-2xl mb-4">
+              <FileText className="w-8 h-8 text-sky-600" />
             </div>
+            <h1 className='text-3xl md:text-4xl font-bold text-slate-800 mb-3'>Mes Procédures</h1>
+            <p className='text-lg text-slate-600 max-w-2xl mx-auto'>
+              Suivez l'avancement de vos procédures d'admission à l'étranger
+            </p>
           </div>
 
-          <div className="bg-white rounded-lg shadow-lg border border-sky-100 p-6">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-sky-100 text-sky-600 mr-4">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-sky-600">En cours</p>
-                <p className="text-2xl font-bold text-sky-900">{stats.inProgress}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-lg border border-green-100 p-6">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-green-100 text-green-600 mr-4">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-green-600">Terminées</p>
-                <p className="text-2xl font-bold text-green-900">{stats.completed}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-lg border border-red-100 p-6">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-red-100 text-red-600 mr-4">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-red-600">Annulées</p>
-                <p className="text-2xl font-bold text-red-900">{stats.cancelled}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Liste des procédures en cours */}
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="px-6 py-4 border-b border-sky-100">
-            <h2 className="text-xl font-semibold text-sky-900">
-              Procédures en cours ({stats.inProgress})
-            </h2>
-          </div>
-
-          <div className="divide-y divide-sky-100">
-            {procedures
-              .filter(procedure => procedure.statut === 'En cours')
-              .map((procedure) => (
-                <div key={procedure._id} className="p-6 hover:bg-sky-50 transition-colors">
-                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-lg font-semibold text-sky-900">
-                          {procedure.prenom} {procedure.nom}
-                        </h3>
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(procedure.statut)}`}>
-                          {procedure.statut}
-                        </span>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-sky-700">
-                        <div>
-                          <span className="font-medium">Destination:</span>{' '}
-                          {procedure.destination}
-                        </div>
-                        <div>
-                          <span className="font-medium">Étape actuelle:</span>{' '}
-                          {getStepStatus(procedure.steps)}
-                        </div>
-                        <div>
-                          <span className="font-medium">Progression:</span>{' '}
-                          {procedure.progress}%
-                        </div>
-                      </div>
-
-                      {/* Barre de progression */}
-                      <div className="mt-4">
-                        <div className="flex justify-between text-sm text-sky-700 mb-1">
-                          <span>Avancement</span>
-                          <span>{procedure.progress}%</span>
-                        </div>
-                        <div className="w-full bg-sky-200 rounded-full h-2">
-                          <div 
-                            className="bg-sky-600 h-2 rounded-full transition-all duration-500"
-                            style={{ width: `${procedure.progress}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 lg:mt-0 lg:ml-6">
-                      <button
-                        onClick={() => handleCancelClick(procedure)}
-                        disabled={cancellingProcedure === procedure._id}
-                        className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {cancellingProcedure === procedure._id ? (
-                          <>
-                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-red-700" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Annulation...
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                            Annuler
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
+          {/* Cartes statistiques améliorées */}
+          <div className='grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8'>
+            <div className='bg-white rounded-2xl p-6 shadow-sm border border-slate-200'>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className='text-sm font-medium text-slate-600'>Total</p>
+                  <p className='text-2xl font-bold text-slate-800 mt-1'>{stats.total}</p>
                 </div>
-              ))}
-            
-            {procedures.filter(procedure => procedure.statut === 'En cours').length === 0 && (
-              <div className="p-12 text-center">
-                <svg className="mx-auto h-12 w-12 text-sky-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <h3 className="mt-4 text-lg font-medium text-sky-900">Aucune procédure en cours</h3>
-                <p className="mt-2 text-sm text-sky-600">
-                  Vous n'avez actuellement aucune procédure en cours de traitement.
+                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <BarChart3 className="w-5 h-5 text-blue-600" />
+                </div>
+              </div>
+            </div>
+
+            <div className='bg-white rounded-2xl p-6 shadow-sm border border-slate-200'>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className='text-sm font-medium text-slate-600'>En cours</p>
+                  <p className='text-2xl font-bold text-slate-800 mt-1'>{stats.inProgress}</p>
+                </div>
+                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <Play className="w-5 h-5 text-blue-600" />
+                </div>
+              </div>
+            </div>
+
+            <div className='bg-white rounded-2xl p-6 shadow-sm border border-slate-200'>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className='text-sm font-medium text-slate-600'>Terminées</p>
+                  <p className='text-2xl font-bold text-slate-800 mt-1'>{stats.completed}</p>
+                </div>
+                <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                </div>
+              </div>
+            </div>
+
+            <div className='bg-white rounded-2xl p-6 shadow-sm border border-slate-200'>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className='text-sm font-medium text-slate-600'>Annulées</p>
+                  <p className='text-2xl font-bold text-slate-800 mt-1'>{stats.cancelled}</p>
+                </div>
+                <div className="w-10 h-10 bg-yellow-100 rounded-xl flex items-center justify-center">
+                  <XCircle className="w-5 h-5 text-yellow-600" />
+                </div>
+              </div>
+            </div>
+
+            <div className='bg-white rounded-2xl p-6 shadow-sm border border-slate-200'>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className='text-sm font-medium text-slate-600'>Refusées</p>
+                  <p className='text-2xl font-bold text-slate-800 mt-1'>{stats.rejected}</p>
+                </div>
+                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+                  <XCircle className="w-5 h-5 text-red-600" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Carte principale améliorée */}
+          <div className='bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200'>
+            <div className="px-6 py-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-blue-50">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                <div>
+                  <h2 className='text-2xl font-bold text-slate-800'>Vos procédures</h2>
+                  <p className='text-slate-600 mt-1'>Consultez le détail de chaque procédure</p>
+                </div>
+                <div className="text-sm text-slate-600">
+                  {stats.total} procédure{stats.total > 1 ? 's' : ''} au total
+                </div>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className='flex justify-center py-16'>
+                <div className="flex flex-col items-center gap-4">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
+                  <p className="text-slate-600">Chargement de vos procédures...</p>
+                </div>
+              </div>
+            ) : procedures.length === 0 ? (
+              <div className='text-center py-16 px-6'>
+                <div className="mx-auto w-20 h-20 flex items-center justify-center rounded-2xl bg-slate-100 text-slate-400 mb-6">
+                  <FileText className="w-10 h-10" />
+                </div>
+                <h3 className='text-2xl font-bold text-slate-800 mb-3'>Aucune procédure en cours</h3>
+                <p className='text-slate-600 mb-8 max-w-md mx-auto'>
+                  Vous n'avez pas encore de procédures d'admission. 
+                  Prenez un rendez-vous pour commencer votre projet d'études à l'étranger.
                 </p>
+                <Link
+                  to="/rendez-vous"
+                  className="inline-flex items-center gap-2 px-8 py-3.5 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl hover:from-sky-600 hover:to-blue-700 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl hover:scale-105"
+                >
+                  <Calendar className="w-5 h-5" />
+                  Prendre un rendez-vous
+                </Link>
+              </div>
+            ) : (
+              <div className='divide-y divide-slate-100'>
+                {procedures.map((procedure) => {
+                  const statusInfo = getStatusInfo(procedure.statut);
+                  return (
+                    <div key={procedure._id} className='p-6 hover:bg-slate-50/50 transition-colors group'>
+                      <div className='flex flex-col lg:flex-row lg:items-start justify-between gap-4'>
+                        <div className='flex-1'>
+                          <div className='flex flex-col sm:flex-row sm:items-center gap-3 mb-3'>
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 bg-sky-100 rounded-xl flex items-center justify-center">
+                                <MapPin className="w-6 h-6 text-sky-600" />
+                              </div>
+                              <div>
+                                <h3 className='text-xl font-bold text-slate-800'>
+                                  {procedure.destination}
+                                </h3>
+                                <p className='text-slate-600 text-sm'>
+                                  Créée le {formatDate(procedure.createdAt)}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            <div className="flex flex-wrap gap-2">
+                              <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border ${statusInfo.color}`}>
+                                {statusInfo.icon}
+                                <span>{statusInfo.label}</span>
+                              </span>
+                              
+                              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-full text-sm font-medium">
+                                <div className="w-2 h-2 bg-sky-500 rounded-full"></div>
+                                <span>Progression: {procedure.progress}%</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Barre de progression */}
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
+                              <span>Avancement de votre procédure</span>
+                              <span>{procedure.progress}% complété</span>
+                            </div>
+                            <div className="w-full bg-slate-200 rounded-full h-2">
+                              <div 
+                                className="bg-gradient-to-r from-sky-500 to-blue-600 h-2 rounded-full transition-all duration-1000"
+                                style={{ width: `${procedure.progress}%` }}
+                              ></div>
+                            </div>
+                          </div>
+
+                          {/* Étapes rapides */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {procedure.steps.slice(0, 3).map((step, index) => {
+                              const stepConfig = getStepStatusInfo(step.statut);
+                              const StepIcon = stepConfig.icon;
+                              return (
+                                <div key={index} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${stepConfig.color}`}>
+                                    <StepIcon className="w-4 h-4" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-slate-800 truncate">
+                                      {step.nom}
+                                    </p>
+                                    <p className="text-xs text-slate-600">
+                                      {step.statut}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        
+                        <div className="flex lg:flex-col gap-2 lg:items-end">
+                          <button
+                            onClick={() => handleViewDetails(procedure)}
+                            className="flex items-center gap-2 px-4 py-2.5 text-sky-600 hover:bg-sky-50 rounded-xl border border-sky-200 transition-colors font-medium"
+                          >
+                            <Eye className="w-4 h-4" />
+                            <span>Détails</span>
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                          
+                          <div className="text-xs text-slate-500 text-right">
+                            Dernière mise à jour: {formatDateTime(procedure.updatedAt)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Popover de confirmation d'annulation */}
-      {showCancelConfirm && selectedProcedure && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center mb-4">
-              <div className="flex-shrink-0">
-                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
+      {/* Modal de détails */}
+      {showDetailsModal && selectedProcedure && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 shadow-2xl animate-scale-in max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-6">
+              <h2 className="text-2xl font-bold text-slate-800">Détails de la procédure</h2>
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg transition-colors"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="grid md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <h3 className="font-semibold text-slate-800 mb-3">Informations générales</h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm text-slate-600">Destination</p>
+                    <p className="font-medium text-slate-800">{selectedProcedure.destination}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-600">Statut global</p>
+                    <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium ${getStatusInfo(selectedProcedure.statut).color}`}>
+                      {getStatusInfo(selectedProcedure.statut).icon}
+                      <span>{selectedProcedure.statut}</span>
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-600">Progression</p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <div className="flex-1 bg-slate-200 rounded-full h-2">
+                        <div 
+                          className="bg-gradient-to-r from-sky-500 to-blue-600 h-2 rounded-full transition-all duration-500"
+                          style={{ width: `${selectedProcedure.progress}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-sm font-medium text-slate-700">
+                        {selectedProcedure.progress}%
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="ml-4">
-                <h3 className="text-lg font-medium text-gray-900">
-                  Confirmer l'annulation
-                </h3>
-                <p className="text-sm text-gray-500">
-                  Êtes-vous sûr de vouloir annuler cette procédure ?
-                </p>
+              
+              <div>
+                <h3 className="font-semibold text-slate-800 mb-3">Dates importantes</h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm text-slate-600">Date de création</p>
+                    <p className="font-medium text-slate-800">
+                      {formatDateTime(selectedProcedure.createdAt)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-600">Dernière mise à jour</p>
+                    <p className="font-medium text-slate-800">
+                      {formatDateTime(selectedProcedure.updatedAt)}
+                    </p>
+                  </div>
+                  {selectedProcedure.rendezVousId && (
+                    <div>
+                      <p className="text-sm text-slate-600">Rendez-vous associé</p>
+                      <p className="font-medium text-slate-800">
+                        {formatDate(selectedProcedure.rendezVousId.date)} à {selectedProcedure.rendezVousId.time}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-
-            <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
-              <p className="text-sm text-red-800">
-                <strong>Procédure:</strong> {selectedProcedure.prenom} {selectedProcedure.nom} - {selectedProcedure.destination}
-              </p>
-            </div>
-
-            <p className="text-sm text-gray-600 mb-6">
-              Cette action est irréversible. Une fois annulée, la procédure ne pourra pas être reprise.
-            </p>
-
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => setShowCancelConfirm(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-colors"
-              >
-                Retour
-              </button>
-              <button
-                onClick={confirmCancel}
-                disabled={cancellingProcedure !== null}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {cancellingProcedure ? 'Annulation...' : 'Confirmer l\'annulation'}
-              </button>
+            
+            <div>
+              <h3 className="font-semibold text-slate-800 mb-4">Étapes détaillées</h3>
+              <div className="space-y-3">
+                {selectedProcedure.steps.map((step, index) => {
+                  const stepConfig = getStepStatusInfo(step.statut);
+                  const StepIcon = stepConfig.icon;
+                  return (
+                    <div key={index} className="flex items-center justify-between p-4 bg-white rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stepConfig.color}`}>
+                          <StepIcon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-slate-800">{step.nom}</p>
+                          <p className="text-sm text-slate-600">
+                            Dernière mise à jour: {formatDateTime(step.dateMaj)}
+                          </p>
+                          {step.raisonRefus && (
+                            <p className="text-sm text-red-600 mt-1">
+                              <strong>Raison du refus:</strong> {step.raisonRefus}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${stepConfig.color}`}>
+                        {step.statut}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -385,4 +575,4 @@ const AdminProcedures: React.FC = () => {
   );
 };
 
-export default AdminProcedures;
+export default UserProcedure;

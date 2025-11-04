@@ -258,48 +258,50 @@ const About = () => {
         </article>
 
         {/* Services avec grid optimisée mobile-first */}
-        <section 
-          className='mt-8 sm:mt-12 md:mt-16'
-          aria-labelledby="services-heading"
-        >
-          <h2 id="services-heading" className='sr-only'>
-            Nos services principaux
-          </h2>
-          
-          <div className='grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6'>
-            {services.map((service, index) => (
-              <article
-                key={index}
-                data-aos='fade-up'
-                data-aos-duration='500'
-                data-aos-delay={Math.min(150 + index * 80, 400)}
-                className='flex flex-col p-3 sm:p-4 md:p-6 bg-white shadow-xs hover:shadow-sm transition-all duration-300 rounded-lg border border-gray-50 hover:border-sky-100 active:scale-98'
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-                role="article"
-                aria-label={`Service: ${service.title}`}
-              >
-                <div className='flex justify-center mb-2 sm:mb-3 md:mb-4'>
-                  <div 
-                    className='flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-sky-100 text-sky-600 rounded-lg'
-                    aria-hidden="true"
-                  >
-                    {service.icon}
-                  </div>
-                </div>
-
-                <div className='flex-1 text-center'>
-                  <h3 className='text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-1 sm:mb-2 leading-tight'>
-                    {service.title}
-                  </h3>
-                  <p className='text-gray-600 text-xs sm:text-sm leading-relaxed'>
-                    {service.text}
-                  </p>
-                </div>
-              </article>
-            ))}
+      <section 
+  className='mt-8 sm:mt-12 md:mt-16'
+  aria-labelledby="services-heading"
+>
+  <h2 id="services-heading" className='sr-only'>
+    Nos services principaux
+  </h2>
+  
+  <div className='grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6'>
+    {services.map((service, index) => (
+      <article
+        key={index}
+        data-aos='fade-up'
+        data-aos-duration='500'
+        data-aos-delay={Math.min(150 + index * 80, 400)}
+        className='flex flex-col p-3 sm:p-4 md:p-6 bg-white shadow-xs hover:shadow-sm transition-all duration-300 rounded-lg border border-gray-50 hover:border-sky-100 active:scale-98'
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        role="article"
+        aria-label={`Service: ${service.title}`}
+      >
+        {/* Icône au-dessus à gauche */}
+        <div className='flex justify-start mb-2 sm:mb-3 md:mb-4'>
+          <div 
+            className='flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-sky-100 text-sky-600 rounded-full'
+            aria-hidden="true"
+          >
+            {service.icon}
           </div>
-        </section>
+        </div>
+
+        {/* Contenu texte aligné à gauche */}
+        <div className='flex-1'>
+          <h3 className='text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-1 sm:mb-2 leading-tight text-left'>
+            {service.title}
+          </h3>
+          <p className='text-gray-600 text-xs sm:text-sm leading-relaxed text-left'>
+            {service.text}
+          </p>
+        </div>
+      </article>
+    ))}
+  </div>
+</section>
       </section>
     </div>
   );

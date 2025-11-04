@@ -7,13 +7,11 @@ import {
   Clock, 
   MapPin, 
   User, 
-  Mail, 
-  Phone, 
-  GraduationCap, 
-  BookOpen,
   ChevronDown,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  XCircle,
+  CheckCircle
 } from 'lucide-react';
 
 interface AvailableDate {
@@ -65,7 +63,6 @@ const RendezVous: React.FC = () => {
   const [showDestinationOther, setShowDestinationOther] = useState(false);
   const [showFiliereOther, setShowFiliereOther] = useState(false);
 
-  // Destinations et filières prédéfinies
   const destinations = [
     'Algérie', 'Turquie', 'Maroc', 'France', 'Tunisie', 'Chine', 'Russie', 'Autre'
   ];
@@ -78,7 +75,6 @@ const RendezVous: React.FC = () => {
     'Informatique', 'Médecine', 'Ingénierie', 'Droit', 'Commerce', 'Autre'
   ];
 
-  // Pré-remplir avec les données utilisateur si connecté
   useEffect(() => {
     if (isAuthenticated && user) {
       setFormData(prev => ({
@@ -91,7 +87,6 @@ const RendezVous: React.FC = () => {
     }
   }, [isAuthenticated, user]);
 
-  // Pré-sélectionner la destination depuis la navigation
   useEffect(() => {
     const preselectedDestination = location.state?.preselectedDestination;
     if (preselectedDestination && destinations.includes(preselectedDestination)) {
@@ -99,13 +94,11 @@ const RendezVous: React.FC = () => {
     }
   }, [location.state]);
 
-  // Gérer les changements de destination et filière
   useEffect(() => {
     setShowDestinationOther(formData.destination === 'Autre');
     setShowFiliereOther(formData.filiere === 'Autre');
   }, [formData.destination, formData.filiere]);
 
-  // Vérifier si une date est passée
   const isDatePassed = (dateStr: string): boolean => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -114,7 +107,6 @@ const RendezVous: React.FC = () => {
     return selectedDate < today;
   };
 
-  // Vérifier si un créneau horaire est passé pour aujourd'hui
   const isTimePassed = (timeStr: string, dateStr: string): boolean => {
     const today = new Date();
     const selectedDate = new Date(dateStr);
@@ -130,12 +122,14 @@ const RendezVous: React.FC = () => {
     return selectedTime < today;
   };
 
-  // Charger les dates disponibles
   const fetchAvailableDates = useCallback(async () => {
     setLoadingDates(true);
     try {
       const response = await fetch(`${API_URL}/api/rendezvous/available-dates`);
-      if (!response.ok) throw new Error('Erreur lors du chargement des dates');
+      
+      if (!response.ok) {
+        throw new Error(`Erreur ${response.status} lors du chargement des dates`);
+      }
       
       const dates = await response.json();
       
@@ -149,20 +143,24 @@ const RendezVous: React.FC = () => {
         available: true 
       })));
     } catch (error) {
+      console.error('Erreur chargement dates:', error);
       toast.error('Impossible de charger les dates disponibles');
     } finally {
       setLoadingDates(false);
     }
   }, []);
 
-  // Charger les créneaux horaires disponibles
   const fetchAvailableSlots = useCallback(async (date: string) => {
     if (!date) return;
     
     setLoadingSlots(true);
+    setAvailableSlots([]);
     try {
       const response = await fetch(`${API_URL}/api/rendezvous/available-slots?date=${date}`);
-      if (!response.ok) throw new Error('Erreur lors du chargement des créneaux');
+      
+      if (!response.ok) {
+        throw new Error(`Erreur ${response.status} lors du chargement des créneaux`);
+      }
       
       let slots = await response.json();
       
@@ -172,18 +170,17 @@ const RendezVous: React.FC = () => {
       
       setAvailableSlots(slots);
     } catch (error) {
+      console.error('Erreur chargement créneaux:', error);
       toast.error('Impossible de charger les créneaux disponibles');
     } finally {
       setLoadingSlots(false);
     }
   }, []);
 
-  // Initialiser les dates disponibles
   useEffect(() => {
     fetchAvailableDates();
   }, [fetchAvailableDates]);
 
-  // Charger les créneaux quand la date change
   useEffect(() => {
     if (formData.date) {
       fetchAvailableSlots(formData.date);
@@ -195,22 +192,31 @@ const RendezVous: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const validatePhone = (phone: string): boolean => {
+    const cleanedPhone = phone.replace(/[\s\-\(\)\+]/g, '');
+    return /^\d{10,}$/.test(cleanedPhone);
+  };
+
   const formatDateDisplay = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('fr-FR', {
-      weekday: 'short',
+      weekday: 'long',
       day: 'numeric',
-      month: 'short'
+      month: 'long'
     });
   };
 
   const isStepValid = (step: number): boolean => {
     switch (step) {
       case 1:
-        return !!(formData.firstName && formData.lastName && formData.email && formData.telephone);
+        return !!(formData.firstName.trim() && 
+                 formData.lastName.trim() && 
+                 formData.email.trim() && 
+                 formData.telephone.trim() && 
+                 validatePhone(formData.telephone));
       case 2:
-        if (formData.destination === 'Autre' && !formData.destinationAutre) return false;
-        if (formData.filiere === 'Autre' && !formData.filiereAutre) return false;
+        if (formData.destination === 'Autre' && !formData.destinationAutre.trim()) return false;
+        if (formData.filiere === 'Autre' && !formData.filiereAutre.trim()) return false;
         return !!(formData.destination && formData.niveauEtude && formData.filiere);
       case 3:
         return !!(formData.date && formData.time);
@@ -222,6 +228,8 @@ const RendezVous: React.FC = () => {
   const nextStep = () => {
     if (isStepValid(currentStep)) {
       setCurrentStep(prev => Math.min(prev + 1, 3));
+    } else {
+      toast.error('Veuillez remplir tous les champs obligatoires');
     }
   };
 
@@ -238,10 +246,14 @@ const RendezVous: React.FC = () => {
       return;
     }
 
-    // 🔥 CORRECTION: Vérifier que token n'est pas null
     if (!token) {
       toast.error('Session invalide. Veuillez vous reconnecter.');
-      logout('/connexion');
+      logout();
+      return;
+    }
+
+    if (!validatePhone(formData.telephone)) {
+      toast.error('Veuillez entrer un numéro de téléphone valide (au moins 10 chiffres)');
       return;
     }
 
@@ -249,10 +261,24 @@ const RendezVous: React.FC = () => {
 
     try {
       const submitData = {
-        ...formData,
-        destination: formData.destination === 'Autre' ? formData.destinationAutre : formData.destination,
-        filiere: formData.filiere === 'Autre' ? formData.filiereAutre : formData.filiere
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim(),
+        telephone: formData.telephone.trim(),
+        destination: formData.destination,
+        destinationAutre: formData.destination === 'Autre' ? formData.destinationAutre.trim() : undefined,
+        niveauEtude: formData.niveauEtude,
+        filiere: formData.filiere,
+        filiereAutre: formData.filiere === 'Autre' ? formData.filiereAutre.trim() : undefined,
+        date: formData.date,
+        time: formData.time
       };
+
+      Object.keys(submitData).forEach(key => {
+        if (submitData[key as keyof typeof submitData] === undefined) {
+          delete submitData[key as keyof typeof submitData];
+        }
+      });
 
       const makeRequest = async (currentToken: string): Promise<Response> => {
         return fetch(`${API_URL}/api/rendezvous`, {
@@ -267,7 +293,6 @@ const RendezVous: React.FC = () => {
 
       let response = await makeRequest(token);
 
-      // Si token expiré, rafraîchir et réessayer
       if (response.status === 401) {
         const refreshed = await refreshToken();
         if (refreshed) {
@@ -283,19 +308,44 @@ const RendezVous: React.FC = () => {
       }
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors de la création du rendez-vous');
+        let errorMessage = 'Erreur lors de la création du rendez-vous';
+        
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+          
+          if (errorData.errors) {
+            const validationErrors = Object.values(errorData.errors).join(', ');
+            errorMessage = `Erreur de validation: ${validationErrors}`;
+          }
+        } catch {
+          errorMessage = `Erreur serveur: ${response.status} ${response.statusText}`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
+      const result = await response.json();
+      
       toast.success('Rendez-vous créé avec succès !');
-      setTimeout(() => navigate('/user-rendez-vous'), 1500);
+      
+      setTimeout(() => {
+        navigate('/user-rendez-vous');
+      }, 1500);
 
     } catch (error: any) {
-      console.error('❌ Erreur création rendez-vous:', error);
+      console.error('Erreur création rendez-vous:', error);
       
       if (error.message.includes('Session expirée') || error.message.includes('Token invalide')) {
         toast.error('Session expirée. Redirection...');
-        setTimeout(() => logout('/connexion'), 1500);
+        setTimeout(() => logout(), 1500);
+      } else if (error.message.includes('déjà un rendez-vous en cours')) {
+        toast.error('Vous avez déjà un rendez-vous en cours. Annulez-le avant d\'en prendre un nouveau.');
+      } else if (error.message.includes('créneau horaire') || error.message.includes('disponible')) {
+        toast.error('Ce créneau n\'est plus disponible. Veuillez choisir un autre horaire.');
+        if (formData.date) {
+          fetchAvailableSlots(formData.date);
+        }
       } else {
         toast.error(error.message || 'Erreur lors de la création du rendez-vous');
       }
@@ -304,91 +354,119 @@ const RendezVous: React.FC = () => {
     }
   };
 
-  // Étape 1: Informations personnelles
   const renderStep1 = () => (
-    <div className="space-y-4">
-      <div className="text-center mb-6">
+    <div className="space-y-6">
+      <div className="text-center">
         <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-3">
           <User className="w-6 h-6 text-sky-600" />
         </div>
-        <h3 className="text-xl font-bold text-gray-900">Informations Personnelles</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-2">Informations Personnelles</h3>
+        <p className="text-gray-600 text-sm">Renseignez vos coordonnées</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Prénom *</label>
+          <label htmlFor="firstName" className="text-sm font-medium text-gray-700">Prénom *</label>
           <input
+            id="firstName"
             type="text"
             name="firstName"
             value={formData.firstName}
             onChange={handleInputChange}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
+            minLength={2}
+            maxLength={50}
+            autoComplete="given-name"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 transition-all"
             placeholder="Votre prénom"
           />
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Nom *</label>
+          <label htmlFor="lastName" className="text-sm font-medium text-gray-700">Nom *</label>
           <input
+            id="lastName"
             type="text"
             name="lastName"
             value={formData.lastName}
             onChange={handleInputChange}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
+            minLength={2}
+            maxLength={50}
+            autoComplete="family-name"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 transition-all"
             placeholder="Votre nom"
           />
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Email *</label>
+          <label htmlFor="email" className="text-sm font-medium text-gray-700">Email *</label>
           <input
+            id="email"
             type="email"
             name="email"
             value={formData.email}
             onChange={handleInputChange}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
+            autoComplete="email"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 transition-all"
             placeholder="votre@email.com"
           />
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Téléphone *</label>
+          <label htmlFor="telephone" className="text-sm font-medium text-gray-700">Téléphone *</label>
           <input
+            id="telephone"
             type="tel"
             name="telephone"
             value={formData.telephone}
             onChange={handleInputChange}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
+            pattern="[0-9\s\+\-\(\)]{10,}"
+            title="Numéro de téléphone valide (ex: +33 1 23 45 67 89 ou 0123456789)"
+            autoComplete="tel"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 transition-all"
             placeholder="+33 1 23 45 67 89"
           />
+          {formData.telephone && !validatePhone(formData.telephone) && (
+            <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+              <XCircle className="w-3 h-3" />
+              Format invalide. Au moins 10 chiffres requis.
+            </p>
+          )}
+          {formData.telephone && validatePhone(formData.telephone) && (
+            <p className="text-green-500 text-xs mt-1 flex items-center gap-1">
+              <CheckCircle className="w-3 h-3" />
+              Format valide
+            </p>
+          )}
         </div>
       </div>
     </div>
   );
 
-  // Étape 2: Destination et études
   const renderStep2 = () => (
-    <div className="space-y-4">
-      <div className="text-center mb-6">
+    <div className="space-y-6">
+      <div className="text-center">
         <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-3">
           <MapPin className="w-6 h-6 text-sky-600" />
         </div>
-        <h3 className="text-xl font-bold text-gray-900">Destination et Parcours</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-2">Destination et Parcours</h3>
+        <p className="text-gray-600 text-sm">Choisissez votre destination et parcours académique</p>
       </div>
 
       <div className="space-y-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Destination *</label>
+          <label htmlFor="destination" className="text-sm font-medium text-gray-700">Destination *</label>
           <select
+            id="destination"
             name="destination"
             value={formData.destination}
             onChange={handleInputChange}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none  transition-colors appearance-none bg-white"
+            autoComplete="country"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 transition-all appearance-none bg-white"
           >
             <option value="">Choisir une destination</option>
             {destinations.map(dest => (
@@ -399,27 +477,33 @@ const RendezVous: React.FC = () => {
 
         {showDestinationOther && (
           <div className="space-y-2 animate-fade-in">
-            <label className="text-sm font-medium text-gray-700">Autre destination *</label>
+            <label htmlFor="destinationAutre" className="text-sm font-medium text-gray-700">Précisez votre destination *</label>
             <input
+              id="destinationAutre"
               type="text"
               name="destinationAutre"
               value={formData.destinationAutre}
               onChange={handleInputChange}
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
-              placeholder="Ex: Canada, Belgique..."
+              minLength={2}
+              maxLength={100}
+              autoComplete="off"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 transition-all"
+              placeholder="Ex: Canada, Belgique, Suisse..."
             />
           </div>
         )}
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Niveau d'étude *</label>
+          <label htmlFor="niveauEtude" className="text-sm font-medium text-gray-700">Niveau d'étude *</label>
           <select
+            id="niveauEtude"
             name="niveauEtude"
             value={formData.niveauEtude}
             onChange={handleInputChange}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none  transition-colors appearance-none bg-white"
+            autoComplete="education-level"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 transition-all appearance-none bg-white"
           >
             <option value="">Choisir votre niveau</option>
             {niveauxEtude.map(niveau => (
@@ -429,13 +513,15 @@ const RendezVous: React.FC = () => {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Filière *</label>
+          <label htmlFor="filiere" className="text-sm font-medium text-gray-700">Filière *</label>
           <select
+            id="filiere"
             name="filiere"
             value={formData.filiere}
             onChange={handleInputChange}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors appearance-none bg-white"
+            autoComplete="organization-title"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 transition-all appearance-none bg-white"
           >
             <option value="">Choisir une filière</option>
             {filieres.map(filiere => (
@@ -446,15 +532,19 @@ const RendezVous: React.FC = () => {
 
         {showFiliereOther && (
           <div className="space-y-2 animate-fade-in">
-            <label className="text-sm font-medium text-gray-700">Autre filière *</label>
+            <label htmlFor="filiereAutre" className="text-sm font-medium text-gray-700">Précisez votre filière *</label>
             <input
+              id="filiereAutre"
               type="text"
               name="filiereAutre"
               value={formData.filiereAutre}
               onChange={handleInputChange}
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:border-sky-400 focus:border-sky-500 focus:ring-none focus:outline-none transition-colors"
-              placeholder="Ex: Architecture, Design..."
+              minLength={2}
+              maxLength={100}
+              autoComplete="off"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 transition-all"
+              placeholder="Ex: Architecture, Design, Psychologie..."
             />
           </div>
         )}
@@ -462,85 +552,157 @@ const RendezVous: React.FC = () => {
     </div>
   );
 
-  // Étape 3: Date et heure
   const renderStep3 = () => (
-    <div className="space-y-4">
-      <div className="text-center mb-6">
+    <div className="space-y-6">
+      <div className="text-center">
         <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-3">
           <Calendar className="w-6 h-6 text-sky-600" />
         </div>
-        <h3 className="text-xl font-bold text-gray-900">Date et Heure</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-2">Date et Heure</h3>
+        <p className="text-gray-600 text-sm">Sélectionnez votre créneau de rendez-vous</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Dates */}
+        {/* Dates disponibles */}
         <div className="space-y-3">
-          <label className="text-sm font-medium text-gray-700">Date *</label>
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-700">Date du rendez-vous *</label>
+            {loadingDates && (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Chargement...
+              </div>
+            )}
+          </div>
           
           {loadingDates ? (
-            <div className="flex justify-center py-6">
-              <Loader2 className="w-5 h-5 animate-spin text-sky-600" />
+            <div className="flex justify-center py-8">
+              <div className="flex items-center gap-3 text-gray-500">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Chargement des dates...</span>
+              </div>
+            </div>
+          ) : availableDates.length === 0 ? (
+            <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+              <Calendar className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Aucune date disponible</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto">
-              {availableDates.map(({ date, available }) => (
-                <button
-                  key={date}
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, date, time: '' }))}
-                  disabled={!available}
-                  className={`p-3 text-left rounded-lg border transition-colors ${
-                    formData.date === date
-                      ? 'border-sky-500 bg-sky-50 text-sky-700'
-                      : available
-                      ? 'border-gray-300 hover:border-sky-400 hover:bg-sky-25'
-                      : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  <div className="font-medium text-sm">{formatDateDisplay(date)}</div>
-                </button>
-              ))}
+            <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto p-1">
+              {availableDates.map(({ date, available }) => {
+                const isSelected = formData.date === date;
+                const isToday = date === new Date().toISOString().split('T')[0];
+                const isDisabled = !available || isDatePassed(date);
+                
+                return (
+                  <button
+                    key={date}
+                    type="button"
+                    onClick={() => {
+                      if (!isDisabled) {
+                        setFormData(prev => ({ ...prev, date, time: '' }));
+                      }
+                    }}
+                    disabled={isDisabled}
+                    className={`p-3 text-left rounded-lg border transition-all ${
+                      isSelected
+                        ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sm'
+                        : isDisabled
+                        ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
+                        : 'border-gray-200 hover:border-sky-300 hover:bg-sky-25 text-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium text-sm">
+                          {formatDateDisplay(date)}
+                        </div>
+                        {isToday && (
+                          <div className="text-xs text-sky-600 font-medium mt-1">Aujourd'hui</div>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <CheckCircle2 className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Heures */}
+        {/* Créneaux horaires */}
         <div className="space-y-3">
-          <label className="text-sm font-medium text-gray-700">Heure *</label>
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-700">Heure du rendez-vous *</label>
+            {loadingSlots && (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Chargement...
+              </div>
+            )}
+          </div>
           
           {!formData.date ? (
-            <div className="text-center py-6 text-gray-500">
-              <Calendar className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Choisir une date d'abord</p>
+            <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+              <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Veuillez sélectionner une date</p>
             </div>
           ) : loadingSlots ? (
-            <div className="flex justify-center py-6">
-              <Loader2 className="w-5 h-5 animate-spin text-sky-600" />
+            <div className="flex justify-center py-8">
+              <div className="flex items-center gap-3 text-gray-500">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Chargement des créneaux...</span>
+              </div>
             </div>
           ) : availableSlots.length === 0 ? (
-            <div className="text-center py-6 text-gray-500">
+            <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
               <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">Aucun créneau disponible</p>
+              <p className="text-xs mt-1">Veuillez choisir une autre date</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-1">
               {availableSlots.map(slot => {
+                const isSelected = formData.time === slot;
                 const isTimeDisabled = isTimePassed(slot, formData.date);
+                const isSoon = (() => {
+                  if (formData.date !== new Date().toISOString().split('T')[0]) return false;
+                  const [hours, minutes] = slot.split(':').map(Number);
+                  const slotTime = new Date();
+                  slotTime.setHours(hours, minutes, 0, 0);
+                  const now = new Date();
+                  const diffMs = slotTime.getTime() - now.getTime();
+                  return diffMs < 2 * 60 * 60 * 1000;
+                })();
+
                 return (
                   <button
                     key={slot}
                     type="button"
                     onClick={() => !isTimeDisabled && setFormData(prev => ({ ...prev, time: slot }))}
                     disabled={isTimeDisabled}
-                    className={`p-2 text-center rounded-lg border transition-colors text-sm ${
-                      formData.time === slot
-                        ? 'border-sky-500 bg-sky-50 text-sky-700 font-medium'
+                    className={`p-3 text-center rounded-lg border transition-all ${
+                      isSelected
+                        ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sm font-medium'
                         : isTimeDisabled
-                        ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'border-gray-300 hover:border-sky-400 hover:bg-sky-25'
-                    }`}
+                        ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
+                        : 'border-gray-200 hover:border-sky-300 hover:bg-sky-25 text-gray-700'
+                    } ${isSoon ? 'ring-1 ring-orange-300' : ''}`}
                   >
-                    {slot}
+                    <div className="flex flex-col items-center">
+                      <span className="text-sm font-medium">{slot}</span>
+                      {isTimeDisabled && (
+                        <span className="text-xs text-red-500 mt-1">Passé</span>
+                      )}
+                      {isSoon && !isTimeDisabled && (
+                        <span className="text-xs text-orange-600 mt-1 font-medium">Bientôt</span>
+                      )}
+                      {isSelected && !isTimeDisabled && (
+                        <CheckCircle2 className="w-3 h-3 mt-1 text-sky-500" />
+                      )}
+                    </div>
                   </button>
                 );
               })}
@@ -549,47 +711,58 @@ const RendezVous: React.FC = () => {
         </div>
       </div>
 
-      {/* Récapitulatif */}
+      {/* Récapitulatif sélection */}
       {formData.date && formData.time && (
-        <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 animate-fade-in">
-          <h4 className="font-semibold text-sky-800 text-sm mb-1">Rendez-vous sélectionné :</h4>
-          <div className="flex items-center gap-2 text-sky-700 text-sm">
-            <Calendar className="w-4 h-4" />
-            <span>{formatDateDisplay(formData.date)}</span>
-            <Clock className="w-4 h-4 ml-2" />
-            <span>{formData.time}</span>
+        <div className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-lg p-4 animate-fade-in">
+          <h4 className="font-bold text-sky-800 text-base mb-2 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4" />
+            Rendez-vous sélectionné
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <div className="flex items-center gap-2 text-sky-700">
+              <Calendar className="w-3 h-3 flex-shrink-0" />
+              <span className="font-medium">{formatDateDisplay(formData.date)}</span>
+            </div>
+            <div className="flex items-center gap-2 text-sky-700">
+              <Clock className="w-3 h-3 flex-shrink-0" />
+              <span className="font-medium">{formData.time}</span>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 
-  // Indicateur de progression compact
   const ProgressSteps = () => (
-    <div className="flex justify-between items-center mb-6 relative">
+    <div className="flex justify-between items-center mb-6 relative max-w-md mx-auto">
       {[1, 2, 3].map(step => (
         <div key={step} className="flex flex-col items-center z-10">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-colors ${
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
             step === currentStep
-              ? 'border-sky-500 bg-sky-500 text-white'
+              ? 'border-sky-500 bg-sky-500 text-white shadow-lg scale-110'
               : step < currentStep
-              ? 'border-sky-500 bg-sky-500 text-white'
+              ? 'border-green-500 bg-green-500 text-white'
               : 'border-gray-300 bg-white text-gray-400'
           }`}>
             {step < currentStep ? (
               <CheckCircle2 className="w-4 h-4" />
             ) : (
-              <span className="text-xs font-medium">{step}</span>
+              <span className="text-xs font-bold">{step}</span>
             )}
           </div>
-          <span className={`text-xs mt-1 ${step === currentStep ? 'text-sky-600' : 'text-gray-500'}`}>
-            Étape {step}
+          <span className={`text-xs mt-1 font-medium ${
+            step === currentStep ? 'text-sky-600' : 
+            step < currentStep ? 'text-green-600' : 'text-gray-500'
+          }`}>
+            {step === 1 && 'Infos'}
+            {step === 2 && 'Destination'}
+            {step === 3 && 'Horaire'}
           </span>
         </div>
       ))}
       <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200 -z-10">
         <div 
-          className="h-full bg-sky-500 transition-all duration-500"
+          className="h-full bg-sky-500 transition-all duration-500 rounded-full"
           style={{ width: `${((currentStep - 1) / 2) * 100}%` }}
         />
       </div>
@@ -597,89 +770,94 @@ const RendezVous: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 py-6">
-      <div className="container mx-auto px-4 max-w-2xl">
-        {/* En-tête compact */}
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 py-6 px-4">
+      <div className="max-w-2xl mx-auto">
+        {/* En-tête */}
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-sky-600 mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
             Prendre un Rendez-vous
           </h1>
-          <p className="text-gray-600 text-sm">
+          <p className="text-gray-600 text-sm sm:text-base">
             Consultation personnalisée pour vos études à l'étranger
           </p>
         </div>
 
-        {/* Carte principale compacte */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-4 border-b border-gray-200">
+        {/* Carte principale */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-sky-50 to-blue-50">
             <ProgressSteps />
           </div>
 
-          <form onSubmit={handleSubmit} className="p-4">
-            <div className="min-h-[300px]">
+          <form onSubmit={handleSubmit} className="p-4 sm:p-6">
+            <div className="min-h-[350px]">
               {currentStep === 1 && renderStep1()}
               {currentStep === 2 && renderStep2()}
               {currentStep === 3 && renderStep3()}
             </div>
 
-            {/* Boutons de navigation compacts */}
-            <div className="flex justify-between pt-4 border-t border-gray-200">
+            {/* Boutons de navigation */}
+            <div className="flex justify-between items-center pt-4 border-t border-gray-200">
               <button
                 type="button"
                 onClick={prevStep}
                 disabled={currentStep === 1}
-                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:border-sky-400 hover:bg-sky-50 disabled:opacity-50 transition-colors text-sm"
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:border-sky-400 hover:bg-sky-50 disabled:opacity-50 transition-all font-medium"
               >
                 Précédent
               </button>
 
-              {currentStep < 3 ? (
-                <button
-                  type="button"
-                  onClick={nextStep}
-                  disabled={!isStepValid(currentStep)}
-                  className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 disabled:opacity-50 transition-colors text-sm flex items-center gap-1"
-                >
-                  Suivant
-                  <ChevronDown className="w-3 h-3 rotate-270" />
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={!isStepValid(3) || loading}
-                  className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 disabled:opacity-50 transition-colors text-sm flex items-center gap-1"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      Création...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-3 h-3" />
-                      Confirmer
-                    </>
-                  )}
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {currentStep < 3 ? (
+                  <button
+                    type="button"
+                    onClick={nextStep}
+                    disabled={!isStepValid(currentStep)}
+                    className="px-5 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 disabled:opacity-50 transition-all font-medium flex items-center gap-2 text-sm"
+                  >
+                    Suivant
+                    <ChevronDown className="w-3 h-3 rotate-270" />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!isStepValid(3) || loading}
+                    className="px-5 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition-all font-medium flex items-center gap-2 text-sm"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Création...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-3 h-3" />
+                        Confirmer
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           </form>
         </div>
 
-        {/* Informations supplémentaires compactes */}
+        {/* Informations supplémentaires */}
         <div className="mt-4 text-center text-xs text-gray-500">
-          <p>Confirmation par email • Horaires : lun-ven, 9h-16h30</p>
+          <p>• Confirmation immédiate par email • Horaires disponibles : du lundi au vendredi, 9h-16h30 •</p>
         </div>
       </div>
 
       {/* Styles d'animation */}
       <style>{`
         @keyframes fade-in {
-          from { opacity: 0; transform: translateY(5px); }
+          from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
         }
         .animate-fade-in {
-          animation: fade-in 0.2s ease-out;
+          animation: fade-in 0.3s ease-out;
+        }
+        .rotate-270 {
+          transform: rotate(-90deg);
         }
       `}</style>
     </div>

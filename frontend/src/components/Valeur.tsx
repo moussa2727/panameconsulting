@@ -46,7 +46,7 @@ const Valeur = () => {
                      key={index}
                      className='group relative p-6 bg-white rounded-lg shadow-sm hover:shadow-md transition-all duration-300 border-b-4 border-transparent hover:border-sky-500'
                   >
-                     <div className='absolute -top-5 left-6 p-2 bg-sky-400 text-white rounded group-hover:bg-sky-500 transition-colors duration-300'>
+                     <div className='absolute -top-5 left-6 p-2 bg-sky-400 text-white rounded-full group-hover:bg-sky-500 transition-colors duration-300'>
                         {valeur.icon}
                      </div>
                      <h3 className='mt-6 text-xl font-semibold text-sky-600 group-hover:text-sky-500 transition-colors duration-300'>

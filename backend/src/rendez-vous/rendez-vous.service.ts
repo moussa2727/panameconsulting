@@ -80,6 +80,9 @@ export class RendezvousService {
     }
 
     async create(createDto: CreateRendezvousDto): Promise<Rendezvous> {
+        this.logger.log(`Tentative de création de rendez-vous pour: ${createDto.email}`);
+        
+        // Vérifier s'il y a déjà un rendez-vous en cours pour cet email
         const pendingCount = await this.rendezvousModel.countDocuments({
             email: createDto.email,
             status: { $in: ['En attente', 'Confirmé'] }
@@ -89,14 +92,17 @@ export class RendezvousService {
             throw new BadRequestException('Vous avez déjà un rendez-vous en cours');
         }
 
+        // Valider les contraintes de date et heure
         this.validateDateConstraints(createDto.date);
         this.validateTimeSlot(createDto.time);
 
+        // Vérifier la disponibilité du créneau
         const isAvailable = await this.isSlotAvailable(createDto.date, createDto.time);
         if (!isAvailable) {
             throw new BadRequestException('Ce créneau horaire n\'est pas disponible');
         }
 
+        // Vérifier le nombre maximum de créneaux par jour
         const dayCount = await this.rendezvousModel.countDocuments({ 
             date: createDto.date,
             status: { $ne: 'Annulé' }
@@ -106,13 +112,23 @@ export class RendezvousService {
             throw new BadRequestException('Tous les créneaux sont complets pour cette date');
         }
 
+        // Créer le rendez-vous
         const created = new this.rendezvousModel({
             ...createDto,
             status: 'En attente'
         });
         
         const saved = await created.save();
-        await this.notificationService.sendConfirmation(saved);
+        this.logger.log(`Rendez-vous créé avec succès: ${saved._id} pour ${saved.email}`);
+
+        // Envoyer la notification de confirmation
+        try {
+            await this.notificationService.sendConfirmation(saved);
+            this.logger.log(`Notification de confirmation envoyée à: ${saved.email}`);
+        } catch (error) {
+            this.logger.error(`Erreur lors de l'envoi de la notification: ${error.message}`);
+            // Ne pas bloquer la création si l'envoi d'email échoue
+        }
         
         return saved;
     }
@@ -183,6 +199,8 @@ export class RendezvousService {
     }
 
     async update(id: string, updateDto: UpdateRendezvousDto, user?: any): Promise<Rendezvous | null> {
+        this.logger.log(`Tentative de mise à jour du rendez-vous: ${id}`);
+        
         const existing = await this.rendezvousModel.findById(id);
         if (!existing) {
             throw new NotFoundException('Rendez-vous non trouvé');
@@ -219,7 +237,15 @@ export class RendezvousService {
             ).exec();
 
             if (updated) {
-                await this.notificationService.sendConfirmation(updated);
+                this.logger.log(`Rendez-vous mis à jour: ${id}`);
+                
+                // Envoyer la notification de confirmation
+                try {
+                    await this.notificationService.sendConfirmation(updated);
+                    this.logger.log(`Notification de mise à jour envoyée à: ${updated.email}`);
+                } catch (error) {
+                    this.logger.error(`Erreur lors de l'envoi de la notification: ${error.message}`);
+                }
             }
 
             return updated;
@@ -260,6 +286,8 @@ export class RendezvousService {
     }
 
     async updateStatus(id: string, status: string, avisAdmin?: string, user?: any): Promise<Rendezvous | null> {
+        this.logger.log(`Tentative de mise à jour du statut: ${id} -> ${status} (avis: ${avisAdmin})`);
+        
         if (!user || user.role !== UserRole.ADMIN) {
             throw new ForbiddenException('Accès refusé : vous devez être administrateur');
         }
@@ -288,18 +316,41 @@ export class RendezvousService {
             throw new NotFoundException('Rendez-vous non trouvé');
         }
 
-        await this.notificationService.sendStatusUpdate(updated);
+        this.logger.log(`Statut mis à jour avec succès: ${id}`);
 
+        // Envoyer la notification de mise à jour du statut
+        try {
+            await this.notificationService.sendStatusUpdate(updated);
+            this.logger.log(`Notification de statut envoyée à: ${updated.email}`);
+        } catch (error) {
+            this.logger.error(`Erreur lors de l'envoi de la notification de statut: ${error.message}`);
+        }
+
+        // Créer une procédure uniquement si le statut est "Terminé" et l'avis est "Favorable"
         if (avisAdmin === 'Favorable' && status === 'Terminé') {
+            this.logger.log(`Tentative de création de procédure pour: ${updated.email}`);
+            
             const existingProcedure = await this.procedureService.findByEmailAndStatus(
                 updated.email,
                 'En cours'
             );
 
             if (!existingProcedure) {
-                const newProcedure = await this.procedureService.createFromRendezvous(updated);
-                await this.notificationService.sendProcedureCreation(newProcedure, updated);
+                try {
+                    const newProcedure = await this.procedureService.createFromRendezvous(updated);
+                    this.logger.log(`Procédure créée avec succès: ${newProcedure._id}`);
+                    
+                    // Envoyer la notification de création de procédure
+                    await this.notificationService.sendProcedureCreation(newProcedure, updated);
+                    this.logger.log(`Notification de procédure envoyée à: ${updated.email}`);
+                } catch (error) {
+                    this.logger.error(`Erreur lors de la création de la procédure: ${error.message}`);
+                }
+            } else {
+                this.logger.log(`Procédure déjà existante pour: ${updated.email}`);
             }
+        } else if (status === 'Terminé' && avisAdmin === 'Défavorable') {
+            this.logger.log(`Avis défavorable - Aucune procédure créée pour: ${updated.email}`);
         }
 
         return updated;
@@ -485,6 +536,8 @@ export class RendezvousService {
             date: today,
             status: 'Confirmé'
         });
+
+        this.logger.log(`Envoi des rappels pour ${rendezvous.length} rendez-vous aujourd'hui`);
 
         for (const rdv of rendezvous) {
             try {

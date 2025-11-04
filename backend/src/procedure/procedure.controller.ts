@@ -17,7 +17,7 @@ import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
 import { RolesGuard } from '../shared/guards/roles.guard';
 import { Roles } from '../shared/decorators/roles.decorator';
 import { ProcedureService } from './procedure.service';
-import { CreateProcedureDto } from './dto/create-procedure.dto';
+import { CreateProcedureDto, CancelProcedureDto } from './dto/create-procedure.dto';
 import { UpdateProcedureDto } from './dto/update-procedure.dto';
 import { UpdateStepDto } from './dto/update-step.dto';
 import { UserRole } from '../schemas/user.schema';
@@ -54,19 +54,23 @@ export class ProcedureController {
         return this.procedureService.findAll(page, limit, email);
     }
 
-    @Get('user')
-    @UseGuards(JwtAuthGuard)
-    @ApiOperation({ summary: 'Récupérer les procédures de l\'utilisateur connecté' })
-    @ApiQuery({ name: 'page', required: false, type: Number })
-    @ApiQuery({ name: 'limit', required: false, type: Number })
-    async getUserProcedures(
-        @Req() req: any,
-        @Query('page') page: number = 1,
-        @Query('limit') limit: number = 10
-    ) {
-        return this.procedureService.findAll(page, limit, req.user.email);
+@Get('user')
+@UseGuards(JwtAuthGuard)
+@ApiOperation({ summary: 'Récupérer les procédures de l\'utilisateur connecté' })
+@ApiQuery({ name: 'page', required: false, type: Number })
+@ApiQuery({ name: 'limit', required: false, type: Number })
+async getUserProcedures(
+    @Req() req: any,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10
+) {
+    // Vérifier que l'utilisateur est bien authentifié
+    if (!req.user || !req.user.email) {
+        throw new ForbiddenException('Utilisateur non authentifié');
     }
-
+    
+    return this.procedureService.findAll(page, limit, req.user.email);
+}
     @Get('stats')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)
@@ -120,12 +124,15 @@ export class ProcedureController {
     @Put(':id/cancel')
     @UseGuards(JwtAuthGuard)
     @ApiOperation({ summary: 'Annuler sa propre procédure' })
+    @ApiResponse({ status: 200, description: 'Procédure annulée avec succès' })
+    @ApiResponse({ status: 403, description: 'Non autorisé à annuler cette procédure' })
+    @ApiResponse({ status: 404, description: 'Procédure non trouvée' })
     async cancelOwn(
         @Param('id') id: string,
         @Req() req: any,
-        @Body('reason') reason?: string
+        @Body() cancelDto: CancelProcedureDto
     ) {
-        return this.procedureService.cancelByUser(id, req.user.email, reason);
+        return this.procedureService.cancelByUser(id, req.user.email, cancelDto.reason);
     }
 
     @Delete(':id')

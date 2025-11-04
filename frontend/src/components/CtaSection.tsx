@@ -59,10 +59,10 @@ const CtaSection: React.FC<CtaSectionProps> = ({ className }) => {
 
           {/* CTA button */}
           <div className='group relative'>
-            <div className='absolute -inset-1 bg-gradient-to-r from-sky-500 to-sky-400 blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200' />
+            <div className='absolute group-hover:opacity-100 transition duration-1000 group-hover:duration-200' />
             <Link
               to='/rendez-vous'
-              className='relative flex items-center gap-2 bg-white px-6 py-3 rounded transition-all duration-300 transform hover:scale-105 hover:shadow-xl'
+              className='relative flex items-center gap-2 bg-white px-6 py-3 rounded transition-all duration-300 transform hover:scale-105'
             >
               <span className='text-sky-600 font-semibold text-base'>
                 RENDEZ-VOUS

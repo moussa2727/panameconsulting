@@ -9,7 +9,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { 
     Procedure, 
-    ProcedureDocument, 
     ProcedureStatus, 
     StepName, 
     StepStatus 
@@ -26,7 +25,7 @@ export class ProcedureService {
 
     constructor(
         @InjectModel(Procedure.name) 
-        private procedureModel: Model<ProcedureDocument>,
+        private procedureModel: Model<Procedure>,
         private notificationService: NotificationService
     ) {}
 
@@ -40,7 +39,19 @@ export class ProcedureService {
                 throw new BadRequestException('Une procédure existe déjà pour ce rendez-vous');
             }
 
-            const createdProcedure = new this.procedureModel(createDto);
+            const steps = Object.values(StepName).map((nom, index) => ({
+                nom,
+                statut: index === 0 ? StepStatus.IN_PROGRESS : StepStatus.PENDING,
+                dateMaj: new Date()
+            }));
+
+            const createdProcedure = new this.procedureModel({
+                ...createDto,
+                statut: ProcedureStatus.IN_PROGRESS,
+                steps,
+                isDeleted: false
+            });
+
             const savedProcedure = await createdProcedure.save();
 
             this.logger.log(`Nouvelle procédure créée pour ${savedProcedure.email}`);
@@ -142,7 +153,7 @@ export class ProcedureService {
                 throw new NotFoundException('Procédure non trouvée');
             }
 
-            const stepIndex = procedure.steps.findIndex(s => s.nom === stepName);
+            const stepIndex = procedure.steps.findIndex((s: { nom: string; }) => s.nom === stepName);
             if (stepIndex === -1) {
                 throw new NotFoundException('Étape non trouvée');
             }
@@ -208,22 +219,34 @@ export class ProcedureService {
             if (!procedure) {
                 throw new NotFoundException('Procédure non trouvée');
             }
-
+    
             if (procedure.email !== email.toLowerCase()) {
                 throw new ForbiddenException('Vous ne pouvez annuler que vos propres procédures');
             }
-
+    
             if (procedure.statut === ProcedureStatus.COMPLETED || procedure.statut === ProcedureStatus.CANCELLED) {
                 throw new BadRequestException('Procédure déjà finalisée');
             }
-
+    
             procedure.isDeleted = true;
             procedure.deletedAt = new Date();
             procedure.deletionReason = reason || 'Annulée par l\'utilisateur';
             procedure.statut = ProcedureStatus.CANCELLED;
-
+    
+            // Marquer toutes les étapes comme annulées
+            procedure.steps.forEach(step => {
+                if (step.statut === StepStatus.IN_PROGRESS || step.statut === StepStatus.PENDING) {
+                    step.statut = StepStatus.CANCELLED;
+                    step.dateMaj = new Date();
+                }
+            });
+    
             const savedProcedure = await procedure.save();
-            this.logger.log(`Procédure ${id} annulée par l'utilisateur`);
+            
+            // Notifier l'administrateur de l'annulation
+            await this.notificationService.sendCancellationNotification(savedProcedure);
+    
+            this.logger.log(`Procédure ${id} annulée par l'utilisateur ${email}`);
             return savedProcedure;
         } catch (error) {
             this.logger.error(`Erreur annulation procédure ${id}: ${error.message}`);
@@ -285,9 +308,10 @@ export class ProcedureService {
         totalCount: number; 
         completedCount: number;
         rejectedCount: number;
+        cancelledCount: number;
     }> {
         try {
-            const [inProgressCount, totalCount, completedCount, rejectedCount] = await Promise.all([
+            const [inProgressCount, totalCount, completedCount, rejectedCount, cancelledCount] = await Promise.all([
                 this.procedureModel.countDocuments({ 
                     statut: ProcedureStatus.IN_PROGRESS,
                     isDeleted: false 
@@ -300,10 +324,14 @@ export class ProcedureService {
                 this.procedureModel.countDocuments({ 
                     statut: ProcedureStatus.REJECTED,
                     isDeleted: false 
+                }),
+                this.procedureModel.countDocuments({ 
+                    statut: ProcedureStatus.CANCELLED,
+                    isDeleted: false 
                 })
             ]);
 
-            return { inProgressCount, totalCount, completedCount, rejectedCount };
+            return { inProgressCount, totalCount, completedCount, rejectedCount, cancelledCount };
         } catch (error) {
             this.logger.error(`Erreur récupération stats dashboard: ${error.message}`);
             throw error;

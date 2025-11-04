@@ -219,10 +219,10 @@ const Form = () => {
         <div className='bg-white rounded shadow-xl overflow-hidden'>
           <div className='flex flex-col md:flex-row'>
 
-            {/* SECTION GAUCHE - Améliorations accessibilité */}
+            {/* SECTION GAUCHE - Optimisée pour l'affichage mobile */}
             <section
               className='relative w-full md:w-1/3 text-white space-y-6 p-8 lg:p-12 
-              overflow-hidden rounded-br-[60px] md:rounded-br-none md:rounded-tl-[60px]
+              overflow-hidden
               bg-gradient-to-tr from-sky-600 via-sky-500 to-sky-400
               before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_30%_40%,rgba(255,255,255,0.2),transparent_50%)]
               before:animate-[pulse_6s_ease-in-out_infinite]
@@ -264,15 +264,18 @@ const Form = () => {
                 />
               </div>
 
-              <div className='mt-8 h-48 md:h-56 rounded-xl overflow-hidden shadow-lg' 
+              {/* Carte Google Maps optimisée pour mobile */}
+              <div className='mt-8 h-56 md:h-64 lg:h-72 overflow-hidden shadow-lg' 
                    role="application" aria-label="Carte de localisation">
                 <iframe
-                  src='https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3894.010270463331!2d-7.993864324930176!3d12.581574287699127!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xe51cf2248975979%3A0xa90fabf3b7838312!2sImmeuble%20BORE!5e0!3m2!1sfr!2sma!4v1750297669135!5m2!1sfr!2sma'
-                  className='w-full h-full'
+                  src='https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3894.010270463331!2d-7.993864324930176!3d12.581574287699127!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xe51cf2248975979%3A0xa90fabf3b7838312!2sImmeuble%20BORE!5e0!3m2!1sfr!2sma!4v1750297669135!5m2!1sfr!2sma&zoom=16&ui_controls=1&ui_maps=1'
+                  className='w-full h-full rounded'
                   loading='lazy'
                   title='Localisation Paname Consulting - Kalaban Coura, Immeuble BORE en face de l&apos;hôtel Wassulu'
                   style={{ border: 0 }}
                   aria-label='Carte interactive montrant la localisation de Paname Consulting'
+                  allowFullScreen
+                  referrerPolicy='no-referrer-when-downgrade'
                 />
               </div>
             </section>

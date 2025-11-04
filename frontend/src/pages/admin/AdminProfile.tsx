@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../utils/AuthContext';
 import { Eye, EyeOff, Shield, CheckCircle, XCircle } from 'lucide-react';
+import { Helmet } from 'react-helmet-async';
 
 // Interface pour les données de mise à jour du mot de passe
 interface UpdatePasswordData {
@@ -93,6 +94,22 @@ const AdminProfile: React.FC = () => {
   };
 
   return (
+
+    <>
+    <Helmet>
+      <title>Profil Administrateur - Paname Consulting</title>
+      <meta name="description" content="Gestion sécurisée du mot de passe administrateur" />
+      <meta name="keywords" content="Profil administrateur, mot de passe, sécurité" />
+      <meta name="author" content="Paname Consulting" />
+      <meta name="robots" content="noindex, nofollow" />
+      <meta name="googlebot" content="noindex, nofollow" />
+      <meta name="bingbot" content="noindex, nofollow" />
+      <meta name="yandexbot" content="noindex, nofollow" />
+      <meta name="duckduckbot" content="noindex, nofollow" />
+      <meta name="baidu" content="noindex, nofollow" />
+      <meta name="naver" content="noindex, nofollow" />
+      <meta name="seznam" content="noindex, nofollow" />
+      </Helmet>
     <div className="min-h-screen px-4 sm:px-6 lg:px-8">
       <div className="max-w-md mx-auto">
         {/* En-tête */}
@@ -294,7 +311,8 @@ const AdminProfile: React.FC = () => {
         </div>
       </div>
     </div>
-  );
-};
+    </>
+    );
+  }
 
 export default AdminProfile;

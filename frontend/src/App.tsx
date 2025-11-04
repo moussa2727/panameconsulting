@@ -38,6 +38,7 @@ import RequireAdmin from './utils/RequireAdmin';
 import MesRendezVous from './pages/user/MesRendezVous';
 import UserProfile from './pages/user/UserProfile';
 import UserProcedure from './pages/user/UserProcedure';
+import AdminRendezVous from './pages/admin/AdminRendez-Vous';
 
 // Layout pour les pages publiques
 const PublicLayout = ({ children }: { children: React.ReactNode }) => {
@@ -116,16 +117,14 @@ function App() {
   return (
     <ErrorBoundary>
       <Helmet>
-        <title>
-          Paname Consulting - Services d'Accompagnement Étudiant et Visa
-        </title>
+        
         <meta
           name='description'
           content='Accompagnement pour études en France, obtention de visas et services consulaires'
         />
         <meta
           name='keywords'
-          content='visa France, études France, accompagnement étudiant'
+          content='Paname Consulting, visa France, études France, accompagnement étudiant'
         />
         <meta property='og:title' content='Paname Consulting' />
         <meta property='og:type' content='website' />
@@ -215,6 +214,12 @@ function App() {
             <Route path='destinations' element={
               <Suspense fallback={<Loader />}>
                 <AdminDestinations />
+              </Suspense>
+            } />
+
+            <Route path='rendez-vous' element={
+              <Suspense fallback={<Loader />}>
+                <AdminRendezVous />
               </Suspense>
             } />
           </Route>
