@@ -21,7 +21,7 @@ import { useAuth } from '../utils/AuthContext';
 
 function Header() {
   const { user, isAuthenticated, logout, isLoading } = useAuth();
-  const [showTopBar, setShowTopBar] = useState(true);
+  const [showTopBar] = useState(true);
   const [nav, setNav] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [blinkColor, setBlinkColor] = useState('text-gray-600');
@@ -80,7 +80,7 @@ function Header() {
 
   // Animation clignotante pour "Services" - version optimisée
   useEffect(() => {
-let blinkTimeout: NodeJS.Timeout;
+let blinkTimeout: any;
     setBlinkColor('text-gray-600'); // Réinitialiser la couleur avant de commencer    
     const blink = () => {
       setBlinkColor('text-sky-400');

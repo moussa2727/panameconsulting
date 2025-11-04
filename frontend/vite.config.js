@@ -11,7 +11,7 @@ export default defineConfig({
           // Vendor chunks
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'ui-vendor': ['lucide-react', 'react-toastify'],
-          'date-vendor': ['date-fns', 'date-fns/locale/fr', 'date-fns-tz'],
+          'date-vendor': ['date-fns', 'date-fns/locale/fr'],
           // Admin chunk (lazy loaded)
           'admin': [
             './src/pages/admin/AdminDashboard.jsx',
@@ -29,9 +29,9 @@ export default defineConfig({
   optimizeDeps: {
     include: [
       'date-fns',
-      'date-fns/locale/fr',
-      'date-fns-tz'
+      'date-fns/locale/fr'
     ],
+    exclude: ['date-fns-tz'] // Exclure pour éviter les conflits
   },
   server: {
     proxy: {
@@ -41,11 +41,7 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
-      '/events': {
-        target: 'http://localhost:3000',
-        ws: true,
-        changeOrigin: true,
-      },
+      
       '/auth': {
         target: 'http://localhost:3000',
         changeOrigin: true,
