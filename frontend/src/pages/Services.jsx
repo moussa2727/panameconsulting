@@ -10,8 +10,8 @@ export default function Services() {
       <div className='flex flex-col min-h-screen w-full overflow-x-hidden touch-pan-y'>
         <Helmet>
           <title>
-            Services - Paname Consulting, Découvrez nos différents services et
-            destinations
+            Services - Accompagnement étudiant, Études à l'étranger,
+            Vacances, Demandes de visa.
           </title>
           <meta
             name='description'

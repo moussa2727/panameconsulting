@@ -258,7 +258,7 @@ let blinkTimeout: any;
           </div>
           <div className='flex items-center'>
             <span
-              className='font-semibold bg-white/20 px-3 py-1'
+              className='font-semibold bg-white/20 px-3 py-1 rounded-full'
               aria-label='Slogan de Paname Consulting: Le cap vers l excellence'
             >
               LE CAP VERS L'EXCELLENCE
@@ -288,9 +288,9 @@ let blinkTimeout: any;
                 }
               }}
             >
-              <div className='w-16 h-16 rounded'>
+              <div className='w-16 h-16 rounded shadow-md'>
                 <img
-                  src='/paname-consulting.png'
+                  src='/paname-consulting.jpg'
                   alt='Logo Paname Consulting'
                   className='w-full h-auto rounded'
                   width={64}
@@ -390,7 +390,7 @@ let blinkTimeout: any;
                 <div className='flex items-center space-x-2 ml-4'>
                   <Link
                     to='/connexion'
-                    className='flex items-center px-4 py-2 text-sky-600 hover:bg-sky-50 border border-sky-200 transition-colors duration-200 rounded'
+                    className='flex items-center px-4 py-2 text-sky-600 hover:bg-sky-50 border border-sky-200 transition-colors duration-200 rounded-full'
                     aria-label="Se connecter"
                   >
                     <LogIn className='w-5 h-5 mr-2' />
@@ -398,7 +398,7 @@ let blinkTimeout: any;
                   </Link>
                   <Link
                     to='/inscription'
-                    className='flex items-center px-4 py-2 text-white bg-sky-500 hover:bg-sky-600 transition-colors duration-200 rounded'
+                    className='flex items-center px-4 py-2 text-white bg-sky-500 hover:bg-sky-600 transition-colors duration-200 rounded-full'
                     aria-label="Créer un compte"
                   >
                     <UserPlus className='w-5 h-5 mr-2' />

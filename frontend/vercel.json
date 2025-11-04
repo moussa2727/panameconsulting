@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "name": "paname-consulting-app",
   "builds": [
     {
       "src": "package.json",
@@ -10,27 +9,10 @@
       }
     }
   ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/dist/$1"
-    }
-  ],
   "rewrites": [
     {
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
-  "build": {
-    "env": {
-      "NODE_ENV": "production"
-    }
-  },
-  "installCommand": "pnpm install",
-  "framework": "vite",
-  "outputDirectory": "dist",
-  "env": {
-    "NODE_VERSION": "18"
-  }
+  ]
 }

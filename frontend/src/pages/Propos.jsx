@@ -12,7 +12,8 @@ export default function Propos() {
       <div className='flex flex-col min-h-screen w-full overflow-x-hidden touch-pan-y'>
         <Helmet>
           <title>
-            À Propos - Paname Consulting, Apprenez en plus sur nous.
+            À Propos -  Accompagnement étudiant, Études à l'étranger,
+            Vacances, Demandes de visa.
           </title>
           <meta
             name='description'

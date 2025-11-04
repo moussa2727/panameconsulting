@@ -4,9 +4,6 @@ export interface AuthConfig {
     refreshSecret: string;
     refreshExpiresIn: string;
     maxSessions: number;
-  }
-  
-  export interface SecurityConfig {
     loginAttempts: number;
     blockDurationMinutes: number;
     passwordResetExpiry: number;
@@ -29,4 +26,7 @@ export interface AuthConfig {
     refreshSecret: getEnv('REFRESH_SECRET'),
     refreshExpiresIn: getEnv('REFRESH_EXPIRES_IN', '7d'),
     maxSessions: parseInt(getEnv('MAX_SESSIONS', '2'), 2),
+    loginAttempts: parseInt(getEnv('LOGIN_ATTEMPTS', '5'), 10),
+    blockDurationMinutes: parseInt(getEnv('BLOCK_DURATION_MINUTES', '15'), 10),
+    passwordResetExpiry: parseInt(getEnv('PASSWORD_RESET_EXPIRY', '60'), 10)
   };

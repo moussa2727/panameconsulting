@@ -164,12 +164,16 @@ async refresh(@Req() req: CustomRequest, @Body() body: any, @Res() res: Response
         };
     }
 
-    @Post('forgot-password')
-    @ApiOperation({ summary: 'Demande de réinitialisation de mot de passe' })
-    async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
-        await this.authService.sendPasswordResetEmail(forgotPasswordDto.email);
-        return { message: 'Email de réinitialisation envoyé' };
-    }
+   @Post('forgot-password')
+@ApiOperation({ summary: 'Demande de réinitialisation de mot de passe' })
+@ApiResponse({ status: 200, description: 'Email envoyé si l\'utilisateur existe' })
+@ApiResponse({ status: 400, description: 'Données invalides' })
+async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    await this.authService.sendPasswordResetEmail(forgotPasswordDto.email);
+    return { 
+        message: 'Si votre email est enregistré, vous recevrez un lien de réinitialisation' 
+    };
+}
 
     @Post('reset-password')
     @ApiOperation({ summary: 'Réinitialiser le mot de passe' })

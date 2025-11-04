@@ -39,8 +39,6 @@ export class Contact {
     @Prop()
     respondedAt?: Date;
 
-    @Prop({ type: Types.ObjectId, ref: 'User' })
-    respondedBy?: Types.ObjectId;
 }
 
 export const ContactSchema = SchemaFactory.createForClass(Contact);

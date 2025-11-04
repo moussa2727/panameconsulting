@@ -15,17 +15,19 @@ const ForgotPassword: React.FC = () => {
     setError('');
     
     if (!resetEmail) {
-      setError('Veuillez entrer votre email');
-      return;
+        setError('Veuillez entrer votre email');
+        return;
     }
     
     try {
-      await forgotPassword(resetEmail);
+        await forgotPassword(resetEmail);
+        toast.success('Si votre email est enregistré, vous recevrez un lien de réinitialisation');
+        setResetEmail(''); // Réinitialiser le champ
     } catch (err) {
-      setError('Une erreur est survenue lors de l\'envoi de l\'email');
+        toast.error('Une erreur est survenue lors de l\'envoi de l\'email');
+        setResetEmail(''); // Réinitialiser le champ
     }
-  };
-
+};
   return (
     <div className='min-h-screen flex items-center justify-center bg-gradient-to-br from-sky-50 to-sky-100 p-4'>
       <div className='w-full max-w-md'>

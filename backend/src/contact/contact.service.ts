@@ -20,23 +20,28 @@ export class ContactService {
         private notificationService: NotificationService
     ) {}
 
-    async create(createContactDto: CreateContactDto): Promise<Contact> {
+    // Dans contact.service.ts
+async create(createContactDto: CreateContactDto): Promise<Contact> {
+    try {
+       
+
+        this.logger.log(`Nouveau message de contact reçu de ${createContactDto.email}`);
+        // ENVOYER LES NOTIFICATIONS APRÈS LA SAUVEGARDE
         try {
-            const createdContact = new this.contactModel(createContactDto);
-            const savedContact = await createdContact.save();
-
-            this.logger.log(`Nouveau message de contact reçu de ${savedContact.email}`);
-
-            // Envoyer les notifications
-            await this.notificationService.sendContactNotification(savedContact);
-            await this.notificationService.sendContactConfirmation(savedContact);
-
-            return savedContact;
-        } catch (error) {
-            this.logger.error(`Erreur lors de la création du contact: ${error.message}`);
-            throw new BadRequestException('Erreur lors de l\'envoi du message');
+            await this.notificationService.sendContactNotification(createContactDto as Contact);
+            await this.notificationService.sendContactConfirmation(createContactDto as Contact);
+        } catch (notificationError) {
+            // Logger l'erreur mais ne pas faire échouer la création du contact
+            this.logger.error(`Erreur lors de l'envoi des notifications: ${notificationError.message}`);
         }
+        const createdContact = new this.contactModel(createContactDto);
+        const savedContact = await createdContact.save(); // SAUVEGARDE D'ABORD
+        return savedContact;
+    } catch (error) {
+        this.logger.error(`Erreur lors de la création du contact: ${error.message}`);
+        throw new BadRequestException('Erreur lors de l\'envoi du message');
     }
+}
 
     async findAll(
         page: number = 1,
@@ -136,7 +141,7 @@ export class ContactService {
                 throw new NotFoundException('Erreur lors de la mise à jour du message');
             }
 
-            // Envoyer la réponse par email
+            // Envoyer la réponse depuis EMAIL_USER vers contact.email
             await this.notificationService.sendContactReply(updatedContact, reply);
 
             this.logger.log(`Réponse envoyée au contact ${contact.email} par l'admin ${user.email}`);

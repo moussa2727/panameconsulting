@@ -432,34 +432,7 @@ export class AuthService {
         }
     }
 
-    // Réinitialisation de mot de passe
-    async sendPasswordResetEmail(email: string): Promise<void> {
-        try {
-            const user = await this.usersService.findByEmail(email);
-            if (!user) {
-                this.logger.warn(`Demande de réinitialisation pour email inexistant: ${email}`);
-                return;
-            }
-
-            const resetToken = crypto.randomBytes(32).toString('hex');
-            const expiresAt = new Date(Date.now() + AuthConstants.RESET_TOKEN_EXPIRATION_MS);
-
-            await this.resetTokenModel.create({
-                token: resetToken,
-                user: user._id,
-                expiresAt
-            });
-
-            const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-            await this.mailService.sendPasswordResetEmail(user.email, resetUrl);
-
-            this.logger.log(`Email de réinitialisation envoyé à ${email}`);
-        } catch (error) {
-            this.logger.error(`Erreur d'envoi d'email de réinitialisation: ${error.message}`);
-            throw error;
-        }
-    }
-
+   
     async resetPassword(token: string, newPassword: string): Promise<void> {
         try {
             const resetToken = await this.resetTokenModel.findOne({
@@ -487,7 +460,53 @@ export class AuthService {
         }
     }
 
-    // Gestion du profil
+    private getFrontendUrl(): string {
+    const nodeEnv = process.env.NODE_ENV || 'development';
+    
+    if (nodeEnv === 'production') {
+        return process.env.FRONTEND_URL || 'https://panameconsulting.com';
+    }
+    
+    // Développement
+    return process.env.FRONTEND_URL || 'http://localhost:5173';
+}
+
+    async sendPasswordResetEmail(email: string): Promise<void> {
+        try {
+            const user = await this.usersService.findByEmail(email);
+            if (!user) {
+                this.logger.warn(`Demande de réinitialisation pour email inexistant: ${email}`);
+                return;
+            }
+
+            const resetToken = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date(Date.now() + AuthConstants.RESET_TOKEN_EXPIRATION_MS);
+
+            await this.resetTokenModel.deleteMany({ 
+                user: user._id 
+            });
+
+            await this.resetTokenModel.create({
+                token: resetToken,
+                user: user._id,
+                expiresAt
+            });
+
+            const frontendUrl = this.getFrontendUrl();
+            const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+            
+            try {
+                await this.mailService.sendPasswordResetEmail(user.email, resetUrl);
+                this.logger.log(`Email de réinitialisation envoyé à ${email}`);
+            } catch (emailError) {
+                this.logger.warn(`Échec envoi email - Token pour ${email}: ${resetUrl}`);
+            }
+
+        } catch (error) {
+            this.logger.error(`Erreur lors de la demande de réinitialisation: ${error.message}`);
+        }
+    }
+
     async getProfile(userId: string): Promise<User> {
         try {
             this.logger.log(`Tentative de récupération du profil pour l'utilisateur: ${userId}`);

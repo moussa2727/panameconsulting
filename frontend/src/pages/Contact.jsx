@@ -10,7 +10,8 @@ export default function Contact() {
     <>
       <div className='flex flex-col min-h-screen w-full overflow-x-hidden touch-pan-y'>
         <Helmet>
-          <title>Contact - Paname Consulting</title>
+          <title>Contact -  Accompagnement étudiant, Études à l'étranger,
+            Vacances, Demandes de visa</title>
           <meta
             name='description'
             content="Paname Consulting est une entreprise spécialisée dans l'accompagnement étudiant pour des études à l'étranger, les vacances et voyages d'affaires réussis et les demandes de visa pour plusieurs destinations à travers le monde."
