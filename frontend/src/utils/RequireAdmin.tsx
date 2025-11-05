@@ -1,13 +1,23 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
+import { toast } from 'react-toastify';
 
 const RequireAdmin: React.FC<{ children: JSX.Element }> = ({ children }) => {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  // On attend que le chargement soit terminé
-  if (isLoading || typeof user === 'undefined') {
+  useEffect(() => {
+    // Debug pour voir l'état de l'authentification
+    console.log('RequireAdmin - État:', { 
+      isLoading, 
+      isAuthenticated, 
+      user: user ? { role: user.role, isActive: user.isActive } : 'null' 
+    });
+  }, [isLoading, isAuthenticated, user]);
+
+  // Afficher le loading seulement pendant le chargement initial
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-sky-600">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
@@ -15,11 +25,24 @@ const RequireAdmin: React.FC<{ children: JSX.Element }> = ({ children }) => {
     );
   }
 
-  // Vérification après le chargement
-   if (!user || user.role !== 'admin' || !user.isActive) {
+  // Vérification stricte après le chargement
+  if (!isAuthenticated || !user || user.role !== 'admin' || !user.isActive) {
+    console.log('RequireAdmin - Accès refusé:', { 
+      isAuthenticated, 
+      hasUser: !!user, 
+      role: user?.role, 
+      isActive: user?.isActive 
+    });
+    
+    // Afficher un message d'erreur seulement si l'utilisateur est connecté mais pas admin
+    if (isAuthenticated && user && (user.role !== 'admin' || !user.isActive)) {
+      toast.error('Accès réservé aux administrateurs actifs');
+    }
+    
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
+  console.log('RequireAdmin - Accès autorisé pour:', user.email);
   return children;
 };
 

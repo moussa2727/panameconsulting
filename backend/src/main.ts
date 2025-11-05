@@ -90,28 +90,49 @@ async function bootstrap() {
     'http://localhost:3000',
     'https://panameconsulting.com',
     'https://www.panameconsulting.com',
-    'https://panameconsulting.netlify.app',
-    'https://www.panameconsulting.netlify.app',
+    'https://panameconsulting.vercel.app',
+    'https://www.panameconsulting.vercel.app',
   ];
   const netlifyPreviewRegex = /^https?:\/\/([a-z0-9-]+--)?panameconsulting\.netlify\.app$/i;
   const localhostRegex = /^http:\/\/localhost:\d+$/i;
   const isAllowedOrigin = (o: string) =>
     allowedOrigins.includes(o) || netlifyPreviewRegex.test(o) || localhostRegex.test(o);
 
-  app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (isAllowedOrigin(origin)) return callback(null, true);
-      return callback(new Error('Not allowed by CORS'));
-    },
-    methods: ['GET', 'POST', 'HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'Cache-Control', 'X-Requested-With', 'X-HTTP-Method-Override'],
-    credentials: true,
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
-    maxAge: 86400,
-    exposedHeaders: ['set-cookie'],
-  });
+// CORS Configuration - CORRIGÉ
+app.enableCors({
+  origin: (origin, callback) => {
+   
+    // Fonction de vérification d'origine
+    const allowedOrigins = ['http://localhost:5173','http://localhost:3000','https://panameconsulting.com','https://www.panameconsulting.com','https://panameconsulting.vercel.app','https://www.panameconsulting.vercel.app'];
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.warn(`🚫 CORS bloqué pour l'origine: ${origin}`);
+    return callback(new Error('Not allowed by CORS'));
+  },
+
+  credentials: true,
+
+  methods: ['GET', 'POST', 'HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+
+  allowedHeaders: [
+    'Content-Type',
+    'Accept',
+    'Authorization',
+    'Cache-Control',
+    'X-Requested-With',
+    'X-HTTP-Method-Override',
+    'Cookie'
+  ],
+
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+  maxAge: 86400,
+
+  exposedHeaders: ['set-cookie', 'Authorization'],
+});
+
 
   // Rate limiting (AFTER CORS with handler that mirrors CORS headers)
   app.use(

@@ -1,310 +1,478 @@
-import { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Search, Mail, User, Clock, CheckCircle, XCircle, Reply, Trash2, Eye } from 'lucide-react';
+import { useAuth } from '../../utils/AuthContext';
+import { toast } from 'react-toastify';
 
-interface Message {
-  id: string;
-  sender: string;
-  priority: 'urgent' | 'normal' | 'low';
+interface Contact {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
-  subject: string;
-  content: string;
-  date: string;
-  time: string;
-  unread: boolean;
+  message: string;
+  isRead: boolean;
+  adminResponse?: string;
+  respondedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-const AdminMessages = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      sender: 'Marie Martin',
-      priority: 'normal',
-      email: 'marie.martin@example.com',
-      subject: 'Demande de congés',
-      content: 'Bonjour, je souhaiterais poser des congés du 15 au 25 mars. Merci de confirmer la disponibilité.',
-      date: '10/03/2024',
-      time: '10:30',
-      unread: true,
-    },
-    {
-      id: '2',
-      sender: 'Pierre Bernard',
-      priority: 'urgent',
-      email: 'pierre.bernard@example.com',
-      subject: 'Problème technique urgent',
-      content: 'Le serveur principal présente des dysfonctionnements. Intervention nécessaire rapidement.',
-      date: '09/03/2024',
-      time: '16:45',
-      unread: true,
-    },
-    {
-      id: '3',
-      sender: 'Service RH',
-      priority: 'normal',
-      email: 'rh@example.com',
-      subject: 'Formation obligatoire',
-      content: 'Rappel : formation sécurité obligatoire le 20 mars. Merci de confirmer votre présence.',
-      date: '08/03/2024',
-      time: '11:20',
-      unread: false,
-    },
-    {
-      id: '4',
-      sender: 'Direction',
-      priority: 'low',
-      email: 'direction@example.com',
-      subject: 'Réunion équipe',
-      content: 'Réunion d\'équipe prévue vendredi 15 mars à 14h en salle de conférence.',
-      date: '07/03/2024',
-      time: '09:15',
-      unread: false,
+interface ContactStats {
+  total: number;
+  unread: number;
+  read: number;
+  responded: number;
+  thisMonth: number;
+  lastMonth: number;
+}
+
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+
+const AdminMessages: React.FC = () => {
+  const { token, refreshToken, logout } = useAuth();
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [stats, setStats] = useState<ContactStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [replyText, setReplyText] = useState('');
+
+  // Fonction sécurisée pour les appels API avec gestion du token
+  const apiCall = useCallback(async (url: string, options: RequestInit = {}) => {
+    if (!token) {
+      throw new Error('Token non disponible');
     }
-  ]);
 
-  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
-  const [filter, setFilter] = useState<'all' | 'unread' | 'urgent'>('all');
+    const makeRequest = async (currentToken: string) => {
+      return fetch(url, {
+        ...options,
+        headers: {
+          ...options.headers,
+          'Authorization': `Bearer ${currentToken}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+    };
 
-  const unreadCount = messages.filter(msg => msg.unread).length;
+    let response = await makeRequest(token);
 
-  const filteredMessages = messages.filter(msg => {
-    if (filter === 'unread') return msg.unread;
-    if (filter === 'urgent') return msg.priority === 'urgent';
-    return true;
-  });
+    // Gestion du token expiré
+    if (response.status === 401) {
+      console.log('Token expiré, tentative de rafraîchissement...');
+      const refreshed = await refreshToken();
+      if (refreshed) {
+        const newToken = localStorage.getItem('token');
+        if (newToken) {
+          response = await makeRequest(newToken);
+        } else {
+          throw new Error('Session expirée - Veuillez vous reconnecter');
+        }
+      } else {
+        throw new Error('Session expirée - Veuillez vous reconnecter');
+      }
+    }
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent': return 'bg-red-500';
-      case 'normal': return 'bg-blue-500';
-      case 'low': return 'bg-gray-400';
-      default: return 'bg-gray-400';
+    return response;
+  }, [token, refreshToken]);
+
+  const fetchContacts = useCallback(async () => {
+    if (!token) {
+      console.log('Aucun token disponible pour fetchContacts');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const queryParams = new URLSearchParams();
+      if (searchTerm) queryParams.append('search', searchTerm);
+      if (filter === 'read') queryParams.append('isRead', 'true');
+      if (filter === 'unread') queryParams.append('isRead', 'false');
+
+      const response = await apiCall(
+        `${API_URL}/api/contact?${queryParams.toString()}`
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Session expirée');
+        }
+        throw new Error(`Erreur ${response.status} lors du chargement des messages`);
+      }
+
+      const data = await response.json();
+      setContacts(data.data || []);
+    } catch (error) {
+      console.error('Erreur fetchContacts:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue';
+      
+      if (errorMessage.includes('Session expirée')) {
+        toast.error('Session expirée, veuillez vous reconnecter');
+        setTimeout(() => {
+          logout('/', true);
+        }, 2000);
+      } else {
+        toast.error(errorMessage);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [token, searchTerm, filter, apiCall, logout]);
+
+  const fetchStats = useCallback(async () => {
+    if (!token) return;
+
+    try {
+      const response = await apiCall(`${API_URL}/api/contact/stats`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch (error) {
+      console.error('Erreur fetchStats:', error);
+    }
+  }, [token, apiCall]);
+
+  const markAsRead = async (id: string) => {
+    try {
+      const response = await apiCall(`${API_URL}/api/contact/${id}/read`, {
+        method: 'PATCH'
+      });
+
+      if (response.ok) {
+        setContacts(prev => prev.map(contact =>
+          contact._id === id ? { ...contact, isRead: true } : contact
+        ));
+        if (selectedContact?._id === id) {
+          setSelectedContact(prev => prev ? { ...prev, isRead: true } : null);
+        }
+        toast.success('Message marqué comme lu');
+        fetchStats();
+      }
+    } catch (error) {
+      console.error('Erreur markAsRead:', error);
+      toast.error('Erreur lors du marquage comme lu');
     }
   };
 
-  const getPriorityText = (priority: string) => {
-    switch (priority) {
-      case 'urgent': return 'Urgent';
-      case 'normal': return 'Normal';
-      case 'low': return 'Faible';
-      default: return priority;
+  const sendReply = async (contactId: string) => {
+    if (!replyText.trim()) {
+      toast.error('Le message de réponse ne peut pas être vide');
+      return;
+    }
+
+    try {
+      const response = await apiCall(`${API_URL}/api/contact/${contactId}/reply`, {
+        method: 'POST',
+        body: JSON.stringify({ reply: replyText })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setContacts(prev => prev.map(contact =>
+          contact._id === contactId ? result.contact : contact
+        ));
+        setSelectedContact(result.contact);
+        setReplyText('');
+        toast.success('Réponse envoyée avec succès');
+        fetchStats();
+      } else {
+        throw new Error('Erreur lors de l\'envoi de la réponse');
+      }
+    } catch (error) {
+      console.error('Erreur sendReply:', error);
+      toast.error(error instanceof Error ? error.message : 'Erreur lors de l\'envoi');
     }
   };
 
-  const markAsRead = (id: string) => {
-    setMessages(messages.map(msg => 
-      msg.id === id ? { ...msg, unread: false } : msg
-    ));
-  };
+  const deleteContact = async (id: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce message ?')) return;
 
-  const markAllAsRead = () => {
-    setMessages(messages.map(msg => ({ ...msg, unread: false })));
-  };
+    try {
+      const response = await apiCall(`${API_URL}/api/contact/${id}`, {
+        method: 'DELETE'
+      });
 
-  const deleteMessage = (id: string) => {
-    setMessages(messages.filter(msg => msg.id !== id));
-    if (selectedMessage?.id === id) {
-      setSelectedMessage(null);
+      if (response.ok) {
+        setContacts(prev => prev.filter(contact => contact._id !== id));
+        if (selectedContact?._id === id) {
+          setSelectedContact(null);
+        }
+        toast.success('Message supprimé avec succès');
+        fetchStats();
+      }
+    } catch (error) {
+      console.error('Erreur deleteContact:', error);
+      toast.error('Erreur lors de la suppression');
     }
   };
+
+  const getSenderName = (contact: Contact): string => {
+    if (contact.firstName && contact.lastName) {
+      return `${contact.firstName} ${contact.lastName}`;
+    }
+    if (contact.firstName) return contact.firstName;
+    if (contact.lastName) return contact.lastName;
+    return contact.email.split('@')[0]; // Utiliser la partie avant @ de l'email comme nom
+  };
+
+  const formatDate = (dateStr: string): string => {
+    return new Date(dateStr).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Chargement initial
+  useEffect(() => {
+    console.log('AdminMessages - Chargement initial, token présent:', !!token);
+    if (token) {
+      fetchContacts();
+      fetchStats();
+    }
+  }, []);
+
+  // Rechargement quand les filtres changent
+  useEffect(() => {
+    if (token) {
+      const timeoutId = setTimeout(() => {
+        fetchContacts();
+      }, 300); // Debounce de 300ms pour la recherche
+        
+      return () => clearTimeout(timeoutId);
+    }
+  }, [searchTerm, filter, fetchContacts, token]);
+
+  const filteredContacts = contacts; // Déjà filtré côté serveur
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-4 md:p-6">
-    
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-7xl mx-auto">
-        {/* Messages List */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-          {/* Filter Tabs */}
-          <div className="flex border-b border-slate-200 bg-slate-50/50">
-            <button
-              onClick={() => setFilter('all')}
-              className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 ${
-                filter === 'all'
-                  ? 'text-blue-600 border-b-2 border-blue-500 bg-white'
-                  : 'text-slate-600 hover:text-slate-800 hover:bg-white/50'
-              }`}
-            >
-              Tous les messages
-            </button>
-            <button
-              onClick={() => setFilter('unread')}
-              className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 ${
-                filter === 'unread'
-                  ? 'text-blue-600 border-b-2 border-blue-500 bg-white'
-                  : 'text-slate-600 hover:text-slate-800 hover:bg-white/50'
-              }`}
-            >
-              Non lus ({unreadCount})
-            </button>
-            <button
-              onClick={() => setFilter('urgent')}
-              className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 ${
-                filter === 'urgent'
-                  ? 'text-blue-600 border-b-2 border-blue-500 bg-white'
-                  : 'text-slate-600 hover:text-slate-800 hover:bg-white/50'
-              }`}
-            >
-              Urgents
-            </button>
+    <div className="min-h-screen bg-slate-50 p-4">
+      {/* Header avec statistiques */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-800 mb-2">Messages de contact</h1>
+        <p className="text-slate-600">Gérez les messages reçus via le formulaire de contact</p>
+        
+        {stats && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+              <div className="text-2xl font-bold text-slate-800">{stats.total}</div>
+              <div className="text-sm text-slate-600">Total</div>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+              <div className="text-2xl font-bold text-blue-600">{stats.unread}</div>
+              <div className="text-sm text-slate-600">Non lus</div>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+              <div className="text-2xl font-bold text-emerald-600">{stats.read}</div>
+              <div className="text-sm text-slate-600">Lus</div>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+              <div className="text-2xl font-bold text-purple-600">{stats.responded}</div>
+              <div className="text-sm text-slate-600">Répondu</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Liste des messages */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+          {/* Filtres et recherche */}
+          <div className="p-4 border-b border-slate-200">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Rechercher par email, nom ou message..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setFilter('all')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    filter === 'all' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  Tous
+                </button>
+                <button
+                  onClick={() => setFilter('unread')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    filter === 'unread' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  Non lus
+                </button>
+                <button
+                  onClick={() => setFilter('read')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    filter === 'read' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  Lus
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Messages */}
+          {/* Liste */}
           <div className="max-h-[600px] overflow-y-auto">
-            {filteredMessages.map((message) => (
-              <div
-                key={message.id}
-                className={`border-b border-slate-100 last:border-b-0 transition-all duration-200 cursor-pointer hover:bg-slate-50/70 ${
-                  selectedMessage?.id === message.id ? 'bg-blue-50/50 border-l-4 border-l-blue-500' : ''
-                } ${message.unread ? 'bg-slate-50' : ''}`}
-                onClick={() => {
-                  setSelectedMessage(message);
-                  if (message.unread) {
-                    markAsRead(message.id);
-                  }
-                }}
-              >
-                <div className="p-4">
-                  <div className="flex items-start gap-3">
-                    
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-slate-800 truncate">
-                            {message.sender}
-                          </h3>
-                          {message.unread && (
-                            <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>
-                          )}
-                        </div>
-                        <span className="text-xs text-slate-500 whitespace-nowrap">
-                          {message.date} • {message.time}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium text-white ${getPriorityColor(message.priority)}`}>
-                          {getPriorityText(message.priority)}
-                        </span>
-                        <span className="text-slate-600 text-sm truncate">
-                          {message.email}
-                        </span>
-                      </div>
-
-                      <h4 className="font-semibold text-slate-900 mb-1 line-clamp-1">
-                        {message.subject}
-                      </h4>
-                      <p className="text-slate-600 text-sm line-clamp-2 leading-relaxed">
-                        {message.content}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+            {isLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
               </div>
-            ))}
-
-            {filteredMessages.length === 0 && (
+            ) : filteredContacts.length === 0 ? (
               <div className="p-8 text-center text-slate-500">
-                <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
-                  <i className="fas fa-inbox text-slate-400 text-xl"></i>
-                </div>
+                <Mail className="w-12 h-12 mx-auto mb-4 text-slate-400" />
                 <p>Aucun message trouvé</p>
               </div>
+            ) : (
+              filteredContacts.map(contact => (
+                <div
+                  key={contact._id}
+                  className={`border-b border-slate-100 last:border-b-0 p-4 cursor-pointer transition-colors hover:bg-slate-50 ${
+                    selectedContact?._id === contact._id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+                  } ${!contact.isRead ? 'bg-slate-50' : ''}`}
+                  onClick={() => {
+                    setSelectedContact(contact);
+                    if (!contact.isRead) {
+                      markAsRead(contact._id);
+                    }
+                  }}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-slate-400" />
+                      <span className="font-semibold text-slate-800">
+                        {getSenderName(contact)}
+                      </span>
+                      {!contact.isRead && (
+                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {contact.adminResponse && (
+                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      )}
+                      <Clock className="w-3 h-3 text-slate-400" />
+                      <span className="text-xs text-slate-500">
+                        {formatDate(contact.createdAt).split(' ')[0]}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="text-sm text-slate-600 mb-1">{contact.email}</div>
+                  <p className="text-slate-700 line-clamp-2 text-sm">
+                    {contact.message}
+                  </p>
+                </div>
+              ))
             )}
           </div>
         </div>
 
-        {/* Message Detail */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-          {selectedMessage ? (
+        {/* Détail du message */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+          {selectedContact ? (
             <div className="h-full flex flex-col">
-              {/* Header */}
-              <div className="p-6 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
+              {/* En-tête */}
+              <div className="p-6 border-b border-slate-200">
                 <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    
-                    <div>
-                      <h2 className="text-xl font-bold text-slate-800">
-                        {selectedMessage.sender}
-                      </h2>
-                      <p className="text-slate-600">{selectedMessage.email}</p>
-                    </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800 mb-1">
+                      {getSenderName(selectedContact)}
+                    </h2>
+                    <p className="text-slate-600">{selectedContact.email}</p>
                   </div>
-                  <span className="text-sm text-slate-500 whitespace-nowrap">
-                    {selectedMessage.date} • {selectedMessage.time}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {selectedContact.isRead ? (
+                      <CheckCircle className="w-5 h-5 text-emerald-500" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-blue-500" />
+                    )}
+                    <span className="text-sm text-slate-500">
+                      {formatDate(selectedContact.createdAt)}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium text-white ${getPriorityColor(selectedMessage.priority)}`}>
-                    {getPriorityText(selectedMessage.priority)}
-                  </span>
-                  <h1 className="text-lg font-semibold text-slate-800 flex-1">
-                    {selectedMessage.subject}
-                  </h1>
-                </div>
+                {selectedContact.adminResponse && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                    <div className="text-sm font-semibold text-emerald-800 mb-1">
+                      ✓ Réponse envoyée le {selectedContact.respondedAt ? formatDate(selectedContact.respondedAt) : 'Date inconnue'}
+                    </div>
+                    <p className="text-emerald-700 text-sm">{selectedContact.adminResponse}</p>
+                  </div>
+                )}
               </div>
 
-              {/* Message Content */}
+              {/* Message */}
               <div className="flex-1 p-6 overflow-y-auto">
                 <div className="prose prose-slate max-w-none">
                   <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">
-                    {selectedMessage.content}
+                    {selectedContact.message}
                   </p>
                 </div>
               </div>
 
               {/* Actions */}
-              <div className="p-6 border-t border-slate-200 bg-slate-50/50">
-                <div className="flex flex-wrap gap-3">
-                  <button className="px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2">
-                    <i className="fas fa-reply"></i>
-                    Répondre
-                  </button>
-                  <button 
-                    onClick={() => selectedMessage.unread && markAsRead(selectedMessage.id)}
-                    className={`px-4 py-2 rounded-xl transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 ${
-                      selectedMessage.unread
-                        ? 'bg-green-500 text-white hover:bg-green-600'
-                        : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                    }`}
-                  >
-                    <i className={`fas ${selectedMessage.unread ? 'fa-envelope-open' : 'fa-envelope'}`}></i>
-                    {selectedMessage.unread ? 'Marquer comme lu' : 'Marquer comme non lu'}
-                  </button>
-                  <button 
-                    onClick={() => deleteMessage(selectedMessage.id)}
-                    className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 ml-auto"
-                  >
-                    <i className="fas fa-trash"></i>
-                    Supprimer
-                  </button>
-                </div>
+              <div className="p-6 border-t border-slate-200">
+                {!selectedContact.adminResponse ? (
+                  <>
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="Tapez votre réponse ici..."
+                      className="w-full h-32 p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    />
+                    <div className="flex gap-3 mt-4">
+                      <button
+                        onClick={() => sendReply(selectedContact._id)}
+                        disabled={!replyText.trim()}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                      >
+                        <Reply className="w-4 h-4" />
+                        Envoyer la réponse
+                      </button>
+                      <button
+                        onClick={() => deleteContact(selectedContact._id)}
+                        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Supprimer
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => deleteContact(selectedContact._id)}
+                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Supprimer
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
-            /* Empty State */
-            <div className="h-full flex items-center justify-center p-8">
+            <div className="h-full flex items-center justify-center p-8 text-slate-500">
               <div className="text-center">
-                <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center">
-                  <i className="fas fa-envelope-open text-slate-400 text-2xl"></i>
-                </div>
-                <h3 className="text-lg font-semibold text-slate-600 mb-2">
-                  Aucun message sélectionné
-                </h3>
-                <p className="text-slate-500 text-sm">
-                  Cliquez sur un message pour afficher son contenu
-                </p>
+                <Mail className="w-16 h-16 mx-auto mb-4 text-slate-400" />
+                <p>Sélectionnez un message pour afficher son contenu</p>
               </div>
             </div>
           )}
         </div>
-      </div>
-
-      {/* Mobile Floating Action Button */}
-      <div className="lg:hidden fixed bottom-6 right-6">
-        <button className="w-14 h-14 bg-blue-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center hover:bg-blue-600">
-          <i className="fas fa-edit text-lg"></i>
-        </button>
       </div>
     </div>
   );

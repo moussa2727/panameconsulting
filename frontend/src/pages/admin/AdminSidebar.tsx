@@ -112,15 +112,21 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
 
   // Déconnexion simple - session actuelle uniquement
   const handleLogout = () => {
-    logout('/connexion', false); // redirectPath, silent=false (déconnexion normale)
+    logout('/', false); // redirectPath, silent=false (déconnexion normale)
   };
 
-  // Déconnexion de toutes les sessions
+  // Déconnexion de toutes les sessions (admin seulement)
   const handleLogoutAll = async () => {
+    if (!token) {
+      console.error('Token non disponible pour la déconnexion globale');
+      return;
+    }
+
     try {
-      // Appel API pour déconnecter toutes les sessions
       const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      await fetch(`${VITE_API_URL}/api/auth/logout-all`, {
+      
+      // Utiliser le endpoint correct du backend
+      const response = await fetch(`${VITE_API_URL}/api/auth/logout-all`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -128,11 +134,23 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
         },
         credentials: 'include'
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors de la déconnexion globale');
+      }
+
+      const result = await response.json();
+      console.log('Déconnexion globale réussie:', result);
+      
+      // Déconnexion côté client après succès
+      logout('/', false);
+      
     } catch (error) {
       console.error('Erreur lors de la déconnexion globale:', error);
+      // En cas d'erreur, procéder à une déconnexion normale
+      logout('/', false);
     } finally {
-      // Déconnexion côté client de toute façon
-      logout('/connexion', false);
       setIsLogoutAllOpen(false);
     }
   };
@@ -169,10 +187,8 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
             <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
               {!isCollapsed && (
                 <div className='flex items-center space-x-3'>
-                  
                   <div>
-                    <h1 className='text-lg font-bold text-white'>Tableau de bord</h1>
-                    <p className='text-xs text-blue-100'>Gestionnaire</p>
+                    <h1 className='text-lg font-bold text-white'>Gestionnaire</h1>
                   </div>
                 </div>
               )}
@@ -253,7 +269,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
                 {!isCollapsed && <span className='font-medium text-sm'>Déconnexion</span>}
               </button>
 
-              {/* Déconnexion de toutes les sessions */}
+              {/* Déconnexion de toutes les sessions (admin seulement) */}
               <button
                 onClick={() => setIsLogoutAllOpen(true)}
                 className={`w-full flex items-center rounded-xl transition-colors duration-200 border border-slate-300 hover:border-red-300 hover:bg-red-50 hover:text-red-600 focus:ring-0 focus:outline-none focus:border-red-300 ${
@@ -283,7 +299,6 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
             <div className='flex justify-between items-center h-16'>
               {/* Logo et Titre */}
               <div className='flex items-center space-x-3'>
-               
                 <div>
                   <h1 className='text-lg font-bold text-slate-800'>Tableau de bord</h1>
                   <p className='text-xs text-slate-500'>Gestionnaire</p>
@@ -414,10 +429,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
             
             <div className="p-6">
               <p className="text-slate-600 text-center mb-2">
-                Êtes-vous sûr de vouloir vous déconnecter de toutes les sessions ?
+                Êtes-vous sûr de vouloir déconnecter tous les utilisateurs ?
               </p>
               <p className="text-sm text-slate-500 text-center">
-                Cette action vous déconnectera de tous les appareils où vous êtes connecté.
+                Cette action déconnectera tous les utilisateurs (sauf les administrateurs) du système.
               </p>
             </div>
             

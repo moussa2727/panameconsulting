@@ -145,40 +145,44 @@ async create(createUserDto: RegisterDto): Promise<User> {
 
 
    async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
-    // Empêcher la modification du rôle via cet endpoint
-    if (updateUserDto.role) {
-      throw new BadRequestException('La modification du rôle n\'est pas autorisée');
-    }
-
-    // Normaliser le téléphone si présent
-    if (updateUserDto.telephone) {
-      updateUserDto.telephone = this.normalizeTelephone(updateUserDto.telephone);
-    }
-
-    try {
-      const updatedUser = await this.userModel
-        .findByIdAndUpdate(id, updateUserDto, { new: true, runValidators: true, context: 'query' })
-        .exec();
-
-      if (!updatedUser) {
-        throw new NotFoundException('Utilisateur non trouvé');
-      }
-
-      return updatedUser;
-    } catch (error: any) {
-      if (error?.code === 11000) {
-        const fields = Object.keys(error.keyPattern || {});
-        if (fields.includes('email')) {
-          throw new BadRequestException('Cet email est déjà utilisé');
-        }
-        if (fields.includes('telephone')) {
-          throw new BadRequestException('Ce numéro de téléphone est déjà utilisé');
-        }
-        throw new BadRequestException('Conflit de données');
-      }
-      throw error;
-    }
+  // Empêcher la modification du rôle via cet endpoint seulement si le rôle est fourni
+  if (updateUserDto.role !== undefined) {
+    throw new BadRequestException('La modification du rôle n\'est pas autorisée');
   }
+
+  // Normaliser le téléphone si présent
+  if (updateUserDto.telephone) {
+    updateUserDto.telephone = this.normalizeTelephone(updateUserDto.telephone);
+  }
+
+  try {
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(id, updateUserDto, { 
+        new: true, 
+        runValidators: true, 
+        context: 'query' 
+      })
+      .exec();
+
+    if (!updatedUser) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    return updatedUser;
+  } catch (error: any) {
+    if (error?.code === 11000) {
+      const fields = Object.keys(error.keyPattern || {});
+      if (fields.includes('email')) {
+        throw new BadRequestException('Cet email est déjà utilisé');
+      }
+      if (fields.includes('telephone')) {
+        throw new BadRequestException('Ce numéro de téléphone est déjà utilisé');
+      }
+      throw new BadRequestException('Conflit de données');
+    }
+    throw error;
+  }
+}
   
   async updatePassword(userId: string, updatePasswordDto: UpdatePasswordDto): Promise<void> {
     const user = await this.userModel.findById(userId);

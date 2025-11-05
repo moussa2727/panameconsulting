@@ -20,20 +20,20 @@ export class UpdateUserDto extends PartialType(RegisterDto) {
   @IsString()
   telephone?: string;
 
+  // Rendre role strictement optionnel et non modifiable
   @IsOptional()
   @IsEnum(UserRole)
-  role?: UserRole;
+  role?: never; // ou supprimer complètement cette ligne
 
   @IsOptional()
-  @IsString()
-  isActive?: string;
+  @IsBoolean()
+  isActive?: boolean;
 
   @IsOptional()
   @IsString()
   @MinLength(8)
   @Matches(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-    message:
-      'Le mot de passe doit contenir au moins une minuscule, une majuscule et un chiffre',
+    message: 'Le mot de passe doit contenir au moins une minuscule, une majuscule et un chiffre',
   })
   password?: string;
 }

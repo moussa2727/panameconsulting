@@ -10,132 +10,419 @@ import {
   CheckCircle,
   Clock,
   XCircle,
-  X
+  X,
+  Shield,
+  ShieldOff,
+  AlertCircle
 } from 'lucide-react';
+import { useAuth } from '../../utils/AuthContext';
+import { toast } from 'react-toastify';
 
 interface User {
-  id: string;
-  name: string;
+  _id: string;
+  firstName: string;
+  lastName: string;
   email: string;
-  phone: string;
-  status: 'active' | 'inactive' | 'pending';
+  telephone: string;
+  role: 'ADMIN' | 'USER';
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
-const UsersManagement: React.FC = () => {
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: '1',
-      name: 'Jean Dupont',
-      email: 'jean.dupont@example.com',
-      phone: '+33 1 23 45 67 89',
-      status: 'active'
-    },
-    {
-      id: '2',
-      name: 'Marie Martin',
-      email: 'marie.martin@example.com',
-      phone: '+33 1 34 56 78 90',
-      status: 'active'
-    },
-    {
-      id: '3',
-      name: 'Pierre Bernard',
-      email: 'pierre.bernard@example.com',
-      phone: '+33 1 45 67 89 01',
-      status: 'pending'
-    }
-  ]);
+interface CreateUserDto {
+  firstName: string;
+  lastName: string;
+  email: string;
+  telephone: string;
+  password: string;
+  role: 'ADMIN' | 'USER';
+}
 
+interface UpdateUserDto {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  telephone?: string;
+  role?: 'ADMIN' | 'USER';
+  isActive?: boolean;
+  password?: string;
+}
+
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+
+const UsersManagement: React.FC = () => {
+  const { user: currentUser, token, refreshToken ,logout} = useAuth();
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [newUser, setNewUser] = useState<Omit<User, 'id'>>({ 
-    name: '', 
+  
+  const [newUser, setNewUser] = useState<CreateUserDto>({ 
+    firstName: '', 
+    lastName: '', 
     email: '', 
-    phone: '', 
-    status: 'active' 
+    telephone: '', 
+    password: '',
+    role: 'USER'
   });
-  const [editUser, setEditUser] = useState<User | null>(null);
 
-  const filteredUsers = users.filter(user =>
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.phone.includes(searchTerm)
-  );
+  const [editUser, setEditUser] = useState<UpdateUserDto>({});
+  const [passwordField, setPasswordField] = useState('');
 
-  const getStatusIcon = (status: User['status']) => {
-    switch (status) {
-      case 'active':
-        return <CheckCircle className="w-4 h-4 text-emerald-500" />;
-      case 'pending':
-        return <Clock className="w-4 h-4 text-amber-500" />;
-      case 'inactive':
-        return <XCircle className="w-4 h-4 text-rose-500" />;
-      default:
-        return null;
+const fetchUsers = async () => {
+  if (!token) {
+    console.error('Token non disponible');
+    toast.error('Session expirée, veuillez vous reconnecter');
+    return;
+  }
+
+  setIsLoading(true);
+  
+  try {
+    const makeRequest = async (currentToken: string): Promise<Response> => {
+      return fetch(`${API_URL}/api/users`, {
+        headers: {
+          'Authorization': `Bearer ${currentToken}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+    };
+
+    let response = await makeRequest(token);
+
+    // Gestion du token expiré - CORRECTION ICI
+    if (response.status === 401) {
+      console.log('Token expiré, tentative de rafraîchissement...');
+      const refreshed = await refreshToken();
+      
+      if (refreshed) {
+        // Réessayer avec le nouveau token
+        const newToken = localStorage.getItem('token');
+        if (newToken) {
+          response = await makeRequest(newToken);
+        } else {
+          throw new Error('Token non disponible après rafraîchissement');
+        }
+      } else {
+        // Si le refresh échoue, déconnecter
+        throw new Error('Session expirée - Veuillez vous reconnecter');
+      }
     }
-  };
 
-  const getStatusText = (status: User['status']) => {
-    switch (status) {
-      case 'active':
-        return 'Actif';
-      case 'pending':
-        return '(inscrit)';
-      case 'inactive':
-        return 'Inactif';
-      default:
-        return '';
+    // Si on a toujours une erreur 401 après refresh
+    if (response.status === 401) {
+      throw new Error('Session expirée - Veuillez vous reconnecter');
     }
-  };
 
-  const getStatusColor = (status: User['status']) => {
-    switch (status) {
-      case 'active':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'pending':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'inactive':
-        return 'bg-rose-50 text-rose-700 border-rose-200';
-      default:
-        return '';
+    if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('Vous n\'avez pas les permissions nécessaires');
+      }
+      
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Erreur ${response.status} lors de la récupération des utilisateurs`);
     }
-  };
 
-  const handleAddUser = () => {
-    if (newUser.name && newUser.email && newUser.phone) {
-      const user: User = {
-        ...newUser,
-        id: Date.now().toString()
+    const data = await response.json();
+    setUsers(data.data || data || []);
+
+  } catch (error) {
+    console.error('Erreur fetchUsers:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue';
+    toast.error(errorMessage);
+    
+    // Rediriger si session expirée
+    if (errorMessage.includes('Session expirée')) {
+      setTimeout(() => {
+        logout('/', true);
+      }, 2000);
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  // Création d'un utilisateur
+  const handleAddUser = async () => {
+    if (!token) {
+      toast.error('Token non disponible');
+      return;
+    }
+
+    if (!newUser.firstName || !newUser.lastName || !newUser.email || !newUser.telephone || !newUser.password) {
+      toast.error('Tous les champs obligatoires doivent être remplis');
+      return;
+    }
+
+    try {
+      const makeRequest = async (currentToken: string): Promise<Response> => {
+        return fetch(`${API_URL}/api/auth/register`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${currentToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(newUser),
+          credentials: 'include'
+        });
       };
-      setUsers([...users, user]);
-      setNewUser({ name: '', email: '', phone: '', status: 'active' });
+
+      let response = await makeRequest(token);
+
+      // Gestion du token expiré
+      if (response.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const newToken = localStorage.getItem('token');
+          if (newToken) {
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error('Token non disponible après rafraîchissement');
+          }
+        } else {
+          throw new Error('Session expirée');
+        }
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors de la création');
+      }
+
+      const createdUser = await response.json();
+      
+      // Mise à jour optimiste de l'état local
+      setUsers(prev => [...prev, createdUser.user]);
+      
+      // Réinitialiser le formulaire
+      setNewUser({ 
+        firstName: '', 
+        lastName: '', 
+        email: '', 
+        telephone: '', 
+        password: '',
+        role: 'USER'
+      });
+
       setIsAddModalOpen(false);
+      toast.success('Utilisateur créé avec succès');
+
+    } catch (error) {
+      console.error('Erreur handleAddUser:', error);
+      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
     }
   };
 
-  const handleEditUser = () => {
-    if (editUser) {
-      setUsers(users.map(user => 
-        user.id === editUser.id ? editUser : user
+  // Modification d'un utilisateur
+  const handleEditUser = async () => {
+    if (!token || !selectedUser) {
+      toast.error('Données manquantes');
+      return;
+    }
+
+    try {
+      const updateData: UpdateUserDto = { ...editUser };
+      
+      // Inclure le mot de passe seulement s'il est fourni
+      if (passwordField) {
+        updateData.password = passwordField;
+      }
+
+      const makeRequest = async (currentToken: string): Promise<Response> => {
+        return fetch(`${API_URL}/api/users/${selectedUser._id}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${currentToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(updateData),
+          credentials: 'include'
+        });
+      };
+
+      let response = await makeRequest(token);
+
+      // Gestion du token expiré
+      if (response.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const newToken = localStorage.getItem('token');
+          if (newToken) {
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error('Token non disponible après rafraîchissement');
+          }
+        } else {
+          throw new Error('Session expirée');
+        }
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors de la mise à jour');
+      }
+
+      const updatedUser = await response.json();
+      
+      // Mise à jour optimiste de l'état local
+      setUsers(prev => prev.map(user => 
+        user._id === selectedUser._id ? { ...user, ...updatedUser } : user
       ));
-      setEditUser(null);
+
+      setEditUser({});
+      setPasswordField('');
       setIsEditModalOpen(false);
+      setSelectedUser(null);
+      
+      toast.success('Utilisateur modifié avec succès');
+
+    } catch (error) {
+      console.error('Erreur handleEditUser:', error);
+      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
     }
   };
 
-  const handleDeleteUser = () => {
-    if (selectedUser) {
-      setUsers(users.filter(user => user.id !== selectedUser.id));
-      setSelectedUser(null);
+  // Suppression d'un utilisateur
+  const handleDeleteUser = async () => {
+    if (!token || !selectedUser) {
+      toast.error('Données manquantes');
+      return;
+    }
+
+    // Empêcher l'auto-suppression
+    if (selectedUser._id === currentUser?.id) {
+      toast.error('Vous ne pouvez pas supprimer votre propre compte');
       setIsDeleteModalOpen(false);
+      setSelectedUser(null);
+      return;
+    }
+
+    try {
+      const makeRequest = async (currentToken: string): Promise<Response> => {
+        return fetch(`${API_URL}/api/users/${selectedUser._id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${currentToken}`,
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include'
+        });
+      };
+
+      let response = await makeRequest(token);
+
+      // Gestion du token expiré
+      if (response.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const newToken = localStorage.getItem('token');
+          if (newToken) {
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error('Token non disponible après rafraîchissement');
+          }
+        } else {
+          throw new Error('Session expirée');
+        }
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors de la suppression');
+      }
+
+      // Mise à jour optimiste de l'état local
+      setUsers(prev => prev.filter(user => user._id !== selectedUser._id));
+
+      setIsDeleteModalOpen(false);
+      setSelectedUser(null);
+      toast.success('Utilisateur supprimé avec succès');
+
+    } catch (error) {
+      console.error('Erreur handleDeleteUser:', error);
+      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
+    }
+  };
+
+  // Basculer le statut actif/inactif
+  const handleToggleStatus = async (user: User) => {
+    if (!token) {
+      toast.error('Token non disponible');
+      return;
+    }
+
+    // Empêcher la désactivation de son propre compte
+    if (user._id === currentUser?.id) {
+      toast.error('Vous ne pouvez pas désactiver votre propre compte');
+      return;
+    }
+
+    try {
+      const makeRequest = async (currentToken: string): Promise<Response> => {
+        return fetch(`${API_URL}/api/users/${user._id}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${currentToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ isActive: !user.isActive }),
+          credentials: 'include'
+        });
+      };
+
+      let response = await makeRequest(token);
+
+      // Gestion du token expiré
+      if (response.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const newToken = localStorage.getItem('token');
+          if (newToken) {
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error('Token non disponible après rafraîchissement');
+          }
+        } else {
+          throw new Error('Session expirée');
+        }
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors de la mise à jour');
+      }
+
+      const updatedUser = await response.json();
+      
+      // Mise à jour optimiste de l'état local
+      setUsers(prev => prev.map(u => 
+        u._id === user._id ? { ...u, ...updatedUser } : u
+      ));
+
+      toast.success(`Utilisateur ${!user.isActive ? 'activé' : 'désactivé'} avec succès`);
+
+    } catch (error) {
+      console.error('Erreur handleToggleStatus:', error);
+      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
     }
   };
 
   const openEditModal = (user: User) => {
-    setEditUser({ ...user });
+    setSelectedUser(user);
+    setEditUser({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      telephone: user.telephone,
+      role: user.role,
+      isActive: user.isActive
+    });
+    setPasswordField('');
     setIsEditModalOpen(true);
   };
 
@@ -144,12 +431,65 @@ const UsersManagement: React.FC = () => {
     setIsDeleteModalOpen(true);
   };
 
+  // Filtrage des utilisateurs
+  const filteredUsers = users.filter(user =>
+    user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.telephone.includes(searchTerm)
+  );
+
+  const getStatusIcon = (isActive: boolean) => {
+    return isActive ? 
+      <CheckCircle className="w-4 h-4 text-emerald-500" /> : 
+      <XCircle className="w-4 h-4 text-rose-500" />;
+  };
+
+  const getStatusText = (isActive: boolean) => {
+    return isActive ? 'Actif' : 'Inactif';
+  };
+
+  const getStatusColor = (isActive: boolean) => {
+    return isActive ? 
+      'bg-emerald-50 text-emerald-700 border-emerald-200' : 
+      'bg-rose-50 text-rose-700 border-rose-200';
+  };
+
+  const getRoleIcon = (role: string) => {
+    return role === 'ADMIN' ? 
+      <Shield className="w-4 h-4 text-blue-500" /> : 
+      <User className="w-4 h-4 text-slate-500" />;
+  };
+
+  const getRoleText = (role: string) => {
+    return role === 'ADMIN' ? 'Administrateur' : 'Utilisateur';
+  };
+
+  const getRoleColor = (role: string) => {
+    return role === 'ADMIN' ? 
+      'bg-blue-50 text-blue-700 border-blue-200' : 
+      'bg-slate-50 text-slate-700 border-slate-200';
+  };
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
+
+  // Initialisation
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-50 p-4">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">Utilisateurs</h1>
-        <p className="text-slate-600">Gérez les utilisateurs du système</p>
+        <h1 className="text-2xl font-bold text-slate-800 mb-2">Gestion des utilisateurs</h1>
+        <p className="text-slate-600">Gérez les utilisateurs et leurs permissions</p>
       </div>
 
       {/* Search Bar */}
@@ -170,36 +510,148 @@ const UsersManagement: React.FC = () => {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
         {/* Desktop Table Header */}
         <div className="hidden md:grid md:grid-cols-12 gap-4 p-4 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700">
-          <div className="md:col-span-4">UTILISATEUR</div>
-          <div className="md:col-span-4">CONTACT</div>
+          <div className="md:col-span-3">UTILISATEUR</div>
+          <div className="md:col-span-3">CONTACT</div>
+          <div className="md:col-span-2">ROLE</div>
           <div className="md:col-span-2">STATUT</div>
-          <div className="md:col-span-2">ACTES</div>
+          <div className="md:col-span-2">ACTIONS</div>
         </div>
 
-        {/* Users */}
-        {filteredUsers.map((user) => (
-          <div
-            key={user.id}
-            className="border-b border-slate-100 last:border-b-0 p-4 hover:bg-slate-50 transition-colors duration-150"
-          >
-            {/* Mobile Layout */}
-            <div className="md:hidden space-y-3">
-              <div className="flex justify-between items-start">
-                <div className="flex items-center space-x-3">
+        {/* Loading State */}
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="p-8 text-center text-slate-500">
+            <User className="w-16 h-16 mx-auto mb-4 text-slate-400" />
+            <p>Aucun utilisateur trouvé</p>
+          </div>
+        ) : (
+          filteredUsers.map((user) => (
+            <div
+              key={user._id}
+              className="border-b border-slate-100 last:border-b-0 p-4 hover:bg-slate-50 transition-colors duration-150"
+            >
+              {/* Mobile Layout */}
+              <div className="md:hidden space-y-3">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-blue-600 rounded-full flex items-center justify-center">
+                      <User className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-slate-800">
+                        {user.firstName} {user.lastName}
+                      </h3>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getRoleColor(user.role)}`}>
+                          {getRoleIcon(user.role)}
+                          <span className="ml-1">{getRoleText(user.role)}</span>
+                        </span>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.isActive)}`}>
+                          {getStatusIcon(user.isActive)}
+                          <span className="ml-1">{getStatusText(user.isActive)}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => openEditModal(user)}
+                      className="p-2 text-slate-600 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-all duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => openDeleteModal(user)}
+                      disabled={user._id === currentUser?.id}
+                      className={`p-2 rounded-lg transition-all duration-200 focus:ring-0 focus:outline-none border border-transparent ${
+                        user._id === currentUser?.id
+                          ? 'text-slate-400 cursor-not-allowed'
+                          : 'text-slate-600 hover:text-rose-600 hover:bg-rose-50 focus:border-rose-300'
+                      }`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="space-y-2 pl-13">
+                  <div className="flex items-center space-x-3 text-slate-600">
+                    <Mail className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm">{user.email}</span>
+                  </div>
+                  <div className="flex items-center space-x-3 text-slate-600">
+                    <Phone className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm">{user.telephone}</span>
+                  </div>
+                  <div className="flex items-center space-x-3 text-slate-600 text-xs">
+                    <Clock className="w-4 h-4 text-slate-400" />
+                    <span>Créé le {formatDate(user.createdAt)}</span>
+                  </div>
+                </div>
+
+                {/* Toggle Status Button - Mobile */}
+                <div className="pt-2 border-t border-slate-200">
+                  <button
+                    onClick={() => handleToggleStatus(user)}
+                    disabled={user._id === currentUser?.id}
+                    className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      user._id === currentUser?.id
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : user.isActive
+                        ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                    }`}
+                  >
+                    {user.isActive ? 'Désactiver' : 'Activer'} l'utilisateur
+                  </button>
+                </div>
+              </div>
+
+              {/* Desktop Layout */}
+              <div className="hidden md:grid md:grid-cols-12 gap-4 items-center">
+                <div className="md:col-span-3 flex items-center space-x-3">
                   <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-blue-600 rounded-full flex items-center justify-center">
                     <User className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-800">{user.name}</h3>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
-                        {getStatusIcon(user.status)}
-                        <span className="ml-1">{getStatusText(user.status)}</span>
-                      </span>
-                    </div>
+                    <span className="font-medium text-slate-800 block">
+                      {user.firstName} {user.lastName}
+                    </span>
+                    <span className="text-slate-500 text-sm">
+                      Créé le {formatDate(user.createdAt)}
+                    </span>
                   </div>
                 </div>
-                <div className="flex space-x-2">
+                
+                <div className="md:col-span-3 space-y-1">
+                  <div className="flex items-center space-x-2 text-slate-700">
+                    <Mail className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm">{user.email}</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-slate-700">
+                    <Phone className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm">{user.telephone}</span>
+                  </div>
+                </div>
+                
+                <div className="md:col-span-2">
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getRoleColor(user.role)}`}>
+                    {getRoleIcon(user.role)}
+                    <span className="ml-1.5">{getRoleText(user.role)}</span>
+                  </span>
+                </div>
+
+                <div className="md:col-span-2">
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(user.isActive)}`}>
+                    {getStatusIcon(user.isActive)}
+                    <span className="ml-1.5">{getStatusText(user.isActive)}</span>
+                  </span>
+                </div>
+                
+                <div className="md:col-span-2 flex space-x-2">
                   <button
                     onClick={() => openEditModal(user)}
                     className="p-2 text-slate-600 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-all duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent"
@@ -208,69 +660,34 @@ const UsersManagement: React.FC = () => {
                   </button>
                   <button
                     onClick={() => openDeleteModal(user)}
-                    className="p-2 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all duration-200 focus:ring-0 focus:outline-none focus:border-rose-300 border border-transparent"
+                    disabled={user._id === currentUser?.id}
+                    className={`p-2 rounded-lg transition-all duration-200 focus:ring-0 focus:outline-none border border-transparent ${
+                      user._id === currentUser?.id
+                        ? 'text-slate-400 cursor-not-allowed'
+                        : 'text-slate-600 hover:text-rose-600 hover:bg-rose-50 focus:border-rose-300'
+                    }`}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
-                </div>
-              </div>
-              
-              <div className="space-y-2 pl-13">
-                <div className="flex items-center space-x-3 text-slate-600">
-                  <Mail className="w-4 h-4 text-slate-400" />
-                  <span className="text-sm">{user.email}</span>
-                </div>
-                <div className="flex items-center space-x-3 text-slate-600">
-                  <Phone className="w-4 h-4 text-slate-400" />
-                  <span className="text-sm">{user.phone}</span>
+                  <button
+                    onClick={() => handleToggleStatus(user)}
+                    disabled={user._id === currentUser?.id}
+                    className={`p-2 rounded-lg transition-all duration-200 focus:ring-0 focus:outline-none border border-transparent ${
+                      user._id === currentUser?.id
+                        ? 'text-slate-400 cursor-not-allowed'
+                        : user.isActive
+                        ? 'text-rose-600 hover:text-rose-700 hover:bg-rose-50 focus:border-rose-300'
+                        : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 focus:border-emerald-300'
+                    }`}
+                    title={user.isActive ? 'Désactiver' : 'Activer'}
+                  >
+                    {user.isActive ? <ShieldOff className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
             </div>
-
-            {/* Desktop Layout */}
-            <div className="hidden md:grid md:grid-cols-12 gap-4 items-center">
-              <div className="md:col-span-4 flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-blue-600 rounded-full flex items-center justify-center">
-                  <User className="w-5 h-5 text-white" />
-                </div>
-                <span className="font-medium text-slate-800">{user.name}</span>
-              </div>
-              
-              <div className="md:col-span-4 space-y-1">
-                <div className="flex items-center space-x-2 text-slate-700">
-                  <Mail className="w-4 h-4 text-slate-400" />
-                  <span className="text-sm">{user.email}</span>
-                </div>
-                <div className="flex items-center space-x-2 text-slate-700">
-                  <Phone className="w-4 h-4 text-slate-400" />
-                  <span className="text-sm">{user.phone}</span>
-                </div>
-              </div>
-              
-              <div className="md:col-span-2">
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(user.status)}`}>
-                  {getStatusIcon(user.status)}
-                  <span className="ml-1.5">{getStatusText(user.status)}</span>
-                </span>
-              </div>
-              
-              <div className="md:col-span-2 flex space-x-2">
-                <button
-                  onClick={() => openEditModal(user)}
-                  className="p-2 text-slate-600 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-all duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => openDeleteModal(user)}
-                  className="p-2 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all duration-200 focus:ring-0 focus:outline-none focus:border-rose-300 border border-transparent"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Add User Button */}
@@ -297,58 +714,75 @@ const UsersManagement: React.FC = () => {
             </div>
             
             <div className="p-6 space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700 flex items-center space-x-2">
-                  <User className="w-4 h-4 text-slate-400" />
-                  <span>Nom complet</span>
-                </label>
-                <input
-                  type="text"
-                  value={newUser.name}
-                  onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                  placeholder="Ex: Jean Dupont"
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Prénom *</label>
+                  <input
+                    type="text"
+                    value={newUser.firstName}
+                    onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })}
+                    placeholder="Jean"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Nom *</label>
+                  <input
+                    type="text"
+                    value={newUser.lastName}
+                    onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
+                    placeholder="Dupont"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                  />
+                </div>
               </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700 flex items-center space-x-2">
-                  <Mail className="w-4 h-4 text-slate-400" />
-                  <span>Email</span>
-                </label>
+                <label className="text-sm font-medium text-slate-700">Email *</label>
                 <input
                   type="email"
                   value={newUser.email}
                   onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  placeholder="Ex: jean.dupont@example.com"
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                  placeholder="jean.dupont@example.com"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
                 />
               </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700 flex items-center space-x-2">
-                  <Phone className="w-4 h-4 text-slate-400" />
-                  <span>Téléphone</span>
-                </label>
+                <label className="text-sm font-medium text-slate-700">Téléphone *</label>
                 <input
                   type="tel"
-                  value={newUser.phone}
-                  onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
-                  placeholder="Ex: +33 1 23 45 67 89"
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                  value={newUser.telephone}
+                  onChange={(e) => setNewUser({ ...newUser, telephone: e.target.value })}
+                  placeholder="+33 1 23 45 67 89"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Mot de passe *</label>
+                <input
+                  type="password"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  placeholder="Minimum 8 caractères"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                />
+                <p className="text-xs text-slate-500">
+                  Doit contenir au moins 8 caractères, une majuscule, une minuscule et un chiffre
+                </p>
               </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Statut</label>
+                <label className="text-sm font-medium text-slate-700">Rôle</label>
                 <select
-                  value={newUser.status}
-                  onChange={(e) => setNewUser({ ...newUser, status: e.target.value as User['status'] })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                  value={newUser.role}
+                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value as 'ADMIN' | 'USER' })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
                 >
-                  <option value="active">Actif</option>
-                  <option value="inactive">Inactif</option>
-                  <option value="pending">(inscrit)</option>
+                  <option value="USER">Utilisateur</option>
+                  <option value="ADMIN">Administrateur</option>
                 </select>
               </div>
             </div>
@@ -356,13 +790,13 @@ const UsersManagement: React.FC = () => {
             <div className="flex space-x-3 p-6 border-t border-slate-200">
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="flex-1 px-4 py-3 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300"
+                className="flex-1 px-4 py-3 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300"
               >
                 Annuler
               </button>
               <button
                 onClick={handleAddUser}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl hover:from-sky-600 hover:to-blue-700 transition-all duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent"
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-lg hover:from-sky-600 hover:to-blue-700 transition-all duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent"
               >
                 Ajouter
               </button>
@@ -372,7 +806,7 @@ const UsersManagement: React.FC = () => {
       )}
 
       {/* Edit User Modal */}
-      {isEditModalOpen && editUser && (
+      {isEditModalOpen && selectedUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md transform transition-all">
             <div className="flex items-center justify-between p-6 border-b border-slate-200">
@@ -386,55 +820,83 @@ const UsersManagement: React.FC = () => {
             </div>
             
             <div className="p-6 space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700 flex items-center space-x-2">
-                  <User className="w-4 h-4 text-slate-400" />
-                  <span>Nom complet</span>
-                </label>
-                <input
-                  type="text"
-                  value={editUser.name}
-                  onChange={(e) => setEditUser({ ...editUser, name: e.target.value })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Prénom</label>
+                  <input
+                    type="text"
+                    value={editUser.firstName || ''}
+                    onChange={(e) => setEditUser({ ...editUser, firstName: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Nom</label>
+                  <input
+                    type="text"
+                    value={editUser.lastName || ''}
+                    onChange={(e) => setEditUser({ ...editUser, lastName: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                  />
+                </div>
               </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700 flex items-center space-x-2">
-                  <Mail className="w-4 h-4 text-slate-400" />
-                  <span>Email</span>
-                </label>
+                <label className="text-sm font-medium text-slate-700">Email</label>
                 <input
                   type="email"
-                  value={editUser.email}
+                  value={editUser.email || ''}
                   onChange={(e) => setEditUser({ ...editUser, email: e.target.value })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
                 />
               </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700 flex items-center space-x-2">
-                  <Phone className="w-4 h-4 text-slate-400" />
-                  <span>Téléphone</span>
-                </label>
+                <label className="text-sm font-medium text-slate-700">Téléphone</label>
                 <input
                   type="tel"
-                  value={editUser.phone}
-                  onChange={(e) => setEditUser({ ...editUser, phone: e.target.value })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                  value={editUser.telephone || ''}
+                  onChange={(e) => setEditUser({ ...editUser, telephone: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
                 />
               </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Nouveau mot de passe</label>
+                <input
+                  type="password"
+                  value={passwordField}
+                  onChange={(e) => setPasswordField(e.target.value)}
+                  placeholder="Laisser vide pour ne pas changer"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                />
+                <p className="text-xs text-slate-500">
+                  Doit contenir au moins 8 caractères, une majuscule, une minuscule et un chiffre
+                </p>
+              </div>
               
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Rôle</label>
+                <select
+                  value={editUser.role || 'USER'}
+                  onChange={(e) => setEditUser({ ...editUser, role: e.target.value as 'ADMIN' | 'USER' })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                >
+                  <option value="USER">Utilisateur</option>
+                  <option value="ADMIN">Administrateur</option>
+                </select>
+              </div>
+
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Statut</label>
                 <select
-                  value={editUser.status}
-                  onChange={(e) => setEditUser({ ...editUser, status: e.target.value as User['status'] })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
+                  value={editUser.isActive ? 'true' : 'false'}
+                  onChange={(e) => setEditUser({ ...editUser, isActive: e.target.value === 'true' })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-0 focus:outline-none focus:border-sky-500 transition-colors duration-200"
                 >
-                  <option value="active">Actif</option>
-                  <option value="inactive">Inactif</option>
-                  <option value="pending">(inscrit)</option>
+                  <option value="true">Actif</option>
+                  <option value="false">Inactif</option>
                 </select>
               </div>
             </div>
@@ -442,13 +904,13 @@ const UsersManagement: React.FC = () => {
             <div className="flex space-x-3 p-6 border-t border-slate-200">
               <button
                 onClick={() => setIsEditModalOpen(false)}
-                className="flex-1 px-4 py-3 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300"
+                className="flex-1 px-4 py-3 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300"
               >
                 Annuler
               </button>
               <button
                 onClick={handleEditUser}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl hover:from-sky-600 hover:to-blue-700 transition-all duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent"
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-lg hover:from-sky-600 hover:to-blue-700 transition-all duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent"
               >
                 Enregistrer
               </button>
@@ -462,7 +924,10 @@ const UsersManagement: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md transform transition-all">
             <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <h2 className="text-xl font-bold text-slate-800">Supprimer l'utilisateur</h2>
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-6 h-6 text-rose-500" />
+                <h2 className="text-xl font-bold text-slate-800">Supprimer l'utilisateur</h2>
+              </div>
               <button
                 onClick={() => setIsDeleteModalOpen(false)}
                 className="p-2 hover:bg-slate-100 rounded-lg transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent"
@@ -473,20 +938,30 @@ const UsersManagement: React.FC = () => {
             
             <div className="p-6">
               <p className="text-slate-600 text-center">
-                Êtes-vous sûr de vouloir supprimer <span className="font-semibold text-slate-800">{selectedUser.name}</span> ?
+                Êtes-vous sûr de vouloir supprimer <span className="font-semibold text-slate-800">{selectedUser.firstName} {selectedUser.lastName}</span> ?
               </p>
+              {selectedUser._id === currentUser?.id && (
+                <p className="text-rose-600 text-sm text-center mt-2">
+                  ⚠️ Vous ne pouvez pas supprimer votre propre compte
+                </p>
+              )}
             </div>
             
             <div className="flex space-x-3 p-6 border-t border-slate-200">
               <button
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="flex-1 px-4 py-3 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300"
+                className="flex-1 px-4 py-3 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300"
               >
                 Annuler
               </button>
               <button
                 onClick={handleDeleteUser}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-rose-500 to-red-600 text-white rounded-xl hover:from-rose-600 hover:to-red-700 transition-all duration-200 focus:ring-0 focus:outline-none focus:border-rose-300 border border-transparent"
+                disabled={selectedUser._id === currentUser?.id}
+                className={`flex-1 px-4 py-3 rounded-lg transition-all duration-200 focus:ring-0 focus:outline-none border border-transparent ${
+                  selectedUser._id === currentUser?.id
+                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-rose-500 to-red-600 text-white hover:from-rose-600 hover:to-red-700 focus:border-rose-300'
+                }`}
               >
                 Supprimer
               </button>

@@ -141,13 +141,12 @@ const MesRendezVous = () => {
     try {
       const makeRequest = async (currentToken: string): Promise<Response> => {
         console.log('🔑 Utilisation du token pour annulation:', currentToken?.substring(0, 20) + '...');
-        return fetch(`${API_URL}/api/rendezvous/${id}/cancel`, {
-          method: 'PATCH',
+        return fetch(`${API_URL}/api/rendezvous/${id}`, {
+          method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${currentToken}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ status: 'Annulé' }),
           credentials: 'include'
         });
       };
@@ -177,6 +176,12 @@ const MesRendezVous = () => {
       if (!response.ok) {
         const errorData = await response.json();
         console.error('❌ Erreur HTTP annulation:', response.status, errorData);
+        
+        // Message d'erreur spécifique pour l'annulation tardive
+        if (response.status === 400 && errorData.message?.includes('2h')) {
+          throw new Error('Annulation impossible : moins de 2 heures avant le rendez-vous');
+        }
+        
         throw new Error(errorData.message || 'Erreur lors de l\'annulation du rendez-vous');
       }
       
@@ -221,7 +226,12 @@ const MesRendezVous = () => {
     return timeStr.replace(':', 'h');
   };
 
+  // Fonction pour vérifier si l'annulation est possible (2 heures avant)
   const canCancel = (rdv: Rendezvous) => {
+    // L'admin peut toujours annuler
+    if (user?.role === 'admin') return true;
+    
+    // Si déjà annulé ou terminé, impossible
     if (rdv.status === 'Annulé' || rdv.status === 'Terminé') return false;
     
     const now = new Date();
@@ -230,23 +240,29 @@ const MesRendezVous = () => {
     const timeDiff = rendezvousDateTime.getTime() - now.getTime();
     const hoursDiff = timeDiff / (1000 * 60 * 60);
     
-    return hoursDiff >= 24;
+    // Annulation possible seulement si plus de 2 heures avant
+    return hoursDiff >= 2;
   };
 
+  // Fonction pour obtenir le message de temps restant
   const getTimeRemainingMessage = (rdv: Rendezvous) => {
+    // L'admin n'a pas de restriction
+    if (user?.role === 'admin') return null;
+    
     const now = new Date();
     const rendezvousDateTime = new Date(`${rdv.date}T${rdv.time}`);
     const timeDiff = rendezvousDateTime.getTime() - now.getTime();
     const hoursDiff = timeDiff / (1000 * 60 * 60);
     
-    if (hoursDiff < 24 && hoursDiff > 0) {
+    // Si moins de 2 heures mais plus de 0 (rendez-vous dans le futur)
+    if (hoursDiff < 2 && hoursDiff > 0) {
       const minutesRemaining = Math.floor((timeDiff / (1000 * 60)) % 60);
       const hoursRemaining = Math.floor(timeDiff / (1000 * 60 * 60));
       
       if (hoursRemaining > 0) {
-        return `Annulation possible dans ${hoursRemaining}h ${minutesRemaining}min`;
+        return `Annulation impossible : ${hoursRemaining}h ${minutesRemaining}min avant le rendez-vous`;
       } else {
-        return `Annulation possible dans ${minutesRemaining}min`;
+        return `Annulation impossible : ${minutesRemaining}min avant le rendez-vous`;
       }
     }
     
@@ -390,7 +406,11 @@ const MesRendezVous = () => {
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-800">Rendez-vous programmés</h2>
-                  <p className="text-slate-600 mt-1">Vos prochaines consultations avec nos experts</p>
+                  <p className="text-slate-600 mt-1">
+                    {user?.role === 'admin' 
+                      ? 'Gestion complète des rendez-vous (admin)' 
+                      : 'Vos prochaines consultations avec nos experts'}
+                  </p>
                 </div>
                 <div className="flex gap-3">
                   <button
@@ -484,7 +504,7 @@ const MesRendezVous = () => {
                                   {(rdv.status === 'En attente' || rdv.status === 'Confirmé') && (
                                     <>
                                       <button
-                                        onClick={() => canCancelRdv ? setConfirmId(rdv._id) : toast.info('Annulation possible jusqu\'à 24h avant le rendez-vous')}
+                                        onClick={() => canCancelRdv ? setConfirmId(rdv._id) : toast.info(timeRemainingMessage || 'Annulation impossible')}
                                         disabled={!canCancelRdv}
                                         className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                                           canCancelRdv 
@@ -573,7 +593,7 @@ const MesRendezVous = () => {
                               {(rdv.status === 'En attente' || rdv.status === 'Confirmé') && (
                                 <div className="flex flex-col gap-3">
                                   <button
-                                    onClick={() => canCancelRdv ? setConfirmId(rdv._id) : toast.info('Annulation possible jusqu\'à 24h avant le rendez-vous')}
+                                    onClick={() => canCancelRdv ? setConfirmId(rdv._id) : toast.info(timeRemainingMessage || 'Annulation impossible')}
                                     disabled={!canCancelRdv}
                                     className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
                                       canCancelRdv 
@@ -655,7 +675,12 @@ const MesRendezVous = () => {
             </div>
             <h3 className="text-xl font-bold text-slate-800 mb-2">Confirmer l'annulation</h3>
             <p className="text-slate-600 mb-6">
-              Êtes-vous sûr de vouloir annuler ce rendez-vous ? Cette action est irréversible et vous ne pourrez plus modifier cette décision.
+              Êtes-vous sûr de vouloir annuler ce rendez-vous ? Cette action est irréversible.
+              {user?.role !== 'admin' && (
+                <span className="block mt-2 text-sm text-amber-600">
+                  ⚠️ L'annulation n'est possible que jusqu'à 2 heures avant le rendez-vous.
+                </span>
+              )}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
               <button 
