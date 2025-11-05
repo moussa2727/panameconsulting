@@ -258,32 +258,44 @@ export class RendezvousService {
     }
 
     async removeWithPolicy(id: string, user: any): Promise<Rendezvous | null> {
-        const rdv = await this.rendezvousModel.findById(id).exec();
-        if (!rdv) {
-            throw new NotFoundException('Rendez-vous non trouvé');
-        }
+  const rdv = await this.rendezvousModel.findById(id).exec();
+  if (!rdv) {
+    throw new NotFoundException('Rendez-vous non trouvé');
+  }
 
-        const isAdmin = user.role === UserRole.ADMIN;
-        if (!isAdmin && rdv.email !== user.email) {
-            throw new ForbiddenException('Vous ne pouvez supprimer que vos propres rendez-vous');
-        }
+  const isAdmin = user.role === UserRole.ADMIN;
 
-        if (!isAdmin) {
-            const rdvDate = new Date(`${rdv.date}T${rdv.time}:00`);
-            const now = new Date();
-            const diffMs = rdvDate.getTime() - now.getTime();
-            const oneDayMs = 24 * 60 * 60 * 1000;
-            if (diffMs < oneDayMs) {
-                throw new BadRequestException('Vous ne pouvez annuler qu\'au moins 24h avant');
-            }
-        }
+  // Vérifie que l'utilisateur est propriétaire ou admin
+  if (!isAdmin && rdv.email !== user.email) {
+    throw new ForbiddenException('Vous ne pouvez supprimer que vos propres rendez-vous');
+  }
 
-        const deleted = await this.rendezvousModel.findByIdAndDelete(id).exec();
-        if (deleted) {
-            this.logger.log(`Rendez-vous supprimé: ${id}`);
-        }
-        return deleted;
+  // Restriction : les utilisateurs non-admins ne peuvent plus supprimer
+  // si le rendez-vous est dans moins de 2 heures.
+  if (!isAdmin) {
+    const rdvDateTime = new Date(`${rdv.date}T${rdv.time}:00`);
+    const now = new Date();
+    const diffMs = rdvDateTime.getTime() - now.getTime();
+
+    const twoHoursMs = 2 * 60 * 60 * 1000; // 2 heures
+
+    // Si le rendez-vous est déjà passé ou dans moins de 2h → bloquer la suppression
+    if (diffMs <= twoHoursMs) {
+      throw new BadRequestException(
+        "Vous ne pouvez plus annuler votre rendez-vous à moins de 2 heures de l'heure prévue"
+      );
     }
+  }
+
+  // Suppression autorisée
+  const deleted = await this.rendezvousModel.findByIdAndDelete(id).exec();
+  if (deleted) {
+    this.logger.log(`Rendez-vous supprimé: ${id}`);
+  }
+
+  return deleted;
+}
+
 
     async updateStatus(id: string, status: string, avisAdmin?: string, user?: any): Promise<Rendezvous | null> {
         this.logger.log(`Tentative de mise à jour du statut: ${id} -> ${status} (avis: ${avisAdmin})`);

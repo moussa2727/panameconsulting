@@ -35,6 +35,7 @@ const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 
 // Restrictions admin
 import RequireAdmin from './utils/RequireAdmin';
+
 import MesRendezVous from './pages/user/MesRendezVous';
 import UserProfile from './pages/user/UserProfile';
 import UserProcedure from './pages/user/UserProcedure';
@@ -223,6 +224,10 @@ function App() {
               </Suspense>
             } />
           </Route>
+
+          {/* Routes spécifiques pour /admin/ qui doivent être NotFound */}
+          <Route path='/admin' element={<NotFound />} />
+          <Route path='/admin/*' element={<NotFound />} />
 
           {/* Route de protection contre accès non autorisé ou fausses routes */}
           <Route path='*' element={<NotFound />} />

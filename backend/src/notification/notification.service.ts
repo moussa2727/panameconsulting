@@ -100,30 +100,41 @@ export class NotificationService {
     `;
   }
 
-  private async sendEmail(to: string, subject: string, html: string, context: string): Promise<void> {
-    // Si le service email n'est pas disponible, logger et quitter
+ private async sendEmail(
+    to: string, 
+    subject: string, 
+    html: string, 
+    context: string,
+    replyTo?: string
+): Promise<void> {
     if (!this.emailServiceAvailable || !this.transporter) {
-      this.logger.log(`Notification "${subject}" pour: ${to} (service email indisponible)`);
-      return;
+        this.logger.log(`Notification "${subject}" pour: ${to} (service email indisponible)`);
+        return;
     }
 
     try {
-      await this.transporter.sendMail({
-        from: `"Paname Consulting" <${this.configService.get('EMAIL_USER')}>`,
-        to: `${to}`,
-        subject: subject,
-        html: html
-      });
-      this.logger.log(`Email ${context} envoyé à: ${to}`);
+        const mailOptions: any = {
+            from: `"Paname Consulting" <${this.configService.get('EMAIL_USER')}>`,
+            to: to,
+            subject: subject,
+            html: html
+        };
+
+        // Ajouter replyTo si fourni
+        if (replyTo) {
+            mailOptions.replyTo = replyTo;
+        }
+
+        await this.transporter.sendMail(mailOptions);
+        this.logger.log(`Email ${context} envoyé à: ${to}`);
     } catch (error) {
-      this.logger.error(`Erreur envoi ${context}: ${error.message}`);
-      // Désactiver le service après une erreur d'authentification
-      if (error.message.includes('BadCredentials') || error.message.includes('Invalid login')) {
-        this.emailServiceAvailable = false;
-        this.logger.warn('Service notification email désactivé - erreur authentification');
-      }
+        this.logger.error(`Erreur envoi ${context}: ${error.message}`);
+        if (error.message.includes('BadCredentials') || error.message.includes('Invalid login')) {
+            this.emailServiceAvailable = false;
+            this.logger.warn('Service notification email désactivé - erreur authentification');
+        }
     }
-  }
+}
 
   // Send confirmation email to user when rendezvous is confirmed
   async sendConfirmation(rendezvous: Rendezvous): Promise<void> {
@@ -363,21 +374,26 @@ export class NotificationService {
           <h3 style="color: #333; margin-top: 0;">Nouveau message de contact reçu :</h3>
           <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0;">
             <p><strong>De :</strong> ${contact.firstName} ${contact.lastName}</p>
-            <p><strong>Email :</strong> ${contact.email}</p>  {/* ✅ Utilise contact.email */}
+            <p><strong>Email :</strong> ${contact.email}</p> 
             <p><strong>Message :</strong><br/>${contact.message}</p>
+          </div>
+          <div style="margin-top: 20px; padding: 15px; background: #e8f4fd; border-radius: 8px;">
+            <p style="margin: 0; color: #0369a1; font-size: 14px;">
+              <strong>💡 Pour répondre :</strong> Cliquez simplement sur "Répondre" dans votre client email
+            </p>
           </div>
         </div>
       </div>
     `;
 
     await this.sendEmail(
-        adminEmail,  // ✅ Envoie à l'admin
+        adminEmail, 
         'Nouveau message de contact - Paname Consulting',
         emailContent,
-        'notification contact admin'
+        'notification contact admin',
+        contact.email // replyTo parameter
     );
 }
-
   // Send contact confirmation email to user when contact is sent
  async sendContactConfirmation(contact: Contact): Promise<void> {
     const emailContent = `
@@ -410,7 +426,7 @@ export class NotificationService {
     `;
 
     await this.sendEmail(
-        contact.email,  // ✅ CORRECT - variable contact.email
+        contact.email, 
         'Confirmation de votre message - Paname Consulting',
         emailContent,
         'confirmation contact'

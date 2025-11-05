@@ -1,578 +1,407 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../../utils/AuthContext';
-import { toast } from 'react-toastify';
-import { 
-  Calendar, 
-  CheckCircle, 
-  Clock, 
-  Eye, 
-  FileText, 
-  Home, 
-  Play, 
-  XCircle, 
-  User, 
-  MapPin,
-  ChevronRight,
-  BarChart3,
-  RefreshCw,
-  History
-} from 'lucide-react';
+import { useState } from 'react';
 
 interface Procedure {
-  _id: string;
-  prenom: string;
-  nom: string;
+  id: string;
+  client: string;
   email: string;
   destination: string;
-  statut: 'En cours' | 'Refusée' | 'Annulée' | 'Terminée';
-  steps: Array<{
-    nom: string;
-    statut: 'En attente' | 'En cours' | 'Refusé' | 'Terminé';
-    raisonRefus?: string;
-    dateMaj: string;
-  }>;
-  rendezVousId?: {
-    _id: string;
-    date: string;
-    time: string;
-    status: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-  progress: number;
-  currentStep: any;
+  etapeCourante: string;
+  dateDebut: string;
+  statutProcedure: 'en cours' | 'terminée' | 'en attente' | 'annulée';
+  statutEtape: 'en cours' | 'terminée' | 'en attente' | 'validée';
+  administrateur: string;
+  couleur: string;
+  priorite: 'haute' | 'moyenne' | 'basse';
 }
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const AdminProcedures = () => {
+  const [procedures, setProcedures] = useState<Procedure[]>([
+    {
+      id: '1',
+      client: 'Alice Johnson',
+      email: 'alice.johnson@example.com',
+      destination: 'Canada',
+      etapeCourante: 'Être de visage',
+      dateDebut: '10/03/2024',
+      statutProcedure: 'en cours',
+      statutEtape: 'en cours',
+      administrateur: 'Jean Dupont',
+      couleur: 'bg-purple-500',
+      priorite: 'haute'
+    },
+    {
+      id: '2',
+      client: 'Marc Durand',
+      email: 'marc.durand@example.com',
+      destination: 'États-Unis',
+      etapeCourante: 'Être de démarrage',
+      dateDebut: '12/03/2024',
+      statutProcedure: 'en cours',
+      statutEtape: 'en attente',
+      administrateur: 'Jean Dupont',
+      couleur: 'bg-blue-500',
+      priorite: 'moyenne'
+    },
+    {
+      id: '3',
+      client: 'Sophie Bernard',
+      email: 'sophie.bernard@example.com',
+      destination: 'Australie',
+      etapeCourante: 'Être de voyage',
+      dateDebut: '08/03/2024',
+      statutProcedure: 'en cours',
+      statutEtape: 'terminée',
+      administrateur: 'Jean Dupont',
+      couleur: 'bg-pink-500',
+      priorite: 'haute'
+    },
+    {
+      id: '4',
+      client: 'Pierre Martin',
+      email: 'pierre.martin@example.com',
+      destination: 'Royaume-Uni',
+      etapeCourante: 'Être de transmission',
+      dateDebut: '14/03/2024',
+      statutProcedure: 'en attente',
+      statutEtape: 'en cours',
+      administrateur: 'Jean Dupont',
+      couleur: 'bg-orange-500',
+      priorite: 'basse'
+    }
+  ]);
 
-const UserProcedure: React.FC = () => {
-  const { user, token, refreshToken } = useAuth();
-  const [procedures, setProcedures] = useState<Procedure[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedStatutProcedure, setSelectedStatutProcedure] = useState<string>('tous');
+  const [selectedStatutEtape, setSelectedStatutEtape] = useState<string>('toutes');
   const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-  const getStatusInfo = (status: string) => {
-    switch (status) {
-      case 'En cours':
-        return { 
-          label: 'En cours', 
-          color: 'bg-blue-100 text-blue-800 border-blue-200', 
-          icon: <Play className='w-4 h-4' /> 
-        };
-      case 'Terminée':
-        return { 
-          label: 'Terminée', 
-          color: 'bg-green-100 text-green-800 border-green-200', 
-          icon: <CheckCircle className='w-4 h-4' /> 
-        };
-      case 'Refusée':
-        return { 
-          label: 'Refusée', 
-          color: 'bg-red-100 text-red-800 border-red-200', 
-          icon: <XCircle className='w-4 h-4' /> 
-        };
-      case 'Annulée':
-        return { 
-          label: 'Annulée', 
-          color: 'bg-yellow-100 text-yellow-800 border-yellow-200', 
-          icon: <XCircle className='w-4 h-4' /> 
-        };
-      default:
-        return { 
-          label: 'Inconnue', 
-          color: 'bg-gray-100 text-gray-800 border-gray-200', 
-          icon: <Eye className='w-4 h-4' /> 
-        };
+  const filteredProcedures = procedures.filter(proc => {
+    const matchesSearch = proc.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         proc.destination.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatutProc = selectedStatutProcedure === 'tous' || proc.statutProcedure === selectedStatutProcedure;
+    const matchesStatutEtape = selectedStatutEtape === 'toutes' || proc.statutEtape === selectedStatutEtape;
+    return matchesSearch && matchesStatutProc && matchesStatutEtape;
+  });
+
+  const getStatutColor = (statut: string) => {
+    switch (statut) {
+      case 'en cours': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'terminée': return 'bg-green-100 text-green-800 border-green-200';
+      case 'en attente': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'annulée': return 'bg-red-100 text-red-800 border-red-200';
+      case 'validée': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  const getStepStatusInfo = (status: string) => {
-    switch (status) {
-      case 'En attente':
-        return { color: 'bg-gray-100 text-gray-800', icon: Clock };
-      case 'En cours':
-        return { color: 'bg-blue-100 text-blue-800', icon: Play };
-      case 'Terminé':
-        return { color: 'bg-green-100 text-green-800', icon: CheckCircle };
-      case 'Refusé':
-        return { color: 'bg-red-100 text-red-800', icon: XCircle };
-      default:
-        return { color: 'bg-gray-100 text-gray-800', icon: Clock };
+  const getPrioriteColor = (priorite: string) => {
+    switch (priorite) {
+      case 'haute': return 'bg-red-500';
+      case 'moyenne': return 'bg-yellow-500';
+      case 'basse': return 'bg-green-500';
+      default: return 'bg-gray-500';
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fr-FR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
+  const updateProcedureStatut = (id: string, newStatut: Procedure['statutProcedure']) => {
+    setProcedures(proc => proc.map(item => 
+      item.id === id ? { ...item, statutProcedure: newStatut } : item
+    ));
   };
 
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fr-FR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const updateEtapeStatut = (id: string, newStatut: Procedure['statutEtape']) => {
+    setProcedures(proc => proc.map(item => 
+      item.id === id ? { ...item, statutEtape: newStatut } : item
+    ));
   };
 
-  const fetchProcedures = useCallback(async () => {
-    if (!user?.email || !token) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${API_URL}/api/procedures/user?page=1&limit=50`, {
-          headers: { 
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json'
-          }
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Si token expiré, rafraîchir et réessayer
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée. Veuillez vous reconnecter.');
-        }
-      }
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          // Aucune procédure trouvée - ce n'est pas une erreur
-          setProcedures([]);
-          return;
-        }
-        throw new Error('Erreur lors du chargement de vos procédures');
-      }
-
-      const data = await response.json();
-      setProcedures(data.data || []);
-      
-    } catch (error) {
-      console.error('Erreur fetchProcedures:', error);
-      if (error instanceof Error && !error.message.includes('404')) {
-        toast.error(error.message || 'Erreur lors du chargement des procédures');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.email, token, refreshToken]);
-
-  useEffect(() => {
-    fetchProcedures();
-  }, [fetchProcedures]);
-
-  const stats = {
-    inProgress: procedures.filter(p => p.statut === 'En cours').length,
-    completed: procedures.filter(p => p.statut === 'Terminée').length,
-    cancelled: procedures.filter(p => p.statut === 'Annulée').length,
-    rejected: procedures.filter(p => p.statut === 'Refusée').length,
-    total: procedures.length
-  };
-
-  const handleRefresh = () => {
-    fetchProcedures();
-  };
-
-  const handleViewDetails = (procedure: Procedure) => {
-    setSelectedProcedure(procedure);
-    setShowDetailsModal(true);
-  };
+  const statutsProcedure = ['tous', 'en cours', 'terminée', 'en attente', 'annulée'];
+  const statutsEtape = ['toutes', 'en cours', 'terminée', 'en attente', 'validée'];
+  const etapesOptions = ['Être de visage', 'Être de démarrage', 'Être de voyage', 'Être de transmission'];
 
   return (
-    <div className='min-h-screen bg-gradient-to-br from-slate-50 to-blue-50'>
-      {/* Navigation utilisateur améliorée */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-4 md:space-x-8">
-              <Link 
-                to="/" 
-                className="flex items-center text-sky-600 hover:text-sky-700 transition-colors group"
-              >
-                <div className="p-2 bg-sky-100 rounded-lg group-hover:bg-sky-200 transition-colors">
-                  <Home className="w-5 h-5" />
-                </div>
-                <span className="ml-2 font-medium hidden sm:inline">Accueil</span>
-              </Link>
-              
-              <nav className="flex space-x-1 md:space-x-2">
-                {[
-                  { to: '/user-profile', icon: User, label: 'Profil' },
-                  { to: '/user-rendez-vous', icon: Calendar, label: 'Rendez-vous' },
-                  { to: '/user-procedure', icon: FileText, label: 'Procédures', active: true },
-                  { to: '/user-historique', icon: History, label: 'Historique' }
-                ].map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    className={`flex items-center px-3 py-2 rounded-xl transition-all duration-200 ${
-                      item.active 
-                        ? 'bg-sky-500 text-white shadow-lg shadow-sky-200' 
-                        : 'text-slate-600 hover:text-sky-600 hover:bg-sky-50'
-                    }`}
-                  >
-                    <item.icon className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline text-sm font-medium">{item.label}</span>
-                  </Link>
-                ))}
-              </nav>
-            </div>
-            
-            <button
-              onClick={handleRefresh}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white text-slate-700 rounded-xl border border-slate-300 hover:bg-slate-50 transition-colors font-medium shadow-sm"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              <span className="hidden xs:inline">Actualiser</span>
-            </button>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-4 md:p-6">
+      {/* Header */}
+      <div className="mb-6 md:mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+              Procédures
+            </h1>
+            <p className="text-slate-600 mt-1">Gérez les procédures</p>
           </div>
+          
+          <button className="px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 w-fit">
+            <i className="fas fa-plus"></i>
+            Nouvelle procédure
+          </button>
         </div>
       </div>
 
-      <div className='py-8 px-4 sm:px-6 lg:px-8'>
-        <div className='max-w-7xl mx-auto'>
-          {/* En-tête amélioré */}
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-sky-100 rounded-2xl mb-4">
-              <FileText className="w-8 h-8 text-sky-600" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-7xl mx-auto">
+        {/* Liste des procédures */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
+          {/* Barre de recherche et filtres */}
+          <div className="p-4 border-b border-slate-200 bg-slate-50/50">
+            <div className="relative mb-4">
+              <input 
+                type="text" 
+                placeholder="Rechercher une procédure..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-white border border-slate-300 rounded-xl focus:ring-0 focus:outline-none focus:border-blue-500 transition-all duration-200"
+              />
+              <i className="fas fa-search absolute left-3 top-3.5 text-slate-400"></i>
             </div>
-            <h1 className='text-3xl md:text-4xl font-bold text-slate-800 mb-3'>Mes Procédures</h1>
-            <p className='text-lg text-slate-600 max-w-2xl mx-auto'>
-              Suivez l'avancement de vos procédures d'admission à l'étranger
-            </p>
-          </div>
 
-          {/* Cartes statistiques améliorées */}
-          <div className='grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8'>
-            <div className='bg-white rounded-2xl p-6 shadow-sm border border-slate-200'>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className='text-sm font-medium text-slate-600'>Total</p>
-                  <p className='text-2xl font-bold text-slate-800 mt-1'>{stats.total}</p>
-                </div>
-                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <BarChart3 className="w-5 h-5 text-blue-600" />
-                </div>
+            {/* Filtres */}
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <span className="text-sm text-slate-600 font-medium whitespace-nowrap">Statut procédure:</span>
+                {statutsProcedure.map(statut => (
+                  <button
+                    key={statut}
+                    onClick={() => setSelectedStatutProcedure(statut)}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 capitalize ${
+                      selectedStatutProcedure === statut
+                        ? 'bg-blue-500 text-white shadow-sm'
+                        : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {statut === 'tous' ? 'Tous' : statut}
+                  </button>
+                ))}
               </div>
-            </div>
 
-            <div className='bg-white rounded-2xl p-6 shadow-sm border border-slate-200'>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className='text-sm font-medium text-slate-600'>En cours</p>
-                  <p className='text-2xl font-bold text-slate-800 mt-1'>{stats.inProgress}</p>
-                </div>
-                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <Play className="w-5 h-5 text-blue-600" />
-                </div>
-              </div>
-            </div>
-
-            <div className='bg-white rounded-2xl p-6 shadow-sm border border-slate-200'>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className='text-sm font-medium text-slate-600'>Terminées</p>
-                  <p className='text-2xl font-bold text-slate-800 mt-1'>{stats.completed}</p>
-                </div>
-                <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                </div>
-              </div>
-            </div>
-
-            <div className='bg-white rounded-2xl p-6 shadow-sm border border-slate-200'>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className='text-sm font-medium text-slate-600'>Annulées</p>
-                  <p className='text-2xl font-bold text-slate-800 mt-1'>{stats.cancelled}</p>
-                </div>
-                <div className="w-10 h-10 bg-yellow-100 rounded-xl flex items-center justify-center">
-                  <XCircle className="w-5 h-5 text-yellow-600" />
-                </div>
-              </div>
-            </div>
-
-            <div className='bg-white rounded-2xl p-6 shadow-sm border border-slate-200'>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className='text-sm font-medium text-slate-600'>Refusées</p>
-                  <p className='text-2xl font-bold text-slate-800 mt-1'>{stats.rejected}</p>
-                </div>
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <XCircle className="w-5 h-5 text-red-600" />
-                </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="text-sm text-slate-600 font-medium whitespace-nowrap">Statut étape:</span>
+                {statutsEtape.map(statut => (
+                  <button
+                    key={statut}
+                    onClick={() => setSelectedStatutEtape(statut)}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 capitalize ${
+                      selectedStatutEtape === statut
+                        ? 'bg-blue-500 text-white shadow-sm'
+                        : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {statut === 'toutes' ? 'Toutes' : statut}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* Carte principale améliorée */}
-          <div className='bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200'>
-            <div className="px-6 py-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-blue-50">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-                <div>
-                  <h2 className='text-2xl font-bold text-slate-800'>Vos procédures</h2>
-                  <p className='text-slate-600 mt-1'>Consultez le détail de chaque procédure</p>
-                </div>
-                <div className="text-sm text-slate-600">
-                  {stats.total} procédure{stats.total > 1 ? 's' : ''} au total
-                </div>
-              </div>
-            </div>
+          {/* Liste des procédures */}
+          <div className="max-h-[600px] overflow-y-auto">
+            {filteredProcedures.map(proc => (
+              <div
+                key={proc.id}
+                className={`border-b border-slate-100 last:border-b-0 transition-all duration-200 cursor-pointer hover:bg-slate-50/70 ${
+                  selectedProcedure?.id === proc.id ? 'bg-blue-50/50 border-l-4 border-l-blue-500' : ''
+                }`}
+                onClick={() => setSelectedProcedure(proc)}
+              >
+                <div className="p-4">
+                  <div className="flex items-start gap-3">
+                   
 
-            {loading ? (
-              <div className='flex justify-center py-16'>
-                <div className="flex flex-col items-center gap-4">
-                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
-                  <p className="text-slate-600">Chargement de vos procédures...</p>
-                </div>
-              </div>
-            ) : procedures.length === 0 ? (
-              <div className='text-center py-16 px-6'>
-                <div className="mx-auto w-20 h-20 flex items-center justify-center rounded-2xl bg-slate-100 text-slate-400 mb-6">
-                  <FileText className="w-10 h-10" />
-                </div>
-                <h3 className='text-2xl font-bold text-slate-800 mb-3'>Aucune procédure en cours</h3>
-                <p className='text-slate-600 mb-8 max-w-md mx-auto'>
-                  Vous n'avez pas encore de procédures d'admission. 
-                  Prenez un rendez-vous pour commencer votre projet d'études à l'étranger.
-                </p>
-                <Link
-                  to="/rendez-vous"
-                  className="inline-flex items-center gap-2 px-8 py-3.5 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl hover:from-sky-600 hover:to-blue-700 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl hover:scale-105"
-                >
-                  <Calendar className="w-5 h-5" />
-                  Prendre un rendez-vous
-                </Link>
-              </div>
-            ) : (
-              <div className='divide-y divide-slate-100'>
-                {procedures.map((procedure) => {
-                  const statusInfo = getStatusInfo(procedure.statut);
-                  return (
-                    <div key={procedure._id} className='p-6 hover:bg-slate-50/50 transition-colors group'>
-                      <div className='flex flex-col lg:flex-row lg:items-start justify-between gap-4'>
-                        <div className='flex-1'>
-                          <div className='flex flex-col sm:flex-row sm:items-center gap-3 mb-3'>
-                            <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 bg-sky-100 rounded-xl flex items-center justify-center">
-                                <MapPin className="w-6 h-6 text-sky-600" />
-                              </div>
-                              <div>
-                                <h3 className='text-xl font-bold text-slate-800'>
-                                  {procedure.destination}
-                                </h3>
-                                <p className='text-slate-600 text-sm'>
-                                  Créée le {formatDate(procedure.createdAt)}
-                                </p>
-                              </div>
-                            </div>
-                            
-                            <div className="flex flex-wrap gap-2">
-                              <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border ${statusInfo.color}`}>
-                                {statusInfo.icon}
-                                <span>{statusInfo.label}</span>
-                              </span>
-                              
-                              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-full text-sm font-medium">
-                                <div className="w-2 h-2 bg-sky-500 rounded-full"></div>
-                                <span>Progression: {procedure.progress}%</span>
-                              </div>
-                            </div>
-                          </div>
+                    {/* Contenu */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div>
+                          <h3 className="font-semibold text-slate-800">
+                            {proc.client}
+                          </h3>
+                          <p className="text-slate-600 text-sm">{proc.email}</p>
+                        </div>
+                        <span className="text-sm text-slate-500 whitespace-nowrap">
+                          {proc.dateDebut}
+                        </span>
+                      </div>
 
-                          {/* Barre de progression */}
-                          <div className="mb-4">
-                            <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
-                              <span>Avancement de votre procédure</span>
-                              <span>{procedure.progress}% complété</span>
-                            </div>
-                            <div className="w-full bg-slate-200 rounded-full h-2">
-                              <div 
-                                className="bg-gradient-to-r from-sky-500 to-blue-600 h-2 rounded-full transition-all duration-1000"
-                                style={{ width: `${procedure.progress}%` }}
-                              ></div>
-                            </div>
-                          </div>
-
-                          {/* Étapes rapides */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            {procedure.steps.slice(0, 3).map((step, index) => {
-                              const stepConfig = getStepStatusInfo(step.statut);
-                              const StepIcon = stepConfig.icon;
-                              return (
-                                <div key={index} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${stepConfig.color}`}>
-                                    <StepIcon className="w-4 h-4" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-slate-800 truncate">
-                                      {step.nom}
-                                    </p>
-                                    <p className="text-xs text-slate-600">
-                                      {step.statut}
-                                    </p>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-slate-700 text-sm font-medium bg-slate-100 px-2 py-1 rounded">
+                            {proc.destination}
+                          </span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatutColor(proc.statutProcedure)}`}>
+                            {proc.statutProcedure}
+                          </span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatutColor(proc.statutEtape)}`}>
+                            Étape: {proc.statutEtape}
+                          </span>
                         </div>
                         
-                        <div className="flex lg:flex-col gap-2 lg:items-end">
-                          <button
-                            onClick={() => handleViewDetails(procedure)}
-                            className="flex items-center gap-2 px-4 py-2.5 text-sky-600 hover:bg-sky-50 rounded-xl border border-sky-200 transition-colors font-medium"
-                          >
-                            <Eye className="w-4 h-4" />
-                            <span>Détails</span>
-                            <ChevronRight className="w-4 h-4" />
-                          </button>
-                          
-                          <div className="text-xs text-slate-500 text-right">
-                            Dernière mise à jour: {formatDateTime(procedure.updatedAt)}
-                          </div>
+                        <div className="text-sm text-slate-600">
+                          <span className="font-medium">Étape courante:</span> {proc.etapeCourante}
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {filteredProcedures.length === 0 && (
+              <div className="p-8 text-center text-slate-500">
+                <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
+                  <i className="fas fa-folder-open text-slate-400 text-xl"></i>
+                </div>
+                <p>Aucune procédure trouvée</p>
               </div>
             )}
           </div>
         </div>
+
+        {/* Détails de la procédure */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
+          {selectedProcedure ? (
+            <div className="h-full flex flex-col">
+              {/* Header */}
+              <div className="p-6 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                   
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-800">
+                        {selectedProcedure.client}
+                      </h2>
+                      <p className="text-slate-600">{selectedProcedure.email}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-slate-500 mb-1">Destination</p>
+                    <p className="font-semibold text-slate-800">{selectedProcedure.destination}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500 mb-1">Date de début</p>
+                    <p className="font-semibold text-slate-800">{selectedProcedure.dateDebut}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Informations détaillées */}
+              <div className="flex-1 p-6 space-y-6">
+                {/* Étape courante */}
+                <div>
+                  <h3 className="text-sm font-medium text-slate-500 mb-3">ÉTAPE COURANTE</h3>
+                  <select
+                    value={selectedProcedure.etapeCourante}
+                    onChange={(e) => setProcedures(proc => proc.map(item => 
+                      item.id === selectedProcedure.id ? { ...item, etapeCourante: e.target.value } : item
+                    ))}
+                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-0 focus:outline-none focus:border-blue-500 transition-all duration-200 bg-white"
+                  >
+                    {etapesOptions.map(etape => (
+                      <option key={etape} value={etape}>{etape}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Statut Procédure */}
+                <div>
+                  <h3 className="text-sm font-medium text-slate-500 mb-3">STATUT PROCÉDURE</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {['en cours', 'terminée', 'en attente', 'annulée'].map(statut => (
+                      <button
+                        key={statut}
+                        onClick={() => updateProcedureStatut(selectedProcedure.id, statut as Procedure['statutProcedure'])}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 capitalize ${
+                          selectedProcedure.statutProcedure === statut
+                            ? 'bg-blue-500 text-white shadow-sm'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {statut}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Statut Étape */}
+                <div>
+                  <h3 className="text-sm font-medium text-slate-500 mb-3">STATUT ÉTAPE</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {['en cours', 'terminée', 'en attente', 'validée'].map(statut => (
+                      <button
+                        key={statut}
+                        onClick={() => updateEtapeStatut(selectedProcedure.id, statut as Procedure['statutEtape'])}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 capitalize ${
+                          selectedProcedure.statutEtape === statut
+                            ? 'bg-blue-500 text-white shadow-sm'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {statut}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Administrateur */}
+                <div className="p-4 bg-slate-50 rounded-xl">
+                  <h3 className="text-sm font-medium text-slate-500 mb-2">ADMINISTRATEUR</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-600 font-semibold">
+                      JD
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-800">{selectedProcedure.administrateur}</p>
+                      <p className="text-sm text-slate-600">Administrateur</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="p-6 border-t border-slate-200 bg-slate-50/50">
+                <div className="flex flex-wrap gap-3">
+                  <button className="px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2">
+                    <i className="fas fa-edit"></i>
+                    Modifier
+                  </button>
+                  <button className="px-4 py-2 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2">
+                    <i className="fas fa-check-double"></i>
+                    Valider l'étape
+                  </button>
+                  <button className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 ml-auto">
+                    <i className="fas fa-trash"></i>
+                    Supprimer
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Empty State */
+            <div className="h-full flex items-center justify-center p-8">
+              <div className="text-center">
+                <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center">
+                  <i className="fas fa-tasks text-slate-400 text-2xl"></i>
+                </div>
+                <h3 className="text-lg font-semibold text-slate-600 mb-2">
+                  Aucune procédure sélectionnée
+                </h3>
+                <p className="text-slate-500 text-sm">
+                  Cliquez sur une procédure pour afficher ses détails
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Modal de détails */}
-      {showDetailsModal && selectedProcedure && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 shadow-2xl animate-scale-in max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start mb-6">
-              <h2 className="text-2xl font-bold text-slate-800">Détails de la procédure</h2>
-              <button
-                onClick={() => setShowDetailsModal(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg transition-colors"
-              >
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-              <div>
-                <h3 className="font-semibold text-slate-800 mb-3">Informations générales</h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-slate-600">Destination</p>
-                    <p className="font-medium text-slate-800">{selectedProcedure.destination}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-600">Statut global</p>
-                    <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium ${getStatusInfo(selectedProcedure.statut).color}`}>
-                      {getStatusInfo(selectedProcedure.statut).icon}
-                      <span>{selectedProcedure.statut}</span>
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-600">Progression</p>
-                    <div className="flex items-center gap-3 mt-1">
-                      <div className="flex-1 bg-slate-200 rounded-full h-2">
-                        <div 
-                          className="bg-gradient-to-r from-sky-500 to-blue-600 h-2 rounded-full transition-all duration-500"
-                          style={{ width: `${selectedProcedure.progress}%` }}
-                        ></div>
-                      </div>
-                      <span className="text-sm font-medium text-slate-700">
-                        {selectedProcedure.progress}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <div>
-                <h3 className="font-semibold text-slate-800 mb-3">Dates importantes</h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-slate-600">Date de création</p>
-                    <p className="font-medium text-slate-800">
-                      {formatDateTime(selectedProcedure.createdAt)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-600">Dernière mise à jour</p>
-                    <p className="font-medium text-slate-800">
-                      {formatDateTime(selectedProcedure.updatedAt)}
-                    </p>
-                  </div>
-                  {selectedProcedure.rendezVousId && (
-                    <div>
-                      <p className="text-sm text-slate-600">Rendez-vous associé</p>
-                      <p className="font-medium text-slate-800">
-                        {formatDate(selectedProcedure.rendezVousId.date)} à {selectedProcedure.rendezVousId.time}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            <div>
-              <h3 className="font-semibold text-slate-800 mb-4">Étapes détaillées</h3>
-              <div className="space-y-3">
-                {selectedProcedure.steps.map((step, index) => {
-                  const stepConfig = getStepStatusInfo(step.statut);
-                  const StepIcon = stepConfig.icon;
-                  return (
-                    <div key={index} className="flex items-center justify-between p-4 bg-white rounded-lg border border-slate-200">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stepConfig.color}`}>
-                          <StepIcon className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-800">{step.nom}</p>
-                          <p className="text-sm text-slate-600">
-                            Dernière mise à jour: {formatDateTime(step.dateMaj)}
-                          </p>
-                          {step.raisonRefus && (
-                            <p className="text-sm text-red-600 mt-1">
-                              <strong>Raison du refus:</strong> {step.raisonRefus}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${stepConfig.color}`}>
-                        {step.statut}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Mobile Floating Action Button */}
+      <div className="lg:hidden fixed bottom-6 right-6">
+        <button className="w-14 h-14 bg-blue-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center hover:bg-blue-600">
+          <i className="fas fa-plus text-lg"></i>
+        </button>
+      </div>
     </div>
   );
 };
 
-export default UserProcedure;
+export default AdminProcedures;

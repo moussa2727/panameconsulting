@@ -288,7 +288,7 @@ let blinkTimeout: any;
                 }
               }}
             >
-              <div className='w-16 h-16 rounded shadow-md'>
+              <div className='w-16 h-16 rounded shadow-sm'>
                 <img
                   src='/paname-consulting.jpg'
                   alt='Logo Paname Consulting'

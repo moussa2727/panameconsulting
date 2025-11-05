@@ -1,310 +1,113 @@
-import AOS from 'aos';
-import 'aos/dist/aos.css';
-import React, { useEffect, useCallback, useMemo } from 'react';
-import {
-  FiArrowRight,
-  FiAward,
-  FiBook,
-  FiTarget,
-  FiUser,
-  FiUsers,
-} from 'react-icons/fi';
-import { Link, useLocation } from 'react-router-dom';
+import React from 'react';
 
 const About = () => {
-  const location = useLocation();
-  const isAboutPage = location.pathname === '/a-propos';
-
-  // AOS is now initialized globally in App.tsx
-  
-  // Ensure component is visible on mobile
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      // Force visibility of AOS elements on mobile
-      const aosElements = document.querySelectorAll('[data-aos]');
-      aosElements.forEach(element => {
-        const htmlElement = element as HTMLElement;
-        htmlElement.style.opacity = '1';
-        htmlElement.style.transform = 'none';
-        htmlElement.style.visibility = 'visible';
-      });
-    }
-  }, []);
-
-  // Mémoization des services
-  const services = useMemo(() => [
-    {
-      icon: <FiBook className='w-5 h-5 sm:w-6 sm:h-6' />,
-      title: 'Formation professionnelle',
-      text: 'Expertise pointue et pédagogie innovante pour booster votre carrière',
-      keywords: 'formation pro, développement compétences'
-    },
-    {
-      icon: <FiTarget className='w-5 h-5 sm:w-6 sm:h-6' />,
-      title: 'Conseil stratégique',
-      text: 'Solutions personnalisées pour vos choix professionnels et éducatifs',
-      keywords: 'conseil stratégique, orientation'
-    },
-    {
-      icon: <FiUser className='w-5 h-5 sm:w-6 sm:h-6' />,
-      title: 'Coaching personnalisé',
-      text: 'Accompagnement sur mesure avec méthodologie orientée résultats',
-      keywords: 'coaching, accompagnement personnalisé'
-    },
-    {
-      icon: <FiUsers className='w-5 h-5 sm:w-6 sm:h-6' />,
-      title: 'Team-building',
-      text: "Ateliers dynamiques pour renforcer la cohésion d'équipe",
-      keywords: 'team building, cohésion équipe'
-    },
-  ], []);
-
-  // Handlers pour interactions tactiles
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    const target = e.currentTarget as HTMLElement;
-    target.style.transform = 'scale(0.98)';
-  }, []);
-
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    const target = e.currentTarget as HTMLElement;
-    target.style.transform = 'scale(1)';
-  }, []);
-
   return (
-    <div 
-      className='bg-gradient-to-b from-white via-sky-50/70 to-white'
-      role="main"
-      aria-label="À propos de Paname Consulting"
-      style={{
-        // Ensure visibility on mobile even if AOS fails
-        opacity: 1,
-        transform: 'none',
-        visibility: 'visible'
-      }}
-    >
-      <section
-        id='a-propos'
-        className='py-8 sm:py-12 px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto'
-      >
-        {/* En-tête avec meilleure sémantique SEO */}
-        <header className='text-center mb-8 sm:mb-12'>
-          <span
-            className='inline-block px-3 py-1.5 sm:px-4 sm:py-2 mb-2 sm:mb-3 text-xs font-bold text-sky-600 uppercase tracking-widest bg-sky-50 rounded-lg border-l-4 border-sky-500 shadow-xs transition-all duration-300 hover:shadow-sm'
-            data-aos='fade-up'
-            data-aos-duration='400'
-            role="doc-subtitle"
-          >
-            Qui Sommes Nous ?
-          </span>
-        </header>
-
-        {/* Section Fondateur avec structure sémantique améliorée */}
-        <article
-          id='fondateur'
-          className='bg-white overflow-hidden shadow-lg sm:shadow-xl border border-gray-100 '
-          data-aos='fade-up'
-          data-aos-duration='600'
-          data-aos-delay='100'
-          itemScope
-          itemType="https://schema.org/Person"
-        >
-          <div className='flex flex-col lg:flex-row'>
-            {/* Côté photo avec informations structurées */}
-            <div 
-              className='lg:w-2/5 bg-gradient-to-br from-sky-500 to-sky-700 p-4 sm:p-6 md:p-8 flex flex-col justify-center relative overflow-hidden'
-              aria-label="Informations du fondateur"
-            >
-              <div className='absolute inset-0 pointer-events-none'>
-                <div
-                  className='absolute inset-0 opacity-20'
-                  style={{
-                    backgroundImage:
-                      'radial-gradient(circle, white 1px, transparent 1px)',
-                    backgroundSize: '4px 4px',
-                    WebkitMaskImage:
-                      'linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)',
-                    maskImage:
-                      'linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)',
-                  }}
-                  aria-hidden="true"
-                />
-              </div>
-              
-              <div className='text-center mb-4 sm:mb-6 relative z-10'>
-                <div 
-                  className='mx-auto bg-gray-200 rounded-xl w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 flex items-center justify-center shadow-inner'
-                  role="img"
-                  aria-label="Photo de Sangare Damini, fondateur de Paname Consulting"
-                >
-                  <img
-                    src='/damini.webp'
-                    alt='Photo de Sangare Damini - Fondateur & CEO Paname Consulting'
-                    className='w-full h-full object-cover rounded-lg'
-                    loading='lazy'
-                    width={112}
-                    height={112}
-                    itemProp="image"
-                  />
-                </div>
-              </div>
-              
-              <div className='text-white text-center relative z-10'>
-                <h1 
-                  className='text-lg sm:text-xl md:text-2xl font-bold mb-1'
-                  itemProp="name"
-                >
-                  Sangare Damini
-                </h1>
-                <p 
-                  className='text-sky-100 text-xs sm:text-sm font-medium mb-3 sm:mb-4'
-                  itemProp="jobTitle"
-                >
-                  Fondateur & CEO
-                </p>
-                <div 
-                  className='flex justify-center space-x-2 sm:space-x-3 md:space-x-4'
-                  aria-label="Compétences du fondateur"
-                >
-                  {[FiAward, FiUsers, FiTarget].map((Icon, index) => (
-                    <div 
-                      key={index}
-                      className='bg-sky-400/30 p-1 sm:p-1.5 md:p-2 rounded-lg'
-                      aria-hidden="true"
-                    >
-                      <Icon className='w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5' />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Contenu principal avec hiérarchie SEO améliorée */}
-            <div className='lg:w-3/5 p-4 sm:p-6 md:p-8 bg-white'>
-              <header className='mb-4 sm:mb-6'>
-                <span 
-                  className='inline-block text-sky-600 bg-sky-100 px-2 py-1 sm:px-3 sm:py-1 text-xs font-semibold mb-2 sm:mb-3 rounded'
-                  role="doc-subtitle"
-                >
-                  Notre histoire
-                </span>
-                <h2 className='text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 mb-3 sm:mb-4 leading-tight'>
-                  Notre mission, votre réussite
-                </h2>
-              </header>
-
-              <div 
-                className='space-y-2 sm:space-y-3 md:space-y-4 text-gray-700 text-sm sm:text-base leading-relaxed'
-                itemProp="description"
-              >
-                <p>
-                  Fondée par{' '}
-                  <strong className='text-sky-600 font-semibold' itemProp="founder">
-                    Sangare Damini
-                  </strong>
-                  , PANAME CONSULTING est née d'une passion pour l'éducation et
-                  l'accompagnement.
-                </p>
-                <p>
-                  Notre mission : vous offrir un accompagnement sur mesure pour
-                  vos projets d'études à l'étranger, dans un monde en constante
-                  mutation.
-                </p>
-                <p>
-                  <span className='font-semibold text-sky-600'>
-                    PANAME CONSULTING
-                  </span>{' '}
-                  est votre passerelle vers l'international. Nous transformons
-                  l'éducation en opportunités mondiales grâce à un
-                  accompagnement sur-mesure pour vos projets en France, Russie,
-                  Turquie et au-delà.
-                </p>
-
-                {/* Citation avec balisage sémantique */}
-                <blockquote 
-                  className='bg-sky-50 p-3 sm:p-4 border-l-4 border-sky-500 mt-3 sm:mt-4 md:mt-6 rounded-r'
-                  itemProp="knowsAbout"
-                >
-                  <p className='italic text-gray-700 text-xs sm:text-sm md:text-base leading-relaxed'>
-                    "L'éducation est le passeport pour l'avenir, car demain
-                    appartient à ceux qui s'y préparent aujourd'hui." 
-                    <cite className='block not-italic text-sky-600 font-medium mt-1'>
-                      - Malcolm X
-                    </cite>
-                  </p>
-                </blockquote>
-              </div>
-
-              {/* Call-to-action optimisé */}
-              <footer className='mt-4 sm:mt-6 md:mt-8'>
-                {!isAboutPage && (
-                  <Link
-                    to='/a-propos'
-                    className='inline-flex items-center font-medium text-sky-700 bg-sky-100/60 hover:bg-sky-200 px-3 py-1 sm:px-4 sm:py-1.5 md:px-5 md:py-2 rounded-lg shadow-xs hover:shadow-sm transition-all group text-xs sm:text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2'
-                    aria-label="En savoir plus sur Paname Consulting"
-                    onTouchStart={handleTouchStart}
-                    onTouchEnd={handleTouchEnd}
-                  >
-                    <span className='relative z-10 flex items-center gap-1 sm:gap-2'>
-                      <span className='font-semibold group-hover:underline underline-offset-4'>
-                        VOIR PLUS
-                      </span>
-                      <FiArrowRight className='transition-transform group-hover:translate-x-0.5' aria-hidden="true" />
-                    </span>
-                  </Link>
-                )}
-              </footer>
-            </div>
-          </div>
-        </article>
-
-        {/* Services avec grid optimisée mobile-first */}
-      <section 
-  className='mt-8 sm:mt-12 md:mt-16'
-  aria-labelledby="services-heading"
->
-  <h2 id="services-heading" className='sr-only'>
-    Nos services principaux
-  </h2>
-  
-  <div className='grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6'>
-    {services.map((service, index) => (
-      <article
-        key={index}
-        data-aos='fade-up'
-        data-aos-duration='500'
-        data-aos-delay={Math.min(150 + index * 80, 400)}
-        className='flex flex-col p-3 sm:p-4 md:p-6 bg-white shadow-xs hover:shadow-sm transition-all duration-300 rounded-lg border border-gray-50 hover:border-sky-100 active:scale-98'
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        role="article"
-        aria-label={`Service: ${service.title}`}
-      >
-        {/* Icône au-dessus à gauche */}
-        <div className='flex justify-start mb-2 sm:mb-3 md:mb-4'>
-          <div 
-            className='flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-sky-100 text-sky-600 rounded-full'
-            aria-hidden="true"
-          >
-            {service.icon}
-          </div>
-        </div>
-
-        {/* Contenu texte aligné à gauche */}
-        <div className='flex-1'>
-          <h3 className='text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-1 sm:mb-2 leading-tight text-left'>
-            {service.title}
-          </h3>
-          <p className='text-gray-600 text-xs sm:text-sm leading-relaxed text-left'>
-            {service.text}
+    <section className="bg-gradient-to-br from-sky-50 to-white py-16 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header Section */}
+        <div className="text-center mb-16">
+          <h2 className="text-4xl font-bold text-sky-900 mb-4">
+            À Propos de Nous
+          </h2>
+          <div className="w-24 h-1 bg-sky-500 mx-auto mb-6"></div>
+          <p className="text-xl text-sky-700 max-w-3xl mx-auto">
+            Découvrez notre histoire, notre mission et les valeurs qui nous animent
           </p>
         </div>
-      </article>
-    ))}
-  </div>
-</section>
-      </section>
-    </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          {/* Left Column - Image */}
+          <div className="relative">
+            <div className="bg-sky-500 rounded-2xl p-2 transform rotate-3">
+              <div className="bg-white rounded-xl overflow-hidden transform -rotate-3 shadow-xl">
+                <img 
+                  src="/damini.webp"
+                  alt="Notre équipe"
+                  className="w-full h-96 object-cover"
+                />
+              </div>
+            </div>
+            {/* Decorative elements */}
+            <div className="absolute -top-4 -left-4 w-20 h-20 bg-sky-200 rounded-full opacity-50"></div>
+            <div className="absolute -bottom-6 -right-6 w-16 h-16 bg-sky-300 rounded-full opacity-70"></div>
+          </div>
+
+          {/* Right Column - Content */}
+          <div className="space-y-8">
+            {/* Mission Section */}
+            <div className="bg-white rounded-2xl p-8 shadow-lg border border-sky-100">
+              <div className="flex items-center mb-4">
+                <div className="w-12 h-12 bg-sky-500 rounded-lg flex items-center justify-center mr-4">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <h3 className="text-2xl font-bold text-sky-900">Notre Mission</h3>
+              </div>
+              <p className="text-sky-700 leading-relaxed">
+                Nous nous engageons à fournir des solutions innovantes et de qualité qui transforment 
+                la manière dont nos clients travaillent. Notre mission est de créer un impact positif 
+                grâce à la technologie et l'innovation.
+              </p>
+            </div>
+
+            {/* Values Section */}
+            <div className="bg-white rounded-2xl p-8 shadow-lg border border-sky-100">
+              <div className="flex items-center mb-4">
+                <div className="w-12 h-12 bg-sky-500 rounded-lg flex items-center justify-center mr-4">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                </div>
+                <h3 className="text-2xl font-bold text-sky-900">Nos Valeurs</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-sky-500 rounded-full mr-3"></div>
+                  <span className="text-sky-700">Innovation continue</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-sky-500 rounded-full mr-3"></div>
+                  <span className="text-sky-700">Qualité exceptionnelle</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-sky-500 rounded-full mr-3"></div>
+                  <span className="text-sky-700">Collaboration efficace</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-sky-500 rounded-full mr-3"></div>
+                  <span className="text-sky-700">Transparence totale</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Stats Section */}
+            <div className="grid grid-cols-3 gap-6">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-sky-600 mb-2">50+</div>
+                <div className="text-sm text-sky-700">Projets réalisés</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-sky-600 mb-2">15+</div>
+                <div className="text-sm text-sky-700">Pays desservis</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-sky-600 mb-2">98%</div>
+                <div className="text-sm text-sky-700">Clients satisfaits</div>
+              </div>
+            </div>
+
+            {/* CTA Button */}
+            <div className="text-center lg:text-left">
+              <button className="bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg transition-all duration-300 transform hover:scale-105">
+                Découvrir nos services
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 };
 
-export default React.memo(About);
+export default About;
