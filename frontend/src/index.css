@@ -1,18 +1,17 @@
-  @tailwindcss base;
-  @tailwindcss components;
-  @tailwindcss utilities;
-  
-  
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-  
-  /* Global styles */
-  body {
-    font-family: 'Inter', sans-serif;
-  }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Global styles */
+body {
+  font-family: 'Inter', sans-serif;
+}
 
 /* Ensure AOS elements are visible on mobile */
 @media (max-width: 767px) {

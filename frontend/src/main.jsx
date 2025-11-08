@@ -4,7 +4,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './utils/AuthContext';
 import App from './App';
-import './index.css';
+import './index.css' 
 
 // Filter out harmless Google Maps analytics errors in development
 if (import.meta.env.DEV) {

@@ -261,6 +261,9 @@ importers:
       framer-motion:
         specifier: ^10.16.16
         version: 10.18.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      install:
+        specifier: 0.13.0
+        version: 0.13.0
       joi:
         specifier: ^17.11.0
         version: 17.13.3
@@ -273,6 +276,9 @@ importers:
       papaparse:
         specifier: ^5.4.1
         version: 5.5.3
+      pnpm:
+        specifier: ^8.15.9
+        version: 8.15.9
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -338,7 +344,7 @@ importers:
         specifier: ^1.2.2
         version: 1.6.1(vitest@1.6.1)
       autoprefixer:
-        specifier: ^10.4.16
+        specifier: ^10.4.21
         version: 10.4.21(postcss@8.5.6)
       eslint:
         specifier: ^8.56.0
@@ -359,7 +365,7 @@ importers:
         specifier: ^15.2.0
         version: 15.5.2
       postcss:
-        specifier: ^8.4.32
+        specifier: ^8.5.6
         version: 8.5.6
       prettier:
         specifier: ^3.1.1
@@ -368,7 +374,7 @@ importers:
         specifier: ^5.12.0
         version: 5.14.0(rollup@4.53.1)
       tailwindcss:
-        specifier: ^3.4.0
+        specifier: ^3.4.18
         version: 3.4.18(yaml@2.8.1)
       typescript:
         specifier: ^5.3.3
@@ -3803,6 +3809,10 @@ packages:
   inquirer@9.2.15:
     resolution: {integrity: sha512-vI2w4zl/mDluHt9YEQ/543VTCwPKWiHzKtm9dM2V0NdFcqEexDAjUHzO1oA60HRNaVifGXXM1tRRNluLVHa0Kg==}
     engines: {node: '>=18'}
+
+  install@0.13.0:
+    resolution: {integrity: sha512-zDml/jzr2PKU9I8J/xyZBQn8rPCAY//UOYNmR01XwNwyfhEWObo2SWfSl1+0tm1u6PhxLwDnfsT/6jB7OUxqFA==}
+    engines: {node: '>= 0.10'}
 
   internmap@2.0.3:
     resolution: {integrity: sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg==}
@@ -10514,6 +10524,8 @@ snapshots:
       string-width: 4.2.3
       strip-ansi: 6.0.1
       wrap-ansi: 6.2.0
+
+  install@0.13.0: {}
 
   internmap@2.0.3: {}
 

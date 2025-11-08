@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="fr" class="scroll-smooth">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -15,7 +16,10 @@
   <meta name="googlebot" content="index, follow, max-image-preview:large" />
   <meta name="bingbot" content="index, follow, max-image-preview:large" />
   <meta name="yandexbot" content="index, follow, max-image-preview:large" />
+  <link rel="alternate" href="https://panameconsulting.com" hreflang="fr" />
+  <link rel="alternate" href="https://panameconsulting.com/en" hreflang="en" />
 
+  
   <!-- Open Graph amélioré -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Paname Consulting" />
@@ -23,10 +27,10 @@
   <meta property="og:description"
     content="Services professionnels d'accompagnement pour études à l'étranger, voyages d'affaires et démarches de visa" />
   <meta property="og:image" content="/paname-consulting.png" />
-  <meta property="og:image:width" content="512" />
-  <meta property="og:image:height" content="512" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="Paname Consulting - Services d'Accompagnement Étudiants, Organisation de Voyages d'Affaires et Demandes de Visa" />
-  <meta property="og:url" content="https://panameconsulting.vercel.app" />
+  <meta property="og:url" content="https://panameconsulting.com" />
   <meta property="og:locale" content="fr_FR" />
 
   <!-- Twitter Card améliorée -->
@@ -38,37 +42,24 @@
   <meta name="twitter:image" content="/paname-consulting.png" />
   <meta name="twitter:image:alt" content="Paname Consulting - Votre partenaire international" />
 
-  <!-- Favicons et icônes avec vrais fichiers -->
-  <link rel="icon" type="image/x-icon" href="paname-consulting.ico" />
-  <link rel="icon" type="image/png" sizes="32x32" href="paname-consulting.png" />
-  <link rel="icon" type="image/png" sizes="16x16" href="paname-consulting.png" />
-  <link rel="apple-touch-icon" sizes="180x180" href="paname-consulting.png" />
-  <link rel="mask-icon" href="paname-consulting.svg" color="#0ea5e9" />
-  
-  <!-- Import du Manifest -->
-  <link rel="manifest" href="manifest.webmanifest" />
-  
-  <meta name="msapplication-TileColor" content="#0ea5e9" />
+  <!-- Favicons et icônes -->
+  <link rel="icon" href="/paname-consulting.ico" sizes="any" />
+  <link rel="icon" href="/paname-consulting.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/paname-consulting.png" />
+  <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#0ea5e9" />
-  
-  <!-- PWA Meta Tags CORRIGÉS -->
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
   <!-- Préchargement et optimisation des ressources -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="dns-prefetch" href="https://maps.googleapis.com" />
   
-  <!-- Polices Google -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-
-  <!-- CSS Tailwind - CHEMIN CORRIGÉ -->
-  <link rel="stylesheet" href="src/index.css" />
+  <!-- Préchargement des polices critiques -->
+  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" /></noscript>
 
   <!-- Canonical URL -->
-  <link rel="canonical" href="https://panameconsulting.vercel.app" />
+  <link rel="canonical" href="https://panameconsulting.com" />
 
   <!-- Structured Data JSON-LD -->
   <script type="application/ld+json">
@@ -77,7 +68,7 @@
     "@type": "ProfessionalService",
     "name": "Paname Consulting",
     "description": "Services d'accompagnement pour études à l'étranger, voyages d'affaires et demandes de visa",
-    "url": "https://panameconsulting.vercel.app",
+    "url": "https://panameconsulting.com",
     "telephone": "+223-91-83-09-41",
     "email": "panameconsulting906@gmail.com",
     "address": {
@@ -87,17 +78,24 @@
       "addressCountry": "ML"
     },
     "openingHours": "Mo-Fr 09:00-18:00",
-    "serviceType": ["Student Counseling", "Visa Services", "Business Travel"],
-    "image": "/paname-consulting.png",
-    "logo": "/paname-consulting.png"
+    "serviceType": ["Student Counseling", "Visa Services", "Business Travel"]
   }
   </script>
 
-  <!-- Sécurité -->
+<!-- Politiques de sécurité modernes - CSP CORRIGÉE -->
+<meta http-equiv="Content-Security-Policy"
+  content="script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://vercel.live https://va.vercel-scripts.com; 
+           style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; 
+           font-src 'self' https://fonts.gstatic.com data:; 
+           frame-src https://www.google.com;">
+
+  
+  <!-- SUPPRIMER X-Frame-Options depuis meta - doit être géré par le serveur -->
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
   <meta name="format-detection" content="telephone=no" />
 
+  
   <!-- Fallback CSS pour le chargement -->
   <style>
     /* Critical CSS pour éviter le FOIT */
@@ -111,12 +109,7 @@
     }
     
     body {
-      font-family: 'Inter', 'Inter Fallback', system-ui, -apple-system, sans-serif;
-      margin: 0;
-      padding: 0;
-      background: #f8fafc;
-      min-height: 100vh;
-      line-height: 1.6;
+      font-family: 'Inter Fallback', system-ui, -apple-system, sans-serif;
     }
     
     /* Squelette de chargement */
@@ -124,46 +117,11 @@
       background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
       background-size: 200% 100%;
       animation: loading 1.5s infinite;
-      border-radius: 12px;
     }
     
     @keyframes loading {
       0% { background-position: 200% 0; }
       100% { background-position: -200% 0; }
-    }
-
-    /* Styles pour le noscript */
-    .noscript-message {
-      padding: 2rem;
-      text-align: center;
-      font-family: system-ui, sans-serif;
-      background: white;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      line-height: 1.6;
-    }
-    
-    .noscript-message h1 {
-      color: #1e293b;
-      margin-bottom: 1rem;
-      font-size: 1.5rem;
-    }
-    
-    .noscript-message a {
-      color: #0ea5e9;
-      text-decoration: none;
-    }
-    
-    .noscript-message a:hover {
-      text-decoration: underline;
-    }
-
-    /* Amélioration du chargement initial */
-    #root {
-      min-height: 100vh;
     }
   </style>
 </head>
@@ -172,16 +130,16 @@
   <div id="root">
     <!-- Squelette de chargement initial -->
     <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f8fafc;">
-      <div class="skeleton" style="width: 200px; height: 200px;"></div>
+      <div class="skeleton" style="width: 200px; height: 200px; border-radius: 12px;"></div>
     </div>
   </div>
   
-  <!-- Script CORRIGÉ -->
-  <script type="module" src="src/main.jsx"></script>
+  <script type="module" src="/src/main.jsx" defer></script>
+
 
   <!-- Noscript amélioré -->
   <noscript>
-    <div class="noscript-message">
+    <div style="padding: 2rem; text-align: center; font-family: system-ui, sans-serif;">
       <h1>JavaScript Requis</h1>
       <p>Pour une expérience optimale sur notre site, veuillez activer JavaScript dans votre navigateur.</p>
       <p>Contactez-nous directement :</p>
@@ -189,22 +147,8 @@
         <strong>Téléphone :</strong> <a href="tel:+22391830941">+223 91 83 09 41</a><br>
         <strong>Email :</strong> <a href="mailto:panameconsulting906@gmail.com">panameconsulting906@gmail.com</a>
       </p>
-      <p>
-        <strong>Adresse :</strong> Kalaban Coura, Imm.Bore en face de l'hôtel Wassulu, Bamako, Mali
-      </p>
-      <p style="margin-top: 2rem; font-size: 0.9rem; color: #64748b;">
-        Paname Consulting - Votre partenaire pour les études à l'étranger, voyages d'affaires et démarches de visa
-      </p>
     </div>
-    <style>
-      #root { 
-        display: none !important; 
-      }
-      body {
-        background: white !important;
-        font-family: system-ui, -apple-system, sans-serif !important;
-      }
-    </style>
+    <style>#root { display: none; }</style>
   </noscript>
 
   <!-- Fallback pour les navigateurs anciens -->
@@ -212,34 +156,9 @@
     // Feature detection basique
     if (!window.Promise || !window.fetch || !window.Symbol) {
       document.getElementById('root').innerHTML = 
-        '<div style="padding: 2rem; text-align: center; background: white; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: system-ui, sans-serif;"><div><h2 style="color: #1e293b; margin-bottom: 1rem;">Navigateur non supporté</h2><p style="color: #64748b; margin-bottom: 1rem;">Votre navigateur n\'est pas supporté. Veuillez le mettre à jour pour une meilleure expérience.</p><p style="color: #475569;">Vous pouvez nous contacter directement :<br><strong style="color: #0ea5e9;">+223 91 83 09 41</strong><br><a href="mailto:panameconsulting906@gmail.com" style="color: #0ea5e9;">panameconsulting906@gmail.com</a></p></div></div>';
+        '<div style="padding: 2rem; text-align: center;"><p>Votre navigateur n&apos;est pas supporté. Veuillez le mettre à jour.</p></div>';
     }
-
-    // Service Worker registration pour PWA
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/sw.js').then(function(registration) {
-          console.log('SW registered: ', registration);
-        }).catch(function(registrationError) {
-          console.log('SW registration failed: ', registrationError);
-        });
-      });
-    }
-
-    // Gestion des erreurs de chargement
-    window.addEventListener('error', function(e) {
-      console.error('Erreur de chargement:', e.error);
-    });
-
-    // Fallback si le CSS ne charge pas
-    setTimeout(function() {
-      var stylesLoaded = document.styleSheets.length > 0;
-      if (!stylesLoaded) {
-        console.warn('CSS non chargé, application des styles de fallback');
-        document.body.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-        document.body.style.backgroundColor = 'white';
-      }
-    }, 1000);
   </script>
 </body>
+
 </html>
