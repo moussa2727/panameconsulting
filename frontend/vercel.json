@@ -1,0 +1,9 @@
+// vercel.json permettant de changer de page de faire des refresh 
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

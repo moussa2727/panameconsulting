@@ -6,76 +6,26 @@ import { AuthProvider } from './utils/AuthContext';
 import App from './App';
 import './index.css';
 
-// Configuration du filtrage des erreurs en développement
-const setupErrorFiltering = () => {
+// Configuration simplifiée pour le développement
+const setupDevelopmentConfig = () => {
   if (!import.meta.env.DEV) return;
 
+  // Filtrage des erreurs non critiques en développement
   const originalError = console.error;
-  
   console.error = (...args) => {
     const message = args[0]?.toString() || '';
     
-    // Filtrage des erreurs non critiques
     const shouldIgnore = [
       'gen_204',
       'ERR_BLOCKED_BY_CLIENT',
-      'Google Maps JavaScript API', // Erreurs Google Maps non critiques
-      'Lottie', // Erreurs d'animation non critiques
+      'Google Maps JavaScript API',
+      'Lottie',
     ].some(pattern => message.includes(pattern));
 
     if (shouldIgnore) return;
-    
     originalError.apply(console, args);
   };
 };
-
-// Gestion de la compatibilité User-Agent
-const setupUserAgentCompatibility = () => {
-  if (typeof navigator !== 'undefined' && navigator.userAgentData && !navigator.userAgentData.brands) {
-    Object.defineProperty(navigator.userAgentData, 'brands', {
-      value: [],
-      writable: false,
-      configurable: false,
-    });
-  }
-};
-
-// Optimisation des event listeners pour les performances
-const optimizeEventListeners = () => {
-  if (typeof window === 'undefined') return;
-
-  const originalAddEventListener = EventTarget.prototype.addEventListener;
-  
-  EventTarget.prototype.addEventListener = function (type, listener, options) {
-    const passiveEvents = ['touchstart', 'touchmove', 'touchend', 'wheel', 'mousewheel'];
-    
-    if (passiveEvents.includes(type)) {
-      const opts = typeof options === 'boolean' ? { capture: options } : options || {};
-      
-      if (opts.passive === undefined) {
-        opts.passive = true;
-      }
-      
-      return originalAddEventListener.call(this, type, listener, opts);
-    }
-    
-    return originalAddEventListener.call(this, type, listener, options);
-  };
-};
-
-// Initialisation des configurations
-const initializeApp = () => {
-  setupErrorFiltering();
-  setupUserAgentCompatibility();
-  
-  // Éviter l'optimisation en mode production pour la stabilité
-  if (import.meta.env.DEV) {
-    optimizeEventListeners();
-  }
-};
-
-// Exécuter l'initialisation
-initializeApp();
 
 // Rendu de l'application
 const renderApp = () => {
@@ -87,6 +37,9 @@ const renderApp = () => {
   }
 
   try {
+    // Configuration développement
+    setupDevelopmentConfig();
+
     const root = createRoot(rootElement);
     
     root.render(
@@ -107,7 +60,17 @@ const renderApp = () => {
     );
   } catch (error) {
     console.error('Erreur lors du rendu de l\'application:', error);
+    
+    // Fallback pour l'utilisateur
+    rootElement.innerHTML = `
+      <div style="padding: 2rem; text-align: center; font-family: system-ui, sans-serif;">
+        <h1>Erreur de chargement</h1>
+        <p>Une erreur est survenue lors du chargement de l'application.</p>
+        <p>Veuillez rafraîchir la page ou nous contacter si le problème persiste.</p>
+      </div>
+    `;
   }
 };
 
+// Démarrer l'application
 renderApp();
