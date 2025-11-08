@@ -15,6 +15,9 @@
   <meta name="googlebot" content="index, follow, max-image-preview:large" />
   <meta name="bingbot" content="index, follow, max-image-preview:large" />
   <meta name="yandexbot" content="index, follow, max-image-preview:large" />
+  
+
+
 
   <!-- Open Graph amélioré -->
   <meta property="og:type" content="website" />
@@ -50,6 +53,9 @@
   
   <meta name="msapplication-TileColor" content="#0ea5e9" />
   <meta name="theme-color" content="#0ea5e9" />
+  
+  <!-- PWA Meta Tags CORRIGÉS -->
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
@@ -58,10 +64,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="dns-prefetch" href="https://maps.googleapis.com" />
   
-  <!-- Préchargement des polices critiques -->
-  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" /></noscript>
-  <!-- lien de telechargement du css au même niveau que main et app -->
+  <!-- Polices Google -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- CSS Tailwind - CHEMIN CORRIGÉ -->
   <link rel="stylesheet" href="/src/index.css" />
 
   <!-- Canonical URL -->
@@ -108,11 +114,12 @@
     }
     
     body {
-      font-family: 'Inter Fallback', system-ui, -apple-system, sans-serif;
+      font-family: 'Inter', 'Inter Fallback', system-ui, -apple-system, sans-serif;
       margin: 0;
       padding: 0;
       background: #f8fafc;
       min-height: 100vh;
+      line-height: 1.6;
     }
     
     /* Squelette de chargement */
@@ -145,6 +152,7 @@
     .noscript-message h1 {
       color: #1e293b;
       margin-bottom: 1rem;
+      font-size: 1.5rem;
     }
     
     .noscript-message a {
@@ -154,6 +162,11 @@
     
     .noscript-message a:hover {
       text-decoration: underline;
+    }
+
+    /* Amélioration du chargement initial */
+    #root {
+      min-height: 100vh;
     }
   </style>
 </head>
@@ -166,6 +179,7 @@
     </div>
   </div>
   
+  <!-- Script CORRIGÉ -->
   <script type="module" src="/src/main.jsx"></script>
 
   <!-- Noscript amélioré -->
@@ -181,6 +195,9 @@
       <p>
         <strong>Adresse :</strong> Kalaban Coura, Imm.Bore en face de l'hôtel Wassulu, Bamako, Mali
       </p>
+      <p style="margin-top: 2rem; font-size: 0.9rem; color: #64748b;">
+        Paname Consulting - Votre partenaire pour les études à l'étranger, voyages d'affaires et démarches de visa
+      </p>
     </div>
     <style>
       #root { 
@@ -188,6 +205,7 @@
       }
       body {
         background: white !important;
+        font-family: system-ui, -apple-system, sans-serif !important;
       }
     </style>
   </noscript>
@@ -197,7 +215,7 @@
     // Feature detection basique
     if (!window.Promise || !window.fetch || !window.Symbol) {
       document.getElementById('root').innerHTML = 
-        '<div style="padding: 2rem; text-align: center; background: white; min-height: 100vh; display: flex; align-items: center; justify-content: center;"><div><h2>Navigateur non supporté</h2><p>Votre navigateur n\'est pas supporté. Veuillez le mettre à jour pour une meilleure expérience.</p><p>Vous pouvez nous contacter directement :<br><strong>+223 91 83 09 41</strong><br>panameconsulting906@gmail.com</p></div></div>';
+        '<div style="padding: 2rem; text-align: center; background: white; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: system-ui, sans-serif;"><div><h2 style="color: #1e293b; margin-bottom: 1rem;">Navigateur non supporté</h2><p style="color: #64748b; margin-bottom: 1rem;">Votre navigateur n\'est pas supporté. Veuillez le mettre à jour pour une meilleure expérience.</p><p style="color: #475569;">Vous pouvez nous contacter directement :<br><strong style="color: #0ea5e9;">+223 91 83 09 41</strong><br><a href="mailto:panameconsulting906@gmail.com" style="color: #0ea5e9;">panameconsulting906@gmail.com</a></p></div></div>';
     }
 
     // Service Worker registration pour PWA
@@ -210,6 +228,21 @@
         });
       });
     }
+
+    // Gestion des erreurs de chargement
+    window.addEventListener('error', function(e) {
+      console.error('Erreur de chargement:', e.error);
+    });
+
+    // Fallback si le CSS ne charge pas
+    setTimeout(function() {
+      var stylesLoaded = document.styleSheets.length > 0;
+      if (!stylesLoaded) {
+        console.warn('CSS non chargé, application des styles de fallback');
+        document.body.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+        document.body.style.backgroundColor = 'white';
+      }
+    }, 1000);
   </script>
 </body>
 </html>
