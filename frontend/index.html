@@ -1,6 +1,5 @@
 <!doctype html>
 <html lang="fr" class="scroll-smooth">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,13 +12,8 @@
     content="Paname Consulting, accompagnement étudiant, visa études, voyage d'affaires, consultation immigration, études à l'étranger, conseil international" />
   <meta name="author" content="Paname Consulting" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
-  <meta name="googlebot" content="index, follow, max-image-preview:large" />
-  <meta name="bingbot" content="index, follow, max-image-preview:large" />
-  <meta name="yandexbot" content="index, follow, max-image-preview:large" />
   <link rel="alternate" href="https://panameconsulting.vercel.app" hreflang="fr" />
-  <link rel="alternate" href="https://panameconsulting.vercel.app/en" hreflang="en" />
 
-  
   <!-- Open Graph amélioré -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Paname Consulting" />
@@ -43,26 +37,19 @@
   <meta name="twitter:image:alt" content="Paname Consulting - Votre partenaire international" />
 
   <!-- Favicons et icônes -->
-  <link rel="icon" href="/paname-consulting.ico" sizes="any" />
-  <link rel="icon" href="/paname-consulting.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="/paname-consulting.png" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#0ea5e9" />
 
-  <!-- Meta Robots -->
-  <meta name="robots" content="index, follow, max-image-preview:large" />
-
-  <!-- import de index.css -->
-   <link rel="stylesheet" href="src/index.css">
-
-  <!-- Préchargement et optimisation des ressources -->
+  <!-- Polices -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="dns-prefetch" href="https://maps.googleapis.com" />
-  
-  <!-- Préchargement des polices critiques -->
-  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" /></noscript>
+  <link 
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" 
+    rel="stylesheet" 
+  />
 
   <!-- Canonical URL -->
   <link rel="canonical" href="https://panameconsulting.vercel.app" />
@@ -88,36 +75,48 @@
   }
   </script>
 
-<!-- Politiques de sécurité modernes - CSP CORRIGÉE -->
-<meta http-equiv="Content-Security-Policy" 
-        content="frame-src https://www.google.com https://vercel.live 'self'; 
+  <!-- Politiques de sécurité - CSP SIMPLIFIÉE -->
+  <meta http-equiv="Content-Security-Policy" 
+        content=" 
                  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; 
-                 font-src 'self' https://fonts.gstatic.com;">
+                 font-src 'self' https://fonts.gstatic.com;
+                 img-src 'self' data: https:;
+                 connect-src 'self'">
   
-  <!-- SUPPRIMER X-Frame-Options depuis meta - doit être géré par le serveur -->
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
   <meta name="format-detection" content="telephone=no" />
 
-  
-  <!-- Fallback CSS pour le chargement -->
+  <!-- CSS CRITIQUE -->
   <style>
-    /* Critical CSS pour éviter le FOIT */
-    @font-face {
-      font-family: 'Inter Fallback';
-      src: local('Arial');
-      ascent-override: 90%;
-      descent-override: 22%;
-      line-gap-override: 0%;
-      size-adjust: 107%;
-    }
+    /* Reset minimal */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     
+    /* Styles de base pour éviter le FOUC */
     body {
-      font-family: 'Inter Fallback', system-ui, -apple-system, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      color: #1f2937;
+      background-color: #ffffff;
     }
     
-    /* Squelette de chargement */
-    .skeleton {
+    /* Squelette de chargement amélioré */
+    #root {
+      min-height: 100vh;
+    }
+    
+    .loading-skeleton {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #f8fafc;
+    }
+    
+    .skeleton-loader {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
       background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
       background-size: 200% 100%;
       animation: loading 1.5s infinite;
@@ -127,26 +126,49 @@
       0% { background-position: 200% 0; }
       100% { background-position: -200% 0; }
     }
+    
+    /* Cache le squelette quand React prend le contrôle */
+    .react-loaded .loading-skeleton {
+      display: none;
+    }
   </style>
 </head>
 
 <body class="antialiased">
   <div id="root">
-    <!-- Squelette de chargement initial -->
-    <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f8fafc;">
-      <div class="skeleton" style="width: 200px; height: 200px; border-radius: 12px;"></div>
+    <!-- Squelette de chargement simple -->
+    <div class="loading-skeleton">
+      <div class="skeleton-loader"></div>
     </div>
   </div>
-  
-  <script type="module" src="src/main.jsx" defer></script>
 
+  <script type="module" src="./src/main.jsx"></script>
 
-  <!-- Noscript amélioré -->
+  <!-- Script pour gérer le chargement -->
+  <script>
+    // Marque le chargement comme terminé quand React est prêt
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() {
+        document.body.classList.add('react-loaded');
+      }, 100);
+    });
+
+    // Feature detection
+    if (!window.Promise || !window.fetch || !window.Symbol) {
+      document.getElementById('root').innerHTML = 
+        '<div style="padding: 2rem; text-align: center; font-family: system-ui, sans-serif;">' +
+        '<h2>Navigateur non supporté</h2>' +
+        '<p>Veuillez mettre à jour votre navigateur pour une expérience optimale.</p>' +
+        '<p>Contact: <a href="tel:+22391830941">+223 91 83 09 41</a></p>' +
+        '</div>';
+    }
+  </script>
+
+  <!-- Noscript -->
   <noscript>
     <div style="padding: 2rem; text-align: center; font-family: system-ui, sans-serif;">
       <h1>JavaScript Requis</h1>
-      <p>Pour une expérience optimale sur notre site, veuillez activer JavaScript dans votre navigateur.</p>
-      <p>Contactez-nous directement :</p>
+      <p>Pour une expérience optimale, veuillez activer JavaScript.</p>
       <p>
         <strong>Téléphone :</strong> <a href="tel:+22391830941">+223 91 83 09 41</a><br>
         <strong>Email :</strong> <a href="mailto:panameconsulting906@gmail.com">panameconsulting906@gmail.com</a>
@@ -154,15 +176,5 @@
     </div>
     <style>#root { display: none; }</style>
   </noscript>
-
-  <!-- Fallback pour les navigateurs anciens -->
-  <script>
-    // Feature detection basique
-    if (!window.Promise || !window.fetch || !window.Symbol) {
-      document.getElementById('root').innerHTML = 
-        '<div style="padding: 2rem; text-align: center;"><p>Votre navigateur n&apos;est pas supporté. Veuillez le mettre à jour.</p></div>';
-    }
-  </script>
 </body>
-
 </html>
