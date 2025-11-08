@@ -91,6 +91,7 @@ function App() {
   const location = useLocation();
   const [navigationKey, setNavigationKey] = useState(0);
   const { isLoading } = useAuth();
+  const [isAOSInitialized, setIsAOSInitialized] = useState(false);
 
   const safeScrollToTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
     try {
@@ -99,10 +100,12 @@ function App() {
         behavior: behavior,
       });
     } catch (error) {
+      // Fallback pour les navigateurs qui ne supportent pas le scroll smooth
       window.scrollTo(0, 0);
     }
   }, []);
 
+  // Gestion du scroll en haut lors du changement de route
   useEffect(() => {
     safeScrollToTop();
 
@@ -117,41 +120,116 @@ function App() {
     };
   }, [location.pathname, safeScrollToTop]);
 
-  // Initialize AOS once for the entire application
+  // Initialisation optimisée de AOS
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined' || isAOSInitialized) return;
+
+    const initializeAOS = () => {
+      const isMobile = window.innerWidth < 768;
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      
+      // Configuration unique pour la propriété disable
+      const shouldDisableAOS = prefersReducedMotion || isMobile;
+      
       AOS.init({
-        duration: window.innerWidth < 768 ? 300 : 600, // Shorter duration on mobile
+        duration: isMobile ? 300 : 600,
         once: true,
         easing: 'ease-out-cubic',
-        disable: false, // Enable AOS on all devices
-        offset: window.innerWidth < 768 ? 20 : 50, // Smaller offset on mobile
+        disable: shouldDisableAOS, // Une seule propriété disable
+        offset: isMobile ? 20 : 50,
         delay: 0,
-        // Disable animations that might cause issues on mobile
-        disableMutationObserver: window.innerWidth < 768
+        // Désactive l'observer de mutations sur mobile pour les performances
+        disableMutationObserver: isMobile,
       });
+
+      setIsAOSInitialized(true);
+    };
+
+    // Attendre que le DOM soit complètement chargé
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeAOS);
+    } else {
+      initializeAOS();
     }
 
     return () => {
+      document.removeEventListener('DOMContentLoaded', initializeAOS);
+    };
+  }, [isAOSInitialized]);
+
+  // Re-initialiser AOS quand la largeur de la fenêtre change significativement
+  useEffect(() => {
+    if (!isAOSInitialized) return;
+
+    const handleResize = () => {
       AOS.refresh();
+    };
+
+    // Délai pour éviter de rafraîchir trop souvent pendant le redimensionnement
+    let resizeTimeout: NodeJS.Timeout;
+    const debouncedResize = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(handleResize, 250);
+    };
+
+    window.addEventListener('resize', debouncedResize);
+    return () => {
+      clearTimeout(resizeTimeout);
+      window.removeEventListener('resize', debouncedResize);
+    };
+  }, [isAOSInitialized]);
+
+  // Gestionnaire d'erreurs global pour AOS
+  useEffect(() => {
+    const handleAOSError = (error: any) => {
+      if (error?.message?.includes('AOS') || error?.message?.includes('animation')) {
+        console.warn('AOS animation error caught:', error);
+        return true;
+      }
+      return false;
+    };
+
+    const errorHandler = (event: ErrorEvent) => {
+      if (handleAOSError(event.error)) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener('error', errorHandler);
+    return () => {
+      window.removeEventListener('error', errorHandler);
     };
   }, []);
 
   return (
     <ErrorBoundary>
       <Helmet>
+        {/* Balises principales */}
+        <title>Paname Consulting - Études à l'Étranger, Voyages d'Affaires & Visas</title>
         <meta
-          name='description'
-          content='Accompagnement pour études en France, obtention de visas et services consulaires'
+          name="description"
+          content="Paname Consulting : expert en accompagnement étudiant à l'étranger, organisation de voyages d'affaires et demandes de visa. Conseil personnalisé pour votre réussite internationale."
         />
         <meta
-          name='keywords'
-          content='Paname Consulting, visa France, études France, accompagnement étudiant'
+          name="keywords"
+          content="Paname Consulting, accompagnement étudiant, visa études, voyage d'affaires, consultation immigration, études à l'étranger, conseil international"
         />
-        <meta property='og:title' content='Paname Consulting' />
-        <meta property='og:type' content='website' />
-        <meta property='og:url' content={window.location.href} />
-        <link rel='canonical' href={window.location.href} />
+
+        {/* Balises Open Graph */}
+        <meta property="og:title" content="Paname Consulting - Accompagnement Étudiant, Voyages d'Affaires & Visas" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://www.panameconsulting.com/" />
+        <meta property="og:description" content="Services professionnels d'accompagnement pour études à l'étranger, voyages d'affaires et démarches de visa." />
+        <meta property="og:locale" content="fr_FR" />
+        <meta property="og:site_name" content="Paname Consulting" />
+
+        {/* Balises Twitter */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Paname Consulting - Études à l'Étranger, Voyages d'Affaires & Visas" />
+        <meta name="twitter:description" content="Expert en accompagnement étudiant à l'étranger et démarches de visa." />
+
+        {/* Canonical */}
+        <link rel="canonical" href="https://www.panameconsulting.com/" />
       </Helmet>
 
       <div key={navigationKey}>
@@ -207,17 +285,17 @@ function App() {
           } />
 
           {/* Utilisateur - sans Header/Footer communs */}
-          <Route path='/user-rendez-vous' element={
+          <Route path='/mes-rendez-vous' element={
             <UserLayout>
               <MesRendezVous />
             </UserLayout>
           } />
-          <Route path='/user-profile' element={
+          <Route path='/mon-profil' element={
             <UserLayout>
               <UserProfile />
             </UserLayout>
           } />
-          <Route path='/user-procedure' element={
+          <Route path='/ma-procedure' element={
             <UserLayout>
               <UserProcedure />
             </UserLayout>
@@ -262,7 +340,6 @@ function App() {
                 <AdminDestinations />
               </Suspense>
             } />
-
             <Route path='rendez-vous' element={
               <Suspense fallback={<Loader />}>
                 <AdminRendezVous />
@@ -270,11 +347,16 @@ function App() {
             } />
           </Route>
 
-          {/* Routes spécifiques pour /admin/ qui doivent être NotFound */}
+          {/* Routes obsolètes - redirections pour compatibilité */}
+          <Route path='/user-rendez-vous' element={<Navigate to="/mes-rendez-vous" replace />} />
+          <Route path='/user-profile' element={<Navigate to="/mon-profil" replace />} />
+          <Route path='/user-procedure' element={<Navigate to="/ma-procedure" replace />} />
+
+          {/* Routes de protection contre accès non autorisé */}
           <Route path='/admin' element={<NotFound />} />
           <Route path='/admin/*' element={<NotFound />} />
 
-          {/* Route de protection contre accès non autorisé ou fausses routes */}
+          {/* Route 404 */}
           <Route path='*' element={<NotFound />} />
         </Routes>
       </div>
