@@ -28,6 +28,9 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: [
+      'react',
+      'react-dom',
+      'react-router-dom',
       'date-fns',
       'date-fns/locale/fr'
     ],
@@ -39,17 +42,15 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+        rewrite: (path) => path.replace(/^\/api/, '')
       },
-      
       '/auth': {
         target: 'http://localhost:3000',
         changeOrigin: true,
-        secure: false,
+        secure: false
       }
     }
   },
   base: '/',
-    publicDir: 'public'
-
+  publicDir: 'public'
 });

@@ -1,16 +1,11 @@
 {
-  "name": "Paname Consulting - Études, Voyages d'Affaires & Visas",
+  "name": "Paname Consulting",
   "short_name": "PanameConsulting",
-  "description": "Paname Consulting : expert en accompagnement étudiant à l'étranger, organisation de voyages d'affaires et demandes de visa.",
-  "lang": "fr",
-  "dir": "ltr",
+  "description": "Services d'accompagnement étudiant et voyages d'affaires",
   "start_url": "/",
-  "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
   "background_color": "#ffffff",
   "theme_color": "#0ea5e9",
-  "categories": ["education", "consulting", "travel"],
   "icons": [
     {
       "src": "/paname-consulting.png",
@@ -21,14 +16,6 @@
       "src": "/paname-consulting.png",
       "sizes": "512x512",
       "type": "image/png"
-    },
-    {
-      "src": "/paname-consulting.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
     }
-  ],
-  "related_applications": [],
-  "prefer_related_applications": false
+  ]
 }
