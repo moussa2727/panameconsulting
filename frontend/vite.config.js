@@ -2,7 +2,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   build: {
     rollupOptions: {
@@ -31,9 +31,9 @@ export default defineConfig({
       'date-fns',
       'date-fns/locale/fr'
     ],
-    exclude: ['date-fns-tz'] // Exclure pour éviter les conflits
+    exclude: ['date-fns-tz']
   },
-  server: {
+  server: mode === 'development' ? {
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
@@ -41,13 +41,12 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
-      
       '/auth': {
         target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
       }
     }
-  },
+  } : undefined,
   base: '/',
-});
+}));
