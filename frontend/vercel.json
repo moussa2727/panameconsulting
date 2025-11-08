@@ -17,6 +17,5 @@
   ],
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
-  "installCommand": "pnpm install",
-  "ignoreCommand": "echo \"Ignoring backend folder\" && exit 0"
+  "installCommand": "pnpm install"
 }
