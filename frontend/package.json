@@ -13,7 +13,7 @@
     "test": "vitest",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf node_modules dist .vite coverage",
-    "reset": "npm run clean && npm install"
+    "reset": "pnpm run clean && pnpm install"
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
