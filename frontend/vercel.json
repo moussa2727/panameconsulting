@@ -11,28 +11,11 @@
   ],
   "routes": [
     {
-      "src": "/assets/(.*)",
-      "headers": {
-        "cache-control": "public, max-age=31536000, immutable",
-        "content-type": "application/javascript"
-      }
-    },
-    {
-      "src": "/(.*\\.js)",
-      "headers": {
-        "cache-control": "public, max-age=31536000, immutable",
-        "content-type": "application/javascript"
-      }
-    },
-    {
-      "src": "/manifest.json",
-      "headers": {
-        "content-type": "application/manifest+json"
-      }
-    },
-    {
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ]
+  ],
+  "buildCommand": "pnpm run build",
+  "outputDirectory": "dist",
+  "installCommand": "pnpm install"
 }

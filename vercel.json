@@ -1,38 +1,13 @@
 {
-  "version": 2,
-  "builds": [
+      "version": 2,
+  "buildCommand": "cd frontend && pnpm build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "pnpm install",
+  "framework": "vite",
+  "rewrites": [
     {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/assets/(.*)",
-      "headers": {
-        "cache-control": "public, max-age=31536000, immutable",
-        "content-type": "application/javascript"
-      }
-    },
-    {
-      "src": "/(.*\\.js)",
-      "headers": {
-        "cache-control": "public, max-age=31536000, immutable",
-        "content-type": "application/javascript"
-      }
-    },
-    {
-      "src": "/manifest.json",
-      "headers": {
-        "content-type": "application/manifest+json"
-      }
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
