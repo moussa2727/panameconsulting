@@ -14,7 +14,7 @@ export default defineConfig({
           'date-vendor': ['date-fns', 'date-fns/locale/fr'],
           // Admin chunk (lazy loaded)
           'admin': [
-            './src/pages/admin/AdminDashboard.jsx',
+            './src/pages/admin/AdminDashboard.tsx',
             './src/pages/admin/UsersManagement.tsx',
             './src/pages/admin/AdminMessages.tsx',
             './src/pages/admin/AdminProfile.tsx',
