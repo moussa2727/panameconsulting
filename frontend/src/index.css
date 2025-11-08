@@ -1,32 +1,3 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-/* Global styles */
-body {
-  font-family: 'Inter', sans-serif;
-}
-
-/* Ensure AOS elements are visible on mobile */
-@media (max-width: 767px) {
-  [data-aos] {
-    opacity: 1 !important;
-    transform: none !important;
-    visibility: visible !important;
-  }
-  
-  /* Fallback for AOS animations on mobile */
-  [data-aos="fade-up"] {
-    animation: none !important;
-  }
-  
-  [data-aos="fade-in"] {
-    animation: none !important;
-  }
-}
