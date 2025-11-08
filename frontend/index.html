@@ -25,7 +25,11 @@
   <meta property="og:image:alt" content="Paname Consulting - Services d'Accompagnement Étudiants, Organisation de Voyages d'Affaires et Demandes de Visa" />
   <meta property="og:url" content="https://panameconsulting.vercel.app" />
   <meta property="og:locale" content="fr_FR" />
+
+  <!-- ✅ Correction du chemin du manifest -->
   <link rel="manifest" href="/manifest.json">
+
+  <link rel="stylesheet" href="/src/index.css">
 
   <!-- Twitter Card améliorée -->
   <meta name="twitter:card" content="summary_large_image" />
@@ -73,8 +77,6 @@
   }
   </script>
 
-
-  
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
   <meta name="format-detection" content="telephone=no" />
@@ -134,18 +136,17 @@
     </div>
   </div>
 
-  <script type="module" src="./src/main.jsx"></script>
+  <!-- ✅ Correction du chemin du script principal -->
+  <script type="module" src="/src/main.jsx"></script>
 
   <!-- Script pour gérer le chargement -->
   <script>
-    // Marque le chargement comme terminé quand React est prêt
     window.addEventListener('DOMContentLoaded', function() {
       setTimeout(function() {
         document.body.classList.add('react-loaded');
       }, 100);
     });
 
-    // Feature detection
     if (!window.Promise || !window.fetch || !window.Symbol) {
       document.getElementById('root').innerHTML = 
         '<div style="padding: 2rem; text-align: center; font-family: system-ui, sans-serif;">' +
@@ -170,4 +171,3 @@
   </noscript>
 </body>
 </html>
- 
