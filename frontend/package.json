@@ -4,7 +4,6 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "packageManager": "pnpm@8.15.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -15,11 +14,11 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "audit": "pnpm audit",
-    "ci": "pnpm type-check && pnpm lint && pnpm test:coverage && pnpm build",
-    "prepare": "husky install",
+    "audit": "npm audit",
+    "ci": "npm run type-check && npm run lint && npm run test:coverage && npm run build",
+    "prepare": "echo \"Skipping husky for deployment\" || exit 0",
     "clean": "rm -rf node_modules dist .vite coverage",
-    "reset": "pnpm clean && pnpm install"
+    "reset": "npm run clean && npm install"
   },
   "dependencies": {
     "@emailjs/browser": "^4.3.3",
@@ -83,7 +82,6 @@
     "vite": "^5.0.10",
     "vitest": "^1.2.2"
   },
- 
   "lint-staged": {
     "**/*.{js,jsx,ts,tsx,json,css,md}": [
       "prettier --write",

@@ -15,8 +15,8 @@
       "dest": "/index.html"
     }
   ],
-  "installCommand": "pnpm install",
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
-  "framework": "vite"
+  "installCommand": "pnpm install",
+  "ignoreCommand": "echo \"Ignoring backend folder\" && exit 0"
 }
