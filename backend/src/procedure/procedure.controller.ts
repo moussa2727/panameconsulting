@@ -10,7 +10,8 @@ import {
     Req,
     UseGuards,
     BadRequestException,
-    ForbiddenException
+    ForbiddenException,
+    UnauthorizedException
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
@@ -54,23 +55,29 @@ export class ProcedureController {
         return this.procedureService.findAll(page, limit, email);
     }
 
-@Get('user')
-@UseGuards(JwtAuthGuard)
-@ApiOperation({ summary: 'Récupérer les procédures de l\'utilisateur connecté' })
-@ApiQuery({ name: 'page', required: false, type: Number })
-@ApiQuery({ name: 'limit', required: false, type: Number })
-async getUserProcedures(
-    @Req() req: any,
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10
-) {
-    // Vérifier que l'utilisateur est bien authentifié
-    if (!req.user || !req.user.email) {
-        throw new ForbiddenException('Utilisateur non authentifié');
+    @Get('user')
+    @UseGuards(JwtAuthGuard)
+    @ApiOperation({ summary: 'Récupérer les procédures de l\'utilisateur connecté' })
+    @ApiQuery({ name: 'page', required: false, type: Number })
+    @ApiQuery({ name: 'limit', required: false, type: Number })
+    async getUserProcedures(
+        @Req() req: any,
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10
+    ) {
+        // Validation renforcée de l'utilisateur
+        if (!req.user || !req.user.email) {
+            console.log('❌ getUserProcedures: Utilisateur non authentifié');
+            
+            throw new UnauthorizedException('Token invalide ou expiré');
+        }
+        
+        console.log('📥 getUserProcedures appelé pour:', req.user.email);
+        
+        return this.procedureService.findAll(page, limit, req.user.email);
     }
-    
-    return this.procedureService.findAll(page, limit, req.user.email);
-}
+
+
     @Get('stats')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)

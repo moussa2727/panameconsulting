@@ -52,7 +52,7 @@ interface UpdateUserDto {
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 const UsersManagement: React.FC = () => {
-  const { user: currentUser, token, refreshToken ,logout} = useAuth();
+  const { user: currentUser, token, refreshToken, logout } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -73,79 +73,91 @@ const UsersManagement: React.FC = () => {
   const [editUser, setEditUser] = useState<UpdateUserDto>({});
   const [passwordField, setPasswordField] = useState('');
 
-const fetchUsers = async () => {
-  if (!token) {
-    console.error('Token non disponible');
-    toast.error('Session expirée, veuillez vous reconnecter');
-    return;
-  }
-
-  setIsLoading(true);
-  
-  try {
-    const makeRequest = async (currentToken: string): Promise<Response> => {
-      return fetch(`${API_URL}/api/users`, {
-        headers: {
-          'Authorization': `Bearer ${currentToken}`,
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include'
-      });
+  // Fonction utilitaire pour les requêtes avec gestion du token
+  const makeAuthenticatedRequest = async (url: string, options: RequestInit = {}) => {
+    let currentToken = token;
+    
+    const requestOptions: RequestInit = {
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${currentToken}`,
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      credentials: 'include' as RequestCredentials
     };
 
-    let response = await makeRequest(token);
+    let response = await fetch(url, requestOptions);
 
-    // Gestion du token expiré - CORRECTION ICI
+    // Si le token a expiré, on tente de le rafraîchir
     if (response.status === 401) {
       console.log('Token expiré, tentative de rafraîchissement...');
-      const refreshed = await refreshToken();
-      
-      if (refreshed) {
-        // Réessayer avec le nouveau token
-        const newToken = localStorage.getItem('token');
-        if (newToken) {
-          response = await makeRequest(newToken);
+      try {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          // Récupérer le nouveau token depuis le localStorage
+          currentToken = localStorage.getItem('token');
+          if (currentToken) {
+            // Refaire la requête avec le nouveau token
+            requestOptions.headers = {
+              ...requestOptions.headers,
+              'Authorization': `Bearer ${currentToken}`
+            };
+            response = await fetch(url, requestOptions);
+          } else {
+            throw new Error('Token non disponible après rafraîchissement');
+          }
         } else {
-          throw new Error('Token non disponible après rafraîchissement');
+          throw new Error('Impossible de rafraîchir le token');
         }
-      } else {
-        // Si le refresh échoue, déconnecter
+      } catch (refreshError) {
+        console.error('Erreur lors du rafraîchissement:', refreshError);
         throw new Error('Session expirée - Veuillez vous reconnecter');
       }
     }
 
-    // Si on a toujours une erreur 401 après refresh
-    if (response.status === 401) {
-      throw new Error('Session expirée - Veuillez vous reconnecter');
+    return response;
+  };
+
+  const fetchUsers = async () => {
+    if (!token) {
+      console.error('Token non disponible');
+      toast.error('Session expirée, veuillez vous reconnecter');
+      return;
     }
 
-    if (!response.ok) {
-      if (response.status === 403) {
-        throw new Error('Vous n\'avez pas les permissions nécessaires');
-      }
-      
-      const errorData = await response.json();
-      throw new Error(errorData.message || `Erreur ${response.status} lors de la récupération des utilisateurs`);
-    }
-
-    const data = await response.json();
-    setUsers(data.data || data || []);
-
-  } catch (error) {
-    console.error('Erreur fetchUsers:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue';
-    toast.error(errorMessage);
+    setIsLoading(true);
     
-    // Rediriger si session expirée
-    if (errorMessage.includes('Session expirée')) {
-      setTimeout(() => {
-        logout('/', true);
-      }, 2000);
+    try {
+      const response = await makeAuthenticatedRequest(`${API_URL}/api/users`);
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('Vous n\'avez pas les permissions nécessaires');
+        }
+        
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Erreur ${response.status} lors de la récupération des utilisateurs`);
+      }
+
+      const data = await response.json();
+      setUsers(data.data || data || []);
+
+    } catch (error) {
+      console.error('Erreur fetchUsers:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue';
+      toast.error(errorMessage);
+      
+      // Rediriger si session expirée
+      if (errorMessage.includes('Session expirée')) {
+        setTimeout(() => {
+          logout('/', true);
+        }, 2000);
+      }
+    } finally {
+      setIsLoading(false);
     }
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   // Création d'un utilisateur
   const handleAddUser = async () => {
@@ -160,34 +172,10 @@ const fetchUsers = async () => {
     }
 
     try {
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${API_URL}/api/auth/register`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(newUser),
-          credentials: 'include'
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Gestion du token expiré
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée');
-        }
-      }
+      const response = await makeAuthenticatedRequest(`${API_URL}/api/auth/register`, {
+        method: 'POST',
+        body: JSON.stringify(newUser),
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -233,34 +221,10 @@ const fetchUsers = async () => {
         updateData.password = passwordField;
       }
 
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${API_URL}/api/users/${selectedUser._id}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(updateData),
-          credentials: 'include'
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Gestion du token expiré
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée');
-        }
-      }
+      const response = await makeAuthenticatedRequest(`${API_URL}/api/users/${selectedUser._id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updateData),
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -303,33 +267,9 @@ const fetchUsers = async () => {
     }
 
     try {
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${API_URL}/api/users/${selectedUser._id}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json'
-          },
-          credentials: 'include'
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Gestion du token expiré
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée');
-        }
-      }
+      const response = await makeAuthenticatedRequest(`${API_URL}/api/users/${selectedUser._id}`, {
+        method: 'DELETE',
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -363,34 +303,10 @@ const fetchUsers = async () => {
     }
 
     try {
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${API_URL}/api/users/${user._id}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ isActive: !user.isActive }),
-          credentials: 'include'
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Gestion du token expiré
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée');
-        }
-      }
+      const response = await makeAuthenticatedRequest(`${API_URL}/api/users/${user._id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ isActive: !user.isActive }),
+      });
 
       if (!response.ok) {
         const errorData = await response.json();

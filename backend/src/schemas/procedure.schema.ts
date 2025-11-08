@@ -10,12 +10,9 @@ export enum StepStatus {
 }
 
 export enum StepName {
-  DOCUMENT_COLLECTION = 'Collecte des documents',
-  DOCUMENT_REVIEW = 'Révision des documents',
-  PAYMENT_PROCESSING = 'Traitement du paiement',
-  ADMINISTRATIVE_PROCESSING = 'Traitement administratif',
-  FINAL_APPROVAL = 'Approbation finale',
-  COMPLETION = 'Finalisation'
+  DEMANDE_ADMISSION = 'DEMANDE_ADMISSION',
+  DEMANDE_VISA = 'DEMANDE_VISA',
+  PREPARATIF_VOYAGE = 'PREPARATIF_VOYAGE',
 }
 
 export enum ProcedureStatus {
@@ -33,7 +30,7 @@ export class Step {
   @Prop({ type: String, enum: StepStatus, default: StepStatus.PENDING })
   statut: StepStatus;
 
-  @Prop({ type: String })
+  @Prop({ type: String ,required: false })
   raisonRefus?: string;
 
   @Prop({ type: Date, default: Date.now })

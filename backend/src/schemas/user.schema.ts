@@ -8,10 +8,10 @@ export enum UserRole {
 
 @Schema({ timestamps: true })
 export class User extends Document {
-  @Prop({ required: true })
+  @Prop({ required: true, immutable: true })
   firstName: string;
 
-  @Prop({ required: true })
+  @Prop({ required: true, immutable: true })
   lastName: string;
 
   @Prop({ required: true, unique: true })
@@ -23,11 +23,11 @@ export class User extends Document {
   @Prop({ required: true, unique: true })
   telephone: string;
 
-
   @Prop({
     type: String,
     enum: UserRole,
-    default: UserRole.USER
+    default: UserRole.USER,
+    immutable: true
   })
   role: UserRole;
 
@@ -39,6 +39,19 @@ export class User extends Document {
 
   @Prop({ default: Date.now })
   createdAt: Date;
+
+  @Prop()
+  updatedAt?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+// Index pour les recherches courantes
+UserSchema.index({ email: 1 });
+UserSchema.index({ isActive: 1 });
+
+// Middleware pour mettre à jour updatedAt
+UserSchema.pre('save', function(next) {
+  this.updatedAt = new Date();
+  next();
+});

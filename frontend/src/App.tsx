@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -48,6 +49,7 @@ const PublicLayout = ({ children }: { children: React.ReactNode }) => {
       <Header />
       <main className='flex-1 mt-20'>
         {children}
+        <SpeedInsights />
       </main>
       <Footer />
     </div>
@@ -60,6 +62,31 @@ const MinimalLayout = ({ children }: { children: React.ReactNode }) => {
     <div className='flex flex-col min-h-screen w-full overflow-x-hidden touch-pan-y'>
       <main className='flex-1'>
         {children}
+        <SpeedInsights />
+      </main>
+    </div>
+  );
+};
+
+// Layout pour les pages d'authentification
+const AuthLayout = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <div className='flex flex-col min-h-screen w-full overflow-x-hidden touch-pan-y'>
+      <main className='flex-1'>
+        {children}
+        <SpeedInsights />
+      </main>
+    </div>
+  );
+};
+
+// Layout pour les pages utilisateur
+const UserLayout = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <div className='flex flex-col min-h-screen w-full overflow-x-hidden touch-pan-y'>
+      <main className='flex-1'>
+        {children}
+        <SpeedInsights />
       </main>
     </div>
   );
@@ -118,7 +145,6 @@ function App() {
   return (
     <ErrorBoundary>
       <Helmet>
-        
         <meta
           name='description'
           content='Accompagnement pour études en France, obtention de visas et services consulaires'
@@ -169,14 +195,38 @@ function App() {
           } />
 
           {/* Auth - sans Header/Footer communs */}
-          <Route path='/connexion' element={<Connexion />} />
-          <Route path='/inscription' element={<Inscription />} />
-          <Route path='/mot-de-passe-oublie' element={<MotdePasseoublie />} />
+          <Route path='/connexion' element={
+            <AuthLayout>
+              <Connexion />
+            </AuthLayout>
+          } />
+          <Route path='/inscription' element={
+            <AuthLayout>
+              <Inscription />
+            </AuthLayout>
+          } />
+          <Route path='/mot-de-passe-oublie' element={
+            <AuthLayout>
+              <MotdePasseoublie />
+            </AuthLayout>
+          } />
 
           {/* Utilisateur - sans Header/Footer communs */}
-          <Route path='/user-rendez-vous' element={<MesRendezVous />} />
-          <Route path='/user-profile' element={<UserProfile />} />
-          <Route path='/user-procedure' element={<UserProcedure />} />
+          <Route path='/user-rendez-vous' element={
+            <UserLayout>
+              <MesRendezVous />
+            </UserLayout>
+          } />
+          <Route path='/user-profile' element={
+            <UserLayout>
+              <UserProfile />
+            </UserLayout>
+          } />
+          <Route path='/user-procedure' element={
+            <UserLayout>
+              <UserProcedure />
+            </UserLayout>
+          } />
 
           {/* Administration - utilise AdminLayout */}
           <Route path='/gestionnaire/*' element={

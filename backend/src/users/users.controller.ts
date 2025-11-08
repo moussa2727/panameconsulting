@@ -105,9 +105,21 @@ export class UsersController {
 
   // === ENDPOINTS PUBLIC (Pour l'utilisateur connecté) ===
 
-  @Patch('profile/me')
-  @UseGuards(JwtAuthGuard)
-  updateProfile(@Request() req: RequestWithUser, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(req.user.userId, updateUserDto);
+  // users.controller.ts - Renforcer la validation
+@Patch('profile/me')
+@UseGuards(JwtAuthGuard)
+updateProfile(@Request() req: RequestWithUser, @Body() updateUserDto: UpdateUserDto) {
+  // Créer un objet avec uniquement les champs autorisés
+  const allowedUpdate: any = {};
+  
+  if (updateUserDto.email !== undefined) {
+    allowedUpdate.email = updateUserDto.email;
   }
+  
+  if (updateUserDto.telephone !== undefined) {
+    allowedUpdate.telephone = updateUserDto.telephone;
+  }
+  
+  return this.usersService.update(req.user.userId, allowedUpdate);
+}
 }

@@ -144,20 +144,25 @@ async create(createUserDto: RegisterDto): Promise<User> {
   }
 
 
-   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
-  // Empêcher la modification du rôle via cet endpoint seulement si le rôle est fourni
-  if (updateUserDto.role !== undefined) {
-    throw new BadRequestException('La modification du rôle n\'est pas autorisée');
-  }
+async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+  // Filtrer strictement les champs autorisés
+  const allowedFields = ['email', 'telephone'];
+  const filteredUpdate: any = {};
+  
+  Object.keys(updateUserDto).forEach(key => {
+    if (allowedFields.includes(key) && updateUserDto[key as keyof UpdateUserDto] !== undefined) {
+      filteredUpdate[key] = updateUserDto[key as keyof UpdateUserDto];
+    }
+  });
 
   // Normaliser le téléphone si présent
-  if (updateUserDto.telephone) {
-    updateUserDto.telephone = this.normalizeTelephone(updateUserDto.telephone);
+  if (filteredUpdate.telephone) {
+    filteredUpdate.telephone = this.normalizeTelephone(filteredUpdate.telephone);
   }
 
   try {
     const updatedUser = await this.userModel
-      .findByIdAndUpdate(id, updateUserDto, { 
+      .findByIdAndUpdate(id, filteredUpdate, { 
         new: true, 
         runValidators: true, 
         context: 'query' 
