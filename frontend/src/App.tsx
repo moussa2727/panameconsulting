@@ -1,7 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { SpeedInsights } from '@vercel/speed-insights/react';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -49,7 +48,6 @@ const PublicLayout = ({ children }: { children: React.ReactNode }) => {
       <Header />
       <main className='flex-1 mt-20'>
         {children}
-        <SpeedInsights />
       </main>
       <Footer />
     </div>
@@ -62,7 +60,6 @@ const MinimalLayout = ({ children }: { children: React.ReactNode }) => {
     <div className='flex flex-col min-h-screen w-full overflow-x-hidden touch-pan-y'>
       <main className='flex-1'>
         {children}
-        <SpeedInsights />
       </main>
     </div>
   );
@@ -74,7 +71,6 @@ const AuthLayout = ({ children }: { children: React.ReactNode }) => {
     <div className='flex flex-col min-h-screen w-full overflow-x-hidden touch-pan-y'>
       <main className='flex-1'>
         {children}
-        <SpeedInsights />
       </main>
     </div>
   );
@@ -86,7 +82,6 @@ const UserLayout = ({ children }: { children: React.ReactNode }) => {
     <div className='flex flex-col min-h-screen w-full overflow-x-hidden touch-pan-y'>
       <main className='flex-1'>
         {children}
-        <SpeedInsights />
       </main>
     </div>
   );

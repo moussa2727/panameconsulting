@@ -32,7 +32,6 @@
     "@types/papaparse": "^5.3.14",
     "@types/react-router-dom": "^5.3.3",
     "@types/react-toastify": "^4.1.0",
-    "@vercel/speed-insights": "^1.2.0",
     "aos": "^2.3.4",
     "axios": "^1.6.2",
     "chart.js": "^4.4.0",
