@@ -11,7 +11,10 @@
   <meta name="keywords"
     content="Paname Consulting, accompagnement étudiant, visa études, voyage d'affaires, consultation immigration, études à l'étranger, conseil international" />
   <meta name="author" content="Paname Consulting" />
-  <meta name="robots" content="index, follow" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="googlebot" content="index, follow, max-image-preview:large" />
+  <meta name="bingbot" content="index, follow, max-image-preview:large" />
+  <meta name="yandexbot" content="index, follow, max-image-preview:large" />
 
   <!-- Open Graph amélioré -->
   <meta property="og:type" content="website" />
@@ -20,45 +23,49 @@
   <meta property="og:description"
     content="Services professionnels d'accompagnement pour études à l'étranger, voyages d'affaires et démarches de visa" />
   <meta property="og:image" content="/paname-consulting.png" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
   <meta property="og:image:alt" content="Paname Consulting - Services d'Accompagnement Étudiants, Organisation de Voyages d'Affaires et Demandes de Visa" />
   <meta property="og:url" content="https://panameconsulting.vercel.app" />
   <meta property="og:locale" content="fr_FR" />
 
   <!-- Twitter Card améliorée -->
   <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@panameconsulting" />
   <meta name="twitter:title" content="Paname Consulting - Services d'Accompagnement Étudiants, Organisation de Voyages d'Affaires et Demandes de Visa" />
   <meta name="twitter:description"
     content="Expert en accompagnement étudiant, voyages d'affaires et demandes de visa" />
   <meta name="twitter:image" content="/paname-consulting.png" />
   <meta name="twitter:image:alt" content="Paname Consulting - Votre partenaire international" />
 
-  <!-- Favicons et icônes -->
-  <link rel="icon" href="/paname-consulting.ico" sizes="any" />
-  <link rel="icon" href="/paname-consulting.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="/paname-consulting.png" />
-  <link rel="manifest" href="/manifest.json" />
+  <!-- Favicons et icônes avec vrais fichiers -->
+  <link rel="icon" type="image/x-icon" href="/paname-consulting.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/paname-consulting.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/paname-consulting.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/paname-consulting.png" />
+  <link rel="mask-icon" href="/paname-consulting.svg" color="#0ea5e9" />
+  
+  <!-- Import du Manifest -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  
+  <meta name="msapplication-TileColor" content="#0ea5e9" />
   <meta name="theme-color" content="#0ea5e9" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
   <!-- Préchargement et optimisation des ressources -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="dns-prefetch" href="https://maps.googleapis.com" />
   
-  <!-- Polices -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <!-- Préchargement des polices critiques -->
+  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" /></noscript>
+  <!-- lien de telechargement du css au même niveau que main et app -->
+  <link rel="stylesheet" href="/src/index.css" />
 
   <!-- Canonical URL -->
   <link rel="canonical" href="https://panameconsulting.vercel.app" />
-
-  <!-- Meta Robots -->
-  <meta name="robots" content="index, follow" />
-
-  <!-- Metaviewport pour mobile -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- import du fichier CSS principal -->
-  <link rel="stylesheet" href="/src/index.css" />
 
   <!-- Structured Data JSON-LD -->
   <script type="application/ld+json">
@@ -77,13 +84,15 @@
       "addressCountry": "ML"
     },
     "openingHours": "Mo-Fr 09:00-18:00",
-    "serviceType": ["Student Counseling", "Visa Services", "Business Travel"]
+    "serviceType": ["Student Counseling", "Visa Services", "Business Travel"],
+    "image": "/paname-consulting.png",
+    "logo": "/paname-consulting.png"
   }
   </script>
 
-  <!-- Sécurité simplifiée -->
+  <!-- Sécurité -->
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
   <meta name="format-detection" content="telephone=no" />
 
   <!-- Fallback CSS pour le chargement -->
@@ -103,6 +112,7 @@
       margin: 0;
       padding: 0;
       background: #f8fafc;
+      min-height: 100vh;
     }
     
     /* Squelette de chargement */
@@ -129,6 +139,21 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
+      line-height: 1.6;
+    }
+    
+    .noscript-message h1 {
+      color: #1e293b;
+      margin-bottom: 1rem;
+    }
+    
+    .noscript-message a {
+      color: #0ea5e9;
+      text-decoration: none;
+    }
+    
+    .noscript-message a:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
@@ -153,8 +178,18 @@
         <strong>Téléphone :</strong> <a href="tel:+22391830941">+223 91 83 09 41</a><br>
         <strong>Email :</strong> <a href="mailto:panameconsulting906@gmail.com">panameconsulting906@gmail.com</a>
       </p>
+      <p>
+        <strong>Adresse :</strong> Kalaban Coura, Imm.Bore en face de l'hôtel Wassulu, Bamako, Mali
+      </p>
     </div>
-    <style>#root { display: none; }</style>
+    <style>
+      #root { 
+        display: none !important; 
+      }
+      body {
+        background: white !important;
+      }
+    </style>
   </noscript>
 
   <!-- Fallback pour les navigateurs anciens -->
@@ -162,7 +197,18 @@
     // Feature detection basique
     if (!window.Promise || !window.fetch || !window.Symbol) {
       document.getElementById('root').innerHTML = 
-        '<div style="padding: 2rem; text-align: center; background: white; min-height: 100vh; display: flex; align-items: center; justify-content: center;"><div><p>Votre navigateur n\'est pas supporté. Veuillez le mettre à jour.</p></div></div>';
+        '<div style="padding: 2rem; text-align: center; background: white; min-height: 100vh; display: flex; align-items: center; justify-content: center;"><div><h2>Navigateur non supporté</h2><p>Votre navigateur n\'est pas supporté. Veuillez le mettre à jour pour une meilleure expérience.</p><p>Vous pouvez nous contacter directement :<br><strong>+223 91 83 09 41</strong><br>panameconsulting906@gmail.com</p></div></div>';
+    }
+
+    // Service Worker registration pour PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js').then(function(registration) {
+          console.log('SW registered: ', registration);
+        }).catch(function(registrationError) {
+          console.log('SW registration failed: ', registrationError);
+        });
+      });
     }
   </script>
 </body>
