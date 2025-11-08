@@ -1,8 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { Helmet } from 'react-helmet-async';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
+import { Helmet } from 'react-helmet-async';
 import ErrorBoundary from './components/ErrorBoundary';
 import { useAuth } from './utils/AuthContext';
 

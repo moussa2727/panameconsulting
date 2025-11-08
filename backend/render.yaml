@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: panameconsulting-backend
+    env: node
+    region: oregon       # Change selon la région désirée
+    plan: free           # Ou "starter"/"standard" selon ton usage
+    branch: main         # Branche de déploiement automatique
+    buildCommand: |
+      cd backend
+      npm install
+      npm run build
+    startCommand: node backend/dist/main.js
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000  # Render override si nécessaire
