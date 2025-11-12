@@ -5,6 +5,7 @@ import 'aos/dist/aos.css';
 import { Helmet } from 'react-helmet-async';
 import ErrorBoundary from './components/ErrorBoundary';
 import { useAuth } from './utils/AuthContext';
+import CookieBanner from './components/CookieBanner';
 
 // Components communs
 import Header from './components/Header';
@@ -220,6 +221,7 @@ function App() {
           <Route path='*' element={<NotFound />} />
         </Routes>
       </div>
+      <CookieBanner />
     </ErrorBoundary>
   );
 }

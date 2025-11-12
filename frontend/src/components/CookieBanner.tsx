@@ -1,16 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Cookies from "js-cookie";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface CookieConsentResponse {
   success: boolean;
+  message?: string;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+// Délai minimum entre deux soumissions (en ms)
+const SUBMISSION_COOLDOWN = 2000;
+
 export default function CookieBanner() {
   const [visible, setVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [lastSubmissionTime, setLastSubmissionTime] = useState<number>(0);
   const [toast, setToast] = useState<{show: boolean, message: string, type: 'success' | 'error'} | null>(null);
 
   useEffect(() => {
@@ -30,55 +35,77 @@ export default function CookieBanner() {
     }
   }, [toast]);
 
-  const handleConsent = async (accepted: boolean) => {
+  const handleConsent = useCallback(async (accepted: boolean) => {
+    const now = Date.now();
+    const timeSinceLastSubmission = now - lastSubmissionTime;
+    
+    // Vérifier le délai minimum entre deux soumissions
+    if (timeSinceLastSubmission < SUBMISSION_COOLDOWN) {
+      setToast({
+        show: true,
+        message: `Veuillez patienter ${Math.ceil((SUBMISSION_COOLDOWN - timeSinceLastSubmission) / 1000)} secondes avant de réessayer`,
+        type: 'error'
+      });
+      return;
+    }
+
     setIsLoading(true);
+    setLastSubmissionTime(now);
+
     try {
-      // Update cookie locally first for better UX
+      // Mise à jour locale d'abord pour une meilleure expérience utilisateur
       Cookies.set("cookie_consent", String(accepted), { 
         expires: 180,
-        sameSite: 'lax',
-        secure: import.meta.env.PROD
+        sameSite: 'strict',
+        secure: window.location.protocol === 'https:'
       });
 
-      // Sync with backend using fetch
+      // Synchronisation avec le backend
       const response = await fetch(`${API_URL}/auth/cookie-consent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         credentials: 'include',
-        body: JSON.stringify({ accepted })
+        body: JSON.stringify({ 
+          accepted,
+          timestamp: new Date().toISOString()
+        })
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to update cookie consent');
-      }
 
       const data: CookieConsentResponse = await response.json();
 
+      if (!response.ok) {
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          const waitTime = retryAfter ? parseInt(retryAfter, 10) : 30;
+          throw new Error(`Trop de demandes. Veuillez réessayer dans ${waitTime} secondes.`);
+        }
+        throw new Error(data.message || `Erreur ${response.status} lors de la mise à jour du consentement`);
+      }
+
       if (data.success) {
-        // Show success feedback
         setToast({
           show: true,
-          message: "Vos préférences de confidentialité ont été mises à jour",
+          message: data.message || "Vos préférences de confidentialité ont été mises à jour avec succès.",
           type: 'success'
         });
-        // Hide banner after successful update
         setVisible(false);
       }
-    } catch (error) {
-      console.error("Error updating cookie consent:", error);
+    } catch (err) {
+      console.error("Erreur lors de la mise à jour du consentement:", err);
       setToast({
         show: true,
-        message: "Une erreur est survenue lors de la mise à jour de vos préférences",
+        message: err instanceof Error ? err.message : "Une erreur inattendue est survenue",
         type: 'error'
       });
-      // Keep banner visible on error
+      // En cas d'erreur, on ne cache pas la bannière
       setVisible(true);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [lastSubmissionTime]);
 
   if (!visible) return null;
 
@@ -117,16 +144,20 @@ export default function CookieBanner() {
               
               <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                 <button
+                  type="button"
                   onClick={() => handleConsent(false)}
                   disabled={isLoading}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  aria-label="Refuser les cookies non essentiels"
                 >
                   {isLoading ? 'Traitement...' : 'Refuser'}
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleConsent(true)}
                   disabled={isLoading}
-                  className="px-4 py-2 text-sm font-medium text-white bg-sky-600 border border-transparent rounded-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-white bg-sky-600 border border-transparent rounded-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+                  aria-label="Accepter tous les cookies"
                 >
                   {isLoading ? 'Traitement...' : 'Accepter'}
                 </button>

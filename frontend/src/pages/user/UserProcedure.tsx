@@ -1,808 +1,585 @@
-import type React from "react"
-import { useState, useEffect } from "react"
-import { useAuth } from "../../utils/AuthContext"
-import { toast } from "react-toastify"
-import {
-  Home,
-  FileText,
-  Calendar,
-  MapPin,
-  Clock,
-  ChevronLeft,
-  ChevronRight,
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../utils/AuthContext';
+import { 
+  Calendar, 
+  Clock, 
+  MapPin, 
+  User, 
+  Mail, 
+  BookOpen,
+  GraduationCap,
+  CheckCircle,
   XCircle,
-  TrendingUp,
+  Clock4,
+  MoreVertical,
   RefreshCw,
-} from "lucide-react"
+  Search,
+  AlertCircle
+} from 'lucide-react';
 
-// Interfaces alignées avec le backend
-interface ProcedureStep {
-  nom: string
-  statut: "En attente" | "En cours" | "Terminé" | "Rejeté" | "Annulé"
-  dateMaj: string
-  raisonRefus?: string
+// Types strictement alignés avec le backend
+interface Step {
+  nom: string;
+  statut: 'En attente' | 'En cours' | 'Terminé' | 'Rejeté' | 'Annulé';
+  raisonRefus?: string;
+  dateMaj: string;
 }
 
 interface Procedure {
-  _id: string
-  prenom: string
-  nom: string
-  email: string
-  destination: string
-  statut: "En cours" | "Terminée" | "Rejetée" | "Annulée"
-  steps: ProcedureStep[]
-  createdAt: string
-  updatedAt: string
-  rendezVousId?: {
-    _id: string
-    firstName: string
-    lastName: string
-    date: string
-    time: string
-    status: string
-  }
+  _id: string;
+  prenom: string;
+  nom: string;
+  email: string;
+  destination: string;
+  statut: 'En cours' | 'Terminée' | 'Refusée' | 'Annulée';
+  steps: Step[];
+  rendezVousId: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    date: string;
+    time: string;
+    status: string;
+  };
+  createdAt: string;
+  updatedAt: string;
 }
 
-interface UserProcedureProps {
-  onProcedureUpdate?: () => void
+interface ProceduresResponse {
+  data: Procedure[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
-// URLs explicites
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
-const GET_USER_PROCEDURES_URL = `${API_BASE_URL}/api/procedures/user`
-const CANCEL_PROCEDURE_URL = (procedureId: string) => `${API_BASE_URL}/api/procedures/${procedureId}/cancel`
-const HOME_URL = "/"
+interface CancelProcedureRequest {
+  reason?: string;
+}
 
-const UserProcedure: React.FC<UserProcedureProps> = ({ onProcedureUpdate }) => {
-  const { 
-    user, 
-    isAuthenticated, 
-    token,
-    refreshToken,
-    logout,
-    saveToSession,
-    getFromSession
-  } = useAuth()
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-  const [userProcedures, setUserProcedures] = useState<Procedure[]>([])
-  const [isLoadingProcedures, setIsLoadingProcedures] = useState(true)
-  const [page, setPage] = useState(1)
-  const [limit] = useState(5)
-  const [totalPages, setTotalPages] = useState(1)
-  const [isCancelPopoverOpen, setIsCancelPopoverOpen] = useState(false)
-  const [selectedProcedureId, setSelectedProcedureId] = useState<string | null>(null)
-  const [cancelReason, setCancelReason] = useState("")
-  const [isCancelling, setIsCancelling] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [expandedProcedure, setExpandedProcedure] = useState<string | null>(null)
+export const UserProcedure: React.FC = () => {
+  const { user, token } = useAuth();
+  const [procedures, setProcedures] = useState<Procedure[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [filters, setFilters] = useState({
+    status: 'all',
+    search: ''
+  });
 
-  // Fonction utilitaire pour les requêtes avec gestion robuste du token
-  const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
-    // Vérifier que nous avons un token valide
+  // Fonction pour récupérer les procédures
+  const fetchProcedures = async (showRefresh = false): Promise<void> => {
+    if (!user || !token) {
+      setError('Authentification requise');
+      setLoading(false);
+      return;
+    }
+
+    if (showRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const queryParams = new URLSearchParams({
+        page: '1',
+        limit: '50',
+        ...(filters.status !== 'all' && { status: filters.status }),
+        ...(filters.search && { search: filters.search })
+      });
+
+      const response = await fetch(
+        `${API_URL}/api/procedures/user?${queryParams}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include'
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setError('Session expirée - Veuillez vous reconnecter');
+          return;
+        }
+        throw new Error(`Erreur ${response.status} - Impossible de charger les procédures`);
+      }
+
+      const data: ProceduresResponse = await response.json();
+      setProcedures(data.data);
+      setError(null);
+    } catch (err) {
+      console.error('❌ Erreur fetchProcedures:', err);
+      if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
+        setError('Erreur de connexion - Vérifiez votre connexion internet');
+      } else {
+        setError(err instanceof Error ? err.message : 'Une erreur inattendue est survenue');
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Fonction pour annuler une procédure
+  const cancelProcedure = async (procedureId: string, reason?: string) => {
     if (!token) {
-      console.log("❌ Aucun token disponible")
-      throw new Error('NO_TOKEN')
+      setError('Token d\'authentification manquant');
+      return;
     }
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...options.headers as Record<string, string>,
+    setCancelling(true);
+    try {
+      const cancelData: CancelProcedureRequest = {};
+      if (reason?.trim()) {
+        cancelData.reason = reason.trim();
+      }
+
+      const response = await fetch(
+        `${API_URL}/api/procedures/${procedureId}/cancel`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(cancelData),
+          credentials: 'include'
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setError('Session expirée - Veuillez vous reconnecter');
+          return;
+        }
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Erreur ${response.status} lors de l'annulation`);
+      }
+
+      // Recharger les procédures après annulation
+      await fetchProcedures();
+      setShowCancelModal(false);
+      setSelectedProcedure(null);
+      setCancelReason('');
+    } catch (err) {
+      console.error('❌ Erreur cancelProcedure:', err);
+      setError(err instanceof Error ? err.message : 'Erreur lors de l\'annulation');
+    } finally {
+      setCancelling(false);
     }
+  };
 
-    // Toujours utiliser le token actuel du contexte
-    headers['Authorization'] = `Bearer ${token}`
-
-    console.log("🔐 Envoi requête avec token:", token.substring(0, 20) + "...")
-    
-    const response = await fetch(url, {
-      ...options,
-      headers,
-      credentials: 'include'
-    })
-
-    // Si token expiré (401), laisser l'AuthContext gérer le rafraîchissement
-    if (response.status === 401) {
-      console.log("🔄 Token expiré détecté dans fetchWithAuth")
-      throw new Error('TOKEN_EXPIRED')
-    }
-
-    return response
-  }
-
-  // Chargement initial
+  // Effet pour charger les procédures au montage
   useEffect(() => {
-    if (isAuthenticated && token) {
-      console.log("✅ AuthContext prêt, chargement des procédures...")
-      fetchUserProcedures()
-    } else {
-      console.log("❌ AuthContext non prêt:", { isAuthenticated, token: !!token })
-      setIsLoadingProcedures(false)
+    if (user && token) {
+      fetchProcedures();
     }
-  }, [isAuthenticated, token, page])
+  }, [user, token]);
 
-  // Récupération des procédures utilisateur
-  const fetchUserProcedures = async (): Promise<void> => {
-    if (!isAuthenticated || !token) {
-      console.log("❌ Impossible de charger: non authentifié ou token manquant")
-      setIsLoadingProcedures(false)
-      return
-    }
-
-    setIsLoadingProcedures(true)
-    setRefreshing(true)
-    
-    try {
-      const urlWithParams = `${GET_USER_PROCEDURES_URL}?page=${page}&limit=${limit}`
-      console.log("🔍 Fetching procedures from:", urlWithParams)
-      
-      const response = await fetchWithAuth(urlWithParams)
-
-      if (!response.ok) {
-        // Si c'est une erreur 404, cela peut signifier aucune procédure
-        if (response.status === 404) {
-          console.log("📭 Aucune procédure trouvée (404)")
-          setUserProcedures([])
-          setTotalPages(1)
-          return
-        }
-        
-        const errorData = await response.json()
-        throw new Error(errorData.message || `Erreur ${response.status}`)
-      }
-
-      const data = await response.json()
-      console.log("✅ Données reçues:", data)
-      
-      if (data && Array.isArray(data.data)) {
-        setUserProcedures(data.data)
-        setTotalPages(data.totalPages || 1)
-        
-        // Sauvegarder dans session storage pour cache
-        saveToSession('user_procedures_cache', {
-          data: data.data,
-          totalPages: data.totalPages || 1,
-          timestamp: Date.now()
-        })
-      } else {
-        console.warn("⚠️ Format de données inattendu:", data)
-        setUserProcedures([])
-        setTotalPages(1)
-      }
-      
-    } catch (error: any) {
-      console.error("❌ Erreur récupération procédures:", error)
-      
-      if (error.message === 'TOKEN_EXPIRED') {
-        console.log("🔄 Tentative de rafraîchissement du token...")
-        try {
-          const refreshed = await refreshToken()
-          if (refreshed) {
-            console.log("✅ Token rafraîchi, nouvelle tentative...")
-            // Nouvelle tentative avec le token rafraîchi
-            await fetchUserProcedures()
-            return
-          } else {
-            console.log("❌ Échec rafraîchissement token")
-            toast.error("Session expirée. Veuillez vous reconnecter.")
-            logout()
-          }
-        } catch (refreshError) {
-          console.error("❌ Erreur lors du rafraîchissement:", refreshError)
-          toast.error("Session expirée. Veuillez vous reconnecter.")
-          logout()
-        }
-      } else if (error.message === 'NO_TOKEN') {
-        console.log("❌ Aucun token disponible")
-        toast.error("Session expirée. Veuillez vous reconnecter.")
-        logout()
-      } else if (error.message.includes('404')) {
-        // Aucune procédure trouvée - c'est normal
-        console.log("📭 Aucune procédure trouvée")
-        setUserProcedures([])
-        setTotalPages(1)
-      } else {
-        toast.error(error.message || "Erreur lors du chargement des procédures")
-        
-        // Essayer de récupérer depuis le cache
-        const cache = getFromSession('user_procedures_cache')
-        if (cache && Date.now() - cache.timestamp < 5 * 60 * 1000) { // 5 minutes
-          console.log("📦 Utilisation du cache")
-          setUserProcedures(cache.data)
-          setTotalPages(cache.totalPages)
-        } else {
-          setUserProcedures([])
-        }
-      }
-    } finally {
-      setIsLoadingProcedures(false)
-      setRefreshing(false)
-    }
-  }
-
+  // Fonction de rafraîchissement manuel
   const handleRefresh = () => {
-    if (!isAuthenticated || !token) {
-      toast.error("Session expirée")
-      return
+    fetchProcedures(true);
+  };
+
+  // Fonction pour gérer l'annulation
+  const handleCancelProcedure = () => {
+    if (selectedProcedure) {
+      cancelProcedure(selectedProcedure._id, cancelReason);
     }
-    setRefreshing(true)
-    if (page === 1) {
-      fetchUserProcedures()
-    } else {
-      setPage(1)
-    }
-  }
+  };
 
-  const handleCancelProcedure = async (procId: string) => {
-    if (!isAuthenticated || !token) {
-      toast.error("Session expirée")
-      return
-    }
-
-    if (!cancelReason.trim() || cancelReason.length < 5) {
-      toast.error("Veuillez fournir une raison d'annulation (au moins 5 caractères)")
-      return
-    }
-
-    setIsCancelling(true)
-    try {
-      const cancelUrl = CANCEL_PROCEDURE_URL(procId)
-      console.log("🗑️ Cancelling procedure at:", cancelUrl)
-      
-      const response = await fetchWithAuth(cancelUrl, {
-        method: "PUT",
-        body: JSON.stringify({ reason: cancelReason.trim() }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || "Erreur lors de l'annulation")
-      }
-
-      toast.success("Procédure annulée avec succès")
-      setIsCancelPopoverOpen(false)
-      setCancelReason("")
-      setSelectedProcedureId(null)
-      
-      // Recharger les procédures
-      fetchUserProcedures()
-      onProcedureUpdate?.()
-    } catch (error: any) {
-      console.error("❌ Erreur annulation:", error)
-      
-      if (error.message === 'TOKEN_EXPIRED') {
-        console.log("🔄 Tentative de rafraîchissement pour annulation...")
-        try {
-          const refreshed = await refreshToken()
-          if (refreshed) {
-            console.log("✅ Token rafraîchi, nouvelle tentative d'annulation...")
-            // Nouvelle tentative avec le token rafraîchi
-            await handleCancelProcedure(procId)
-            return
-          } else {
-            toast.error("Session expirée. Veuillez vous reconnecter.")
-            logout()
-          }
-        } catch (refreshError) {
-          toast.error("Session expirée. Veuillez vous reconnecter.")
-          logout()
-        }
-      } else {
-        toast.error(error.message || "Erreur lors de l'annulation")
-      }
-    } finally {
-      setIsCancelling(false)
-    }
-  }
-
-  const navigateToHome = () => {
-    window.location.href = HOME_URL
-  }
-
-  const toggleProcedureDetails = (procedureId: string) => {
-    setExpandedProcedure(expandedProcedure === procedureId ? null : procedureId)
-  }
-
-  // Utility functions
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Terminée":
-        return "bg-green-100 text-green-800 border-green-200"
-      case "En cours":
-        return "bg-blue-100 text-blue-800 border-blue-200"
-      case "Rejetée":
-        return "bg-red-100 text-red-800 border-red-200"
-      case "Annulée":
-        return "bg-gray-100 text-gray-800 border-gray-200"
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
-    }
-  }
-
-  const getStepStatusColor = (status: string) => {
-    switch (status) {
-      case "Terminé":
-        return "bg-green-500"
-      case "En cours":
-        return "bg-blue-500"
-      case "Rejeté":
-        return "bg-red-500"
-      case "Annulé":
-        return "bg-gray-400"
-      default:
-        return "bg-gray-300"
-    }
-  }
-
-  const getStepStatusText = (status: string) => {
-    switch (status) {
-      case "Terminé":
-        return "Terminé"
-      case "En cours":
-        return "En cours"
-      case "Rejeté":
-        return "Rejeté"
-      case "Annulé":
-        return "Annulé"
-      default:
-        return "En attente"
-    }
-  }
-
-  const formatStepName = (stepName: string) => {
-    if (!stepName) return "Étape inconnue"
-    
-    const stepNameMap: { [key: string]: string } = {
-      'DEMANDE_ADMISSION': 'Demande d\'admission',
-      'DEMANDE_VISA': 'Demande de visa',
-      'PREPARATIF_VOYAGE': 'Préparatif de voyage'
-    }
-    
-    return stepNameMap[stepName] || stepName
-      .split("_")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(" ")
-  }
-
+  // Fonction pour formater la date
   const formatDate = (dateString: string) => {
     try {
-      return new Date(dateString).toLocaleDateString("fr-FR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      })
+      return new Date(dateString).toLocaleDateString('fr-FR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
     } catch {
-      return "Date invalide"
+      return 'Date invalide';
     }
-  }
+  };
 
-  const canCancel = (proc: Procedure) => {
-    return proc.statut === "En cours" && user?.email === proc.email
-  }
+  // Fonction pour formater l'heure
+  const formatTime = (timeString: string) => {
+    return timeString;
+  };
 
-  const getProgressPercentage = (steps: ProcedureStep[]) => {
-    const completed = steps.filter((step) => step.statut === "Terminé").length
-    return steps.length > 0 ? Math.round((completed / steps.length) * 100) : 0
-  }
-
-  const openCancelPopup = (procId: string) => {
-    if (!isAuthenticated || !token) {
-      toast.error("Session expirée")
-      return
+  // Couleurs et icônes selon le statut
+  const getStatusConfig = (statut: Procedure['statut']) => {
+    switch (statut) {
+      case 'En cours':
+        return { color: 'text-blue-600 bg-blue-50', icon: Clock4, label: 'En Cours' };
+      case 'Terminée':
+        return { color: 'text-green-600 bg-green-50', icon: CheckCircle, label: 'Terminée' };
+      case 'Refusée':
+        return { color: 'text-red-600 bg-red-50', icon: XCircle, label: 'Refusée' };
+      case 'Annulée':
+        return { color: 'text-gray-600 bg-gray-50', icon: XCircle, label: 'Annulée' };
+      default:
+        return { color: 'text-gray-600 bg-gray-50', icon: Clock4, label: statut };
     }
-    setSelectedProcedureId(procId)
-    setIsCancelPopoverOpen(true)
-    setCancelReason("")
-  }
+  };
 
-  const closeCancelPopup = () => {
-    setIsCancelPopoverOpen(false)
-    setSelectedProcedureId(null)
-    setCancelReason("")
-  }
+  // Filtrage côté client pour la recherche
+  const filteredProcedures = procedures.filter(procedure => {
+    const matchesSearch = filters.search === '' || 
+      procedure.destination.toLowerCase().includes(filters.search.toLowerCase()) ||
+      `${procedure.prenom} ${procedure.nom}`.toLowerCase().includes(filters.search.toLowerCase());
+    
+    const matchesStatus = filters.status === 'all' || procedure.statut === filters.status;
+    
+    return matchesSearch && matchesStatus;
+  });
 
-  // Écran de chargement
-  if (isLoadingProcedures && userProcedures.length === 0) {
+  if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-        <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-40">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4">
-              <button 
-                onClick={navigateToHome}
-                className="flex items-center text-blue-600 hover:text-blue-700 transition-colors"
-              >
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Home className="w-5 h-5" />
-                </div>
-                <span className="ml-2 font-medium hidden sm:inline">Accueil</span>
-              </button>
-              <button className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-                <RefreshCw className="w-5 h-5 animate-spin" />
-              </button>
-            </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="w-10 h-10 text-blue-600" />
           </div>
-        </div>
-
-        <div className="py-8 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-12">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-2xl mb-4 animate-pulse">
-                <FileText className="w-8 h-8 text-blue-600" />
-              </div>
-              <div className="h-8 bg-slate-200 rounded-lg w-64 mx-auto mb-3 animate-pulse"></div>
-              <div className="h-4 bg-slate-200 rounded w-96 mx-auto animate-pulse"></div>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
-              <div className="p-6 space-y-4">
-                {[1, 2, 3].map((item) => (
-                  <div key={item} className="border-b border-slate-100 last:border-b-0 pb-4 last:pb-0">
-                    <div className="h-6 bg-slate-200 rounded w-1/3 mb-2 animate-pulse"></div>
-                    <div className="h-4 bg-slate-200 rounded w-1/2 animate-pulse"></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-3">
+            Authentification requise
+          </h3>
+          <p className="text-gray-600">
+            Veuillez vous connecter pour accéder à vos procédures.
+          </p>
         </div>
       </div>
-    )
+    );
   }
 
-  // Aucune procédure
-  if (userProcedures.length === 0 && !isLoadingProcedures) {
+  if (loading && !refreshing) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-        <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-40">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4">
-              <button 
-                onClick={navigateToHome}
-                className="flex items-center text-blue-600 hover:text-blue-700 transition-colors"
-              >
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Home className="w-5 h-5" />
-                </div>
-                <span className="ml-2 font-medium hidden sm:inline">Accueil</span>
-              </button>
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`w-5 h-5 ${refreshing ? "animate-spin" : ""}`} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="py-8 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto text-center py-16">
-            <div className="mx-auto w-20 h-20 flex items-center justify-center rounded-2xl bg-blue-100 text-blue-600 mb-6">
-              <FileText className="w-10 h-10" />
-            </div>
-            <h3 className="text-2xl font-bold text-slate-800 mb-3">Aucune procédure en cours</h3>
-            <p className="text-slate-600 mb-8 max-w-md mx-auto">
-              Vos procédures de visa apparaîtront ici une fois votre rendez-vous confirmé et terminé favorablement.
-            </p>
-            <button
-              onClick={navigateToHome}
-              className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium"
-            >
-              Retour à l'accueil
-            </button>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Chargement de vos procédures...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <button 
-              onClick={navigateToHome}
-              className="flex items-center text-blue-600 hover:text-blue-700 transition-colors"
+    <div className="min-h-screen bg-gray-50 pb-20">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Mes Procédures</h1>
+              <p className="text-gray-600 text-sm mt-1">
+                {procedures.length > 0 ? `${procedures.length} procédure(s) trouvée(s)` : 'Suivez vos démarches'}
+              </p>
+            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-2 text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-50"
             >
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Home className="w-5 h-5" />
-              </div>
-              <span className="ml-2 font-medium hidden sm:inline">Accueil</span>
+              <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-600 hidden sm:block">
-                Connecté en tant que {user?.email}
-              </span>
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing || isLoadingProcedures}
-                className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
-                title="Actualiser"
-              >
-                <RefreshCw className={`w-5 h-5 ${refreshing ? "animate-spin" : ""}`} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-2xl mb-4">
-              <FileText className="w-8 h-8 text-blue-600" />
-            </div>
-            <h1 className="text-4xl font-bold text-slate-800 mb-3">Mes Procédures</h1>
-            <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-              Suivez l'avancement de vos démarches de visa
-              {userProcedures.length > 0 && ` (${userProcedures.length} trouvée(s))`}
-            </p>
           </div>
 
-          <div className="space-y-6">
-            {userProcedures.map((proc) => (
-              <div key={proc._id} className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-                <div className="p-6 border-b border-slate-100">
-                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
-                        <h3 className="text-xl font-bold text-slate-800">
-                          Procédure pour {proc.destination}
-                        </h3>
-                        <span
-                          className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(proc.statut)}`}
-                        >
-                          {proc.statut}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-slate-600">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-blue-500" />
-                          <span>
-                            {proc.prenom} {proc.nom}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <MapPin className="w-4 h-4 text-blue-500" />
-                          <span>{proc.destination}</span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-blue-500" />
-                          <span>Créée le {formatDate(proc.createdAt)}</span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-blue-500" />
-                          <span>Progression: {getProgressPercentage(proc.steps)}%</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <button
-                        onClick={() => toggleProcedureDetails(proc._id)}
-                        className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors duration-200 border border-blue-200"
-                      >
-                        <FileText className="w-4 h-4 mr-2" />
-                        {expandedProcedure === proc._id ? "Masquer" : "Détails"}
-                      </button>
-
-                      {canCancel(proc) && (
-                        <button
-                          onClick={() => openCancelPopup(proc._id)}
-                          className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-red-600 bg-red-50 rounded-xl hover:bg-red-100 transition-colors duration-200 border border-red-200"
-                        >
-                          <XCircle className="w-4 h-4 mr-2" />
-                          Annuler
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Steps Details */}
-                {expandedProcedure === proc._id && (
-                  <div className="border-t border-slate-100 bg-slate-50/50">
-                    <div className="p-6">
-                      <h4 className="text-lg font-semibold text-slate-800 mb-6 flex items-center">
-                        <TrendingUp className="w-5 h-5 mr-2 text-blue-500" />
-                        Étapes de la procédure
-                      </h4>
-
-                      {proc.steps.length === 0 ? (
-                        <div className="text-center py-8 text-slate-500">
-                          <FileText className="w-12 h-12 mx-auto text-slate-400 mb-3" />
-                          <p>Aucune étape disponible</p>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="space-y-4 mb-6">
-                            {proc.steps.map((step, index) => (
-                              <div
-                                key={step.nom || `step-${index}`}
-                                className="flex items-start gap-4 p-4 bg-white rounded-xl border border-slate-200 shadow-sm"
-                              >
-                                <div className="flex-shrink-0">
-                                  <div
-                                    className={`w-10 h-10 rounded-full flex items-center justify-center ${getStepStatusColor(step.statut)}`}
-                                  >
-                                    <span className="text-xs font-semibold text-white">{index + 1}</span>
-                                  </div>
-                                </div>
-
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-                                    <h5 className="text-base font-medium text-slate-900">
-                                      {formatStepName(step.nom)}
-                                    </h5>
-                                    <span
-                                      className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                                        step.statut === "Terminé"
-                                          ? "bg-green-100 text-green-800"
-                                          : step.statut === "En cours"
-                                            ? "bg-blue-100 text-blue-800"
-                                            : step.statut === "Rejeté"
-                                              ? "bg-red-100 text-red-800"
-                                              : "bg-slate-100 text-slate-800"
-                                      }`}
-                                    >
-                                      {getStepStatusText(step.statut)}
-                                    </span>
-                                  </div>
-
-                                  <div className="flex items-center text-sm text-slate-500">
-                                    <Clock className="w-4 h-4 mr-1" />
-                                    Mise à jour: {formatDate(step.dateMaj)}
-                                  </div>
-
-                                  {step.raisonRefus && step.statut === "Rejeté" && (
-                                    <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                                      <strong className="font-medium">Raison du rejet:</strong> {step.raisonRefus}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* Progress Bar */}
-                          <div className="bg-white rounded-xl p-4 border border-slate-200">
-                            <div className="flex items-center justify-between text-sm text-slate-700 mb-3">
-                              <span className="font-medium">Progression globale</span>
-                              <span>
-                                {proc.steps.filter((step) => step.statut === "Terminé").length} / {proc.steps.length}{" "}
-                                étapes
-                              </span>
-                            </div>
-                            <div className="w-full bg-slate-200 rounded-full h-3">
-                              <div
-                                className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-500 ease-out"
-                                style={{
-                                  width: `${getProgressPercentage(proc.steps)}%`,
-                                }}
-                              ></div>
-                            </div>
-                            <div className="text-right text-sm text-slate-500 mt-2">
-                              {getProgressPercentage(proc.steps)}% complété
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
+          {/* Filtres et recherche */}
+          {procedures.length > 0 && (
+            <div className="mt-4 space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Rechercher par destination ou nom..."
+                  value={filters.search}
+                  onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
               </div>
-            ))}
-          </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center mt-8">
-              <div className="flex items-center gap-2 bg-white rounded-2xl p-2 shadow-sm border border-slate-200">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1 || isLoadingProcedures}
-                  className="flex items-center gap-2 px-4 py-2.5 text-slate-700 bg-slate-50 rounded-xl border border-slate-300 hover:bg-slate-100 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  <span>Précédent</span>
-                </button>
-
-                <div className="flex items-center gap-1 mx-4">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                    <button
-                      key={pageNum}
-                      onClick={() => setPage(pageNum)}
-                      disabled={isLoadingProcedures}
-                      className={`w-10 h-10 rounded-lg font-medium transition-all ${
-                        page === pageNum
-                          ? "bg-blue-500 text-white shadow-lg shadow-blue-200"
-                          : "text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages || isLoadingProcedures}
-                  className="flex items-center gap-2 px-4 py-2.5 text-slate-700 bg-slate-50 rounded-xl border border-slate-300 hover:bg-slate-100 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium"
-                >
-                  <span>Suivant</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+              <div className="flex space-x-2 overflow-x-auto pb-2">
+                {[
+                  { value: 'all', label: 'Toutes', count: procedures.length },
+                  { value: 'En cours', label: 'En Cours', count: procedures.filter(p => p.statut === 'En cours').length },
+                  { value: 'Terminée', label: 'Terminées', count: procedures.filter(p => p.statut === 'Terminée').length },
+                  { value: 'Annulée', label: 'Annulées', count: procedures.filter(p => p.statut === 'Annulée').length },
+                  { value: 'Refusée', label: 'Refusées', count: procedures.filter(p => p.statut === 'Refusée').length },
+                ].map((filter) => (
+                  <button
+                    key={filter.value}
+                    onClick={() => setFilters(prev => ({ ...prev, status: filter.value }))}
+                    className={`flex items-center space-x-2 px-3 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                      filters.status === filter.value
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:border-blue-300'
+                    }`}
+                  >
+                    <span>{filter.label}</span>
+                    <span className={`px-1.5 py-0.5 rounded-full text-xs ${
+                      filters.status === filter.value
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {filter.count}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Cancel Confirmation Popup */}
-      {isCancelPopoverOpen && selectedProcedureId && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-            <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center mb-4">
-              <XCircle className="w-6 h-6 text-red-600" />
+      {/* Contenu principal */}
+      <div className="max-w-4xl mx-auto px-4 py-6">
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+                <p className="text-red-800 text-sm">{error}</p>
+              </div>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-600 hover:text-red-800 text-sm font-medium"
+              >
+                ×
+              </button>
             </div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Confirmer l'annulation</h3>
-            <p className="text-slate-600 mb-4">
-              Êtes-vous sûr de vouloir annuler cette procédure ? Cette action est irréversible.
+          </div>
+        )}
+
+        {filteredProcedures.length === 0 && !loading ? (
+          <div className="text-center py-12">
+            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <BookOpen className="w-10 h-10 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {procedures.length === 0 ? 'Aucune procédure' : 'Aucun résultat'}
+            </h3>
+            <p className="text-gray-600 max-w-sm mx-auto">
+              {procedures.length === 0 
+                ? 'Vous n\'avez pas encore de procédures en cours. Vos procédures apparaîtront ici après vos rendez-vous.'
+                : 'Aucune procédure ne correspond à votre recherche.'
+              }
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredProcedures.map((procedure) => {
+              const StatusIcon = getStatusConfig(procedure.statut).icon;
+              
+              return (
+                <div
+                  key={procedure._id}
+                  className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                >
+                  {/* En-tête de la procédure */}
+                  <div className="p-4 border-b border-gray-100">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <MapPin className="w-5 h-5 text-blue-600" />
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {procedure.destination}
+                          </h3>
+                        </div>
+                        
+                        <div className="flex items-center space-x-4 text-sm text-gray-600">
+                          <div className="flex items-center space-x-1">
+                            <User className="w-4 h-4" />
+                            <span>{procedure.prenom} {procedure.nom}</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <Mail className="w-4 h-4" />
+                            <span>{procedure.email}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <div className={`inline-flex items-center space-x-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusConfig(procedure.statut).color}`}>
+                          <StatusIcon className="w-4 h-4" />
+                          <span>{getStatusConfig(procedure.statut).label}</span>
+                        </div>
+                        
+                        {procedure.statut === 'En cours' && (
+                          <button
+                            onClick={() => {
+                              setSelectedProcedure(procedure);
+                              setShowCancelModal(true);
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                            title="Annuler la procédure"
+                          >
+                            <MoreVertical className="w-5 h-5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Informations du rendez-vous */}
+                  {procedure.rendezVousId && (
+                    <div className="p-4 bg-gray-50 border-b border-gray-100">
+                      <h4 className="text-sm font-medium text-gray-900 mb-2 flex items-center">
+                        <Calendar className="w-4 h-4 mr-2 text-blue-600" />
+                        Rendez-vous associé
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                        <div className="flex items-center space-x-2 text-gray-600">
+                          <Calendar className="w-4 h-4 text-gray-400" />
+                          <span>{formatDate(procedure.rendezVousId.date)}</span>
+                        </div>
+                        <div className="flex items-center space-x-2 text-gray-600">
+                          <Clock className="w-4 h-4 text-gray-400" />
+                          <span>{formatTime(procedure.rendezVousId.time)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Étapes de la procédure */}
+                  <div className="p-4">
+                    <h4 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+                      <GraduationCap className="w-4 h-4 mr-2 text-blue-600" />
+                      Étapes de la procédure
+                    </h4>
+                    <div className="space-y-3">
+                      {procedure.steps.map((step, index) => (
+                        <div key={index} className="flex items-start space-x-3">
+                          <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                            step.statut === 'Terminé' 
+                              ? 'bg-green-100 text-green-600' 
+                              : step.statut === 'En cours'
+                              ? 'bg-blue-100 text-blue-600'
+                              : step.statut === 'Rejeté'
+                              ? 'bg-red-100 text-red-600'
+                              : 'bg-gray-100 text-gray-400'
+                          }`}>
+                            {index + 1}
+                          </div>
+                          
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium text-gray-900 capitalize">
+                                {step.nom.toLowerCase().replace(/_/g, ' ')}
+                              </span>
+                              <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                                step.statut === 'Terminé' 
+                                  ? 'bg-green-50 text-green-700' 
+                                  : step.statut === 'En cours'
+                                  ? 'bg-blue-50 text-blue-700'
+                                  : step.statut === 'Rejeté'
+                                  ? 'bg-red-50 text-red-700'
+                                  : 'bg-gray-50 text-gray-600'
+                              }`}>
+                                {step.statut}
+                              </span>
+                            </div>
+                            
+                            {step.raisonRefus && (
+                              <p className="text-xs text-red-600 bg-red-50 p-2 rounded mt-1">
+                                {step.raisonRefus}
+                              </p>
+                            )}
+                            
+                            <p className="text-xs text-gray-500">
+                              Dernière mise à jour: {formatDate(step.dateMaj)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Pied de carte */}
+                  <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>Créée le {formatDate(procedure.createdAt)}</span>
+                      <span>Dernière mise à jour: {formatDate(procedure.updatedAt)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Modal d'annulation */}
+      {showCancelModal && selectedProcedure && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Annuler la procédure
+            </h3>
+            
+            <p className="text-gray-600 mb-4">
+              Êtes-vous sûr de vouloir annuler votre procédure pour {selectedProcedure.destination} ? 
+              Cette action est irréversible.
             </p>
 
             <div className="mb-4">
-              <label htmlFor="cancelReason" className="block text-sm font-medium text-slate-700 mb-2">
-                Raison de l'annulation *
+              <label htmlFor="cancelReason" className="block text-sm font-medium text-gray-700 mb-2">
+                Raison de l'annulation (optionnelle)
               </label>
               <textarea
                 id="cancelReason"
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
-                placeholder="Veuillez indiquer la raison (minimum 5 caractères)..."
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                placeholder="Pourquoi souhaitez-vous annuler cette procédure ?"
                 rows={3}
-                minLength={5}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                 maxLength={500}
               />
-              <div className="text-xs text-slate-500 mt-1 text-right">
+              <p className="text-xs text-gray-500 mt-1">
                 {cancelReason.length}/500 caractères
-              </div>
+              </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
+            <div className="flex space-x-3">
               <button
-                onClick={closeCancelPopup}
-                disabled={isCancelling}
-                className="px-6 py-2.5 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors font-medium disabled:opacity-50"
+                onClick={() => {
+                  setShowCancelModal(false);
+                  setSelectedProcedure(null);
+                  setCancelReason('');
+                }}
+                disabled={cancelling}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 Retour
               </button>
               <button
-                onClick={() => handleCancelProcedure(selectedProcedureId)}
-                disabled={isCancelling || cancelReason.length < 5}
-                className="px-6 py-2.5 rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed transition-colors font-medium shadow-lg shadow-red-200"
+                onClick={handleCancelProcedure}
+                disabled={cancelling}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
               >
-                {isCancelling ? (
-                  <span className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                    Annulation...
-                  </span>
+                {cancelling ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
-                  "Confirmer l'annulation"
+                  <XCircle className="w-4 h-4" />
                 )}
+                <span>{cancelling ? 'Annulation...' : 'Confirmer'}</span>
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default UserProcedure
+export default UserProcedure;
