@@ -245,41 +245,63 @@ const RendezVous: React.FC = () => {
       navigate('/connexion');
       return;
     }
-
+  
     if (!token) {
       toast.error('Session invalide. Veuillez vous reconnecter.');
       logout();
       return;
     }
-
+  
     if (!validatePhone(formData.telephone)) {
       toast.error('Veuillez entrer un numéro de téléphone valide (au moins 10 chiffres)');
       return;
     }
-
+  
     setLoading(true);
-
+  
     try {
-      const submitData = {
+      // Préparation des données pour l'envoi - CORRECTION AVEC VALEURS FINALES
+      const submitData: any = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         email: formData.email.trim(),
         telephone: formData.telephone.trim(),
-        destination: formData.destination,
-        destinationAutre: formData.destination === 'Autre' ? formData.destinationAutre.trim() : undefined,
         niveauEtude: formData.niveauEtude,
-        filiere: formData.filiere,
-        filiereAutre: formData.filiere === 'Autre' ? formData.filiereAutre.trim() : undefined,
         date: formData.date,
         time: formData.time
       };
-
+  
+      // CORRECTION : Utiliser la valeur personnalisée comme valeur principale
+      // Si "Autre" est sélectionné ET une valeur personnalisée est fournie
+      if (formData.destination === 'Autre' && formData.destinationAutre) {
+        // La valeur finale devient la valeur personnalisée
+        submitData.destination = formData.destinationAutre.trim();
+        submitData.destinationAutre = formData.destinationAutre.trim(); // Garder aussi dans destinationAutre
+      } else {
+        // Sinon utiliser la valeur normale de l'enum
+        submitData.destination = formData.destination;
+        // Ne pas envoyer destinationAutre si pas "Autre"
+      }
+  
+      if (formData.filiere === 'Autre' && formData.filiereAutre) {
+        // La valeur finale devient la valeur personnalisée
+        submitData.filiere = formData.filiereAutre.trim();
+        submitData.filiereAutre = formData.filiereAutre.trim(); // Garder aussi dans filiereAutre
+      } else {
+        // Sinon utiliser la valeur normale de l'enum
+        submitData.filiere = formData.filiere;
+        // Ne pas envoyer filiereAutre si pas "Autre"
+      }
+  
+      // Nettoyer les données undefined/null/empty
       Object.keys(submitData).forEach(key => {
-        if (submitData[key as keyof typeof submitData] === undefined) {
-          delete submitData[key as keyof typeof submitData];
+        if (submitData[key] === undefined || submitData[key] === null || submitData[key] === '') {
+          delete submitData[key];
         }
       });
-
+  
+      console.log('📤 Données envoyées:', submitData); // Debug
+  
       const makeRequest = async (currentToken: string): Promise<Response> => {
         return fetch(`${API_URL}/api/rendezvous`, {
           method: 'POST',
@@ -290,9 +312,9 @@ const RendezVous: React.FC = () => {
           body: JSON.stringify(submitData),
         });
       };
-
+  
       let response = await makeRequest(token);
-
+  
       if (response.status === 401) {
         const refreshed = await refreshToken();
         if (refreshed) {
@@ -306,7 +328,7 @@ const RendezVous: React.FC = () => {
           throw new Error('Session expirée. Veuillez vous reconnecter.');
         }
       }
-
+  
       if (!response.ok) {
         let errorMessage = 'Erreur lors de la création du rendez-vous';
         
@@ -324,7 +346,7 @@ const RendezVous: React.FC = () => {
         
         throw new Error(errorMessage);
       }
-
+  
       const result = await response.json();
       
       toast.success('Rendez-vous créé avec succès !');
@@ -332,9 +354,9 @@ const RendezVous: React.FC = () => {
       setTimeout(() => {
         navigate('/user-rendez-vous');
       }, 1500);
-
+  
     } catch (error: any) {
-      console.error('Erreur création rendez-vous:', error);
+      console.error('❌ Erreur création rendez-vous:', error);
       
       if (error.message.includes('Session expirée') || error.message.includes('Token invalide')) {
         toast.error('Session expirée. Redirection...');
@@ -346,6 +368,9 @@ const RendezVous: React.FC = () => {
         if (formData.date) {
           fetchAvailableSlots(formData.date);
         }
+      } else if (error.message.includes('500') || error.message.includes('Internal Server Error')) {
+        toast.error('Erreur serveur. Veuillez réessayer dans quelques instants.');
+        console.error('Détails erreur 500:', error);
       } else {
         toast.error(error.message || 'Erreur lors de la création du rendez-vous');
       }
@@ -353,7 +378,7 @@ const RendezVous: React.FC = () => {
       setLoading(false);
     }
   };
-
+  
   const renderStep1 = () => (
     <div className="space-y-6">
       <div className="text-center">
@@ -555,20 +580,20 @@ const RendezVous: React.FC = () => {
   const renderStep3 = () => (
     <div className="space-y-6">
       <div className="text-center">
-        <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-3">
-          <Calendar className="w-6 h-6 text-sky-600" />
+        <div className="w-10 h-10 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-2">
+          <Calendar className="w-5 h-5 text-sky-600" />
         </div>
-        <h3 className="text-xl font-bold text-gray-900 mb-2">Date et Heure</h3>
-        <p className="text-gray-600 text-sm">Sélectionnez votre créneau de rendez-vous</p>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">Date et Heure</h3>
+        <p className="text-gray-600 text-xs">Sélectionnez votre créneau</p>
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Dates disponibles */}
-        <div className="space-y-3">
+  
+      <div className="space-y-4">
+        {/* Sélection de date */}
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700">Date du rendez-vous *</label>
+            <label className="text-sm font-medium text-gray-700">Date *</label>
             {loadingDates && (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
+              <div className="flex items-center gap-1 text-xs text-gray-500">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Chargement...
               </div>
@@ -576,162 +601,148 @@ const RendezVous: React.FC = () => {
           </div>
           
           {loadingDates ? (
-            <div className="flex justify-center py-8">
-              <div className="flex items-center gap-3 text-gray-500">
+            <div className="flex justify-center py-4">
+              <div className="flex items-center gap-2 text-gray-500">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span className="text-sm">Chargement des dates...</span>
               </div>
             </div>
           ) : availableDates.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-              <Calendar className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Aucune date disponible</p>
+            <div className="text-center py-4 text-gray-500 bg-gray-50 rounded-lg text-xs">
+              <Calendar className="w-5 h-5 mx-auto mb-1 opacity-50" />
+              <p>Aucune date disponible</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto p-1">
-              {availableDates.map(({ date, available }) => {
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1">
+              {availableDates.map(({ date }) => {
                 const isSelected = formData.date === date;
                 const isToday = date === new Date().toISOString().split('T')[0];
-                const isDisabled = !available || isDatePassed(date);
+                const dateObj = new Date(date);
+                const day = dateObj.getDate();
+                const month = dateObj.toLocaleDateString('fr-FR', { month: 'short' });
+                const weekday = dateObj.toLocaleDateString('fr-FR', { weekday: 'short' });
                 
                 return (
                   <button
                     key={date}
                     type="button"
                     onClick={() => {
-                      if (!isDisabled) {
-                        setFormData(prev => ({ ...prev, date, time: '' }));
-                      }
+                      setFormData(prev => ({ ...prev, date, time: '' }));
                     }}
-                    disabled={isDisabled}
-                    className={`p-3 text-left rounded-lg border transition-all ${
+                    className={`p-2 text-center rounded-lg border transition-all min-h-[50px] flex flex-col items-center justify-center relative ${
                       isSelected
                         ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sm'
-                        : isDisabled
-                        ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
                         : 'border-gray-200 hover:border-sky-300 hover:bg-sky-25 text-gray-700'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium text-sm">
-                          {formatDateDisplay(date)}
-                        </div>
-                        {isToday && (
-                          <div className="text-xs text-sky-600 font-medium mt-1">Aujourd'hui</div>
-                        )}
-                      </div>
-                      {isSelected && (
-                        <CheckCircle2 className="w-4 h-4 text-sky-500 flex-shrink-0" />
-                      )}
-                    </div>
+                    <div className="text-[10px] text-gray-500 font-medium uppercase">{weekday}</div>
+                    <div className="text-base font-bold text-current">{day}</div>
+                    <div className="text-[10px] text-gray-600 uppercase">{month}</div>
+                    {isToday && (
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-sky-500 rounded-full"></div>
+                    )}
+                    {isSelected && (
+                      <CheckCircle2 className="w-3 h-3 text-sky-500 absolute -top-1 -right-1" />
+                    )}
                   </button>
                 );
               })}
             </div>
           )}
         </div>
-
-        {/* Créneaux horaires */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700">Heure du rendez-vous *</label>
-            {loadingSlots && (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Chargement...
+  
+        {/* Sélection d'horaire */}
+        {formData.date && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-gray-700">Heure *</label>
+              {loadingSlots && (
+                <div className="flex items-center gap-1 text-xs text-gray-500">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Chargement...
+                </div>
+              )}
+            </div>
+            
+            {loadingSlots ? (
+              <div className="flex justify-center py-4">
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Chargement des créneaux...</span>
+                </div>
+              </div>
+            ) : availableSlots.length === 0 ? (
+              <div className="text-center py-4 text-gray-500 bg-gray-50 rounded-lg text-xs">
+                <Clock className="w-5 h-5 mx-auto mb-1 opacity-50" />
+                <p>Aucun créneau disponible</p>
+                <p className="text-[10px] mt-1">Choisissez une autre date</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-32 overflow-y-auto p-1">
+                {availableSlots.map(slot => {
+                  const isSelected = formData.time === slot;
+                  const isTimeDisabled = isTimePassed(slot, formData.date);
+                  const isSoon = (() => {
+                    if (formData.date !== new Date().toISOString().split('T')[0]) return false;
+                    const [hours, minutes] = slot.split(':').map(Number);
+                    const slotTime = new Date();
+                    slotTime.setHours(hours, minutes, 0, 0);
+                    const now = new Date();
+                    const diffMs = slotTime.getTime() - now.getTime();
+                    return diffMs < 2 * 60 * 60 * 1000;
+                  })();
+  
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => !isTimeDisabled && setFormData(prev => ({ ...prev, time: slot }))}
+                      disabled={isTimeDisabled}
+                      className={`p-2 text-center rounded-lg border transition-all text-xs font-medium relative ${
+                        isSelected
+                          ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sm'
+                          : isTimeDisabled
+                          ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
+                          : 'border-gray-200 hover:border-sky-300 hover:bg-sky-25 text-gray-700'
+                      } ${isSoon ? 'ring-1 ring-orange-300' : ''}`}
+                    >
+                      {slot.replace(':', 'h')}
+                      {isTimeDisabled && (
+                        <span className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-red-400 rounded-full"></span>
+                      )}
+                      {isSoon && !isTimeDisabled && (
+                        <span className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-orange-400 rounded-full"></span>
+                      )}
+                      {isSelected && !isTimeDisabled && (
+                        <CheckCircle2 className="w-2.5 h-2.5 absolute -top-1 -right-1 text-sky-500" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
-          
-          {!formData.date ? (
-            <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-              <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Veuillez sélectionner une date</p>
-            </div>
-          ) : loadingSlots ? (
-            <div className="flex justify-center py-8">
-              <div className="flex items-center gap-3 text-gray-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-sm">Chargement des créneaux...</span>
+        )}
+  
+        {/* Récapitulatif compact */}
+        {formData.date && formData.time && (
+          <div className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-lg p-3 animate-fade-in">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2 text-sky-700">
+                <Calendar className="w-3 h-3 flex-shrink-0" />
+                <span className="font-medium">{formatDateDisplay(formData.date)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sky-700">
+                <Clock className="w-3 h-3 flex-shrink-0" />
+                <span className="font-medium">{formData.time.replace(':', 'h')}</span>
               </div>
             </div>
-          ) : availableSlots.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-              <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Aucun créneau disponible</p>
-              <p className="text-xs mt-1">Veuillez choisir une autre date</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-1">
-              {availableSlots.map(slot => {
-                const isSelected = formData.time === slot;
-                const isTimeDisabled = isTimePassed(slot, formData.date);
-                const isSoon = (() => {
-                  if (formData.date !== new Date().toISOString().split('T')[0]) return false;
-                  const [hours, minutes] = slot.split(':').map(Number);
-                  const slotTime = new Date();
-                  slotTime.setHours(hours, minutes, 0, 0);
-                  const now = new Date();
-                  const diffMs = slotTime.getTime() - now.getTime();
-                  return diffMs < 2 * 60 * 60 * 1000;
-                })();
-
-                return (
-                  <button
-                    key={slot}
-                    type="button"
-                    onClick={() => !isTimeDisabled && setFormData(prev => ({ ...prev, time: slot }))}
-                    disabled={isTimeDisabled}
-                    className={`p-3 text-center rounded-lg border transition-all ${
-                      isSelected
-                        ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sm font-medium'
-                        : isTimeDisabled
-                        ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
-                        : 'border-gray-200 hover:border-sky-300 hover:bg-sky-25 text-gray-700'
-                    } ${isSoon ? 'ring-1 ring-orange-300' : ''}`}
-                  >
-                    <div className="flex flex-col items-center">
-                      <span className="text-sm font-medium">{slot}</span>
-                      {isTimeDisabled && (
-                        <span className="text-xs text-red-500 mt-1">Passé</span>
-                      )}
-                      {isSoon && !isTimeDisabled && (
-                        <span className="text-xs text-orange-600 mt-1 font-medium">Bientôt</span>
-                      )}
-                      {isSelected && !isTimeDisabled && (
-                        <CheckCircle2 className="w-3 h-3 mt-1 text-sky-500" />
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Récapitulatif sélection */}
-      {formData.date && formData.time && (
-        <div className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-lg p-4 animate-fade-in">
-          <h4 className="font-bold text-sky-800 text-base mb-2 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4" />
-            Rendez-vous sélectionné
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <div className="flex items-center gap-2 text-sky-700">
-              <Calendar className="w-3 h-3 flex-shrink-0" />
-              <span className="font-medium">{formatDateDisplay(formData.date)}</span>
-            </div>
-            <div className="flex items-center gap-2 text-sky-700">
-              <Clock className="w-3 h-3 flex-shrink-0" />
-              <span className="font-medium">{formData.time}</span>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
+  
 
   const ProgressSteps = () => (
     <div className="flex justify-between items-center mb-6 relative max-w-md mx-auto">

@@ -33,7 +33,7 @@ interface PasswordData {
 const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 const UserProfile: React.FC = () => {
-  const { user, token, refreshToken, logout } = useAuth();
+  const { user, token, refreshToken, logout, updateUserProfile } = useAuth();
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -51,27 +51,54 @@ const UserProfile: React.FC = () => {
     confirmPassword: '',
   });
 
-  // Fonction pour rafraîchir le token avec gestion d'erreur
-  const refreshTokenWithRetry = async (): Promise<boolean> => {
-    try {
-      console.log('🔄 Tentative de rafraîchissement du token...');
-      const success = await refreshToken();
-      
-      if (success) {
-        console.log('✅ Token rafraîchi avec succès');
-        return true;
-      } else {
-        console.log('❌ Échec du rafraîchissement du token');
-        toast.error('Session expirée. Veuillez vous reconnecter.');
-        logout('/connexion', true);
-        return false;
+  // Fonction utilitaire pour les requêtes avec gestion automatique du token
+  const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
+    let currentToken = token;
+    let isRefreshing = false;
+
+    const makeRequest = async (tokenToUse: string | null): Promise<Response> => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...options.headers as Record<string, string>,
+      };
+
+      if (tokenToUse) {
+        headers['Authorization'] = `Bearer ${tokenToUse}`;
       }
-    } catch (error) {
-      console.error('❌ Erreur lors du rafraîchissement:', error);
-      toast.error('Session expirée. Veuillez vous reconnecter.');
-      logout('/connexion', true);
-      return false;
+
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      });
+
+      return response;
+    };
+
+    // Premier essai avec le token actuel
+    let response = await makeRequest(currentToken);
+
+    // Si token expiré (401), rafraîchir et réessayer une seule fois
+    if (response.status === 401 && !isRefreshing) {
+      console.log('🔄 Token expiré détecté, tentative de rafraîchissement...');
+      isRefreshing = true;
+      
+      const refreshed = await refreshToken();
+      
+      if (refreshed) {
+        // Récupérer le nouveau token du localStorage
+        currentToken = localStorage.getItem('token');
+        if (currentToken) {
+          console.log('✅ Nouveau token récupéré, réessai de la requête...');
+          response = await makeRequest(currentToken);
+        } else {
+          throw new Error('SESSION_EXPIRED');
+        }
+      } else {
+        throw new Error('SESSION_EXPIRED');
+      }
     }
+
+    return response;
   };
 
   const loadUserProfile = async () => {
@@ -81,37 +108,7 @@ const UserProfile: React.FC = () => {
     }
 
     try {
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${API_URL}/api/auth/me`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Si token expiré, rafraîchir et réessayer
-      if (response.status === 401) {
-        console.log('🔄 Token expiré détecté lors du chargement du profil');
-        const refreshed = await refreshTokenWithRetry();
-        
-        if (refreshed) {
-          // Récupérer le nouveau token du localStorage
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            console.log('✅ Nouveau token récupéré, réessai de la requête...');
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée');
-        }
-      }
+      const response = await fetchWithAuth(`${API_URL}/api/users/profile/me`);
 
       if (response.ok) {
         const profile = await response.json();
@@ -122,6 +119,14 @@ const UserProfile: React.FC = () => {
           email: profile.email || user?.email || '',
           telephone: profile.telephone || profile.phone || user?.telephone || '',
         });
+        
+        // Mettre à jour le contexte d'authentification
+        if (profile.email !== user?.email || profile.telephone !== user?.telephone) {
+          updateUserProfile({
+            email: profile.email,
+            telephone: profile.telephone,
+          });
+        }
       } else {
         console.warn('⚠️ Réponse non-OK lors du chargement du profil:', response.status);
         // Fallback aux données du contexte
@@ -137,7 +142,7 @@ const UserProfile: React.FC = () => {
     } catch (error) {
       console.error('❌ Erreur chargement profil:', error);
       
-      if (error instanceof Error && error.message.includes('Session expirée')) {
+      if (error instanceof Error && error.message.includes('SESSION_EXPIRED')) {
         toast.error('Session expirée. Redirection...');
         setTimeout(() => logout('/connexion', true), 2000);
       } else if (user) {
@@ -177,98 +182,40 @@ const UserProfile: React.FC = () => {
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!token) {
-      toast.error('Session expirée. Veuillez vous reconnecter.');
-      logout('/connexion', true);
-      return;
-    }
-
     try {
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${API_URL}/api/users/profile/me`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            email: formData.email,
-            telephone: formData.telephone,
-          }),
-        });
-      };
-
-      let response = await makeRequest(token);
-      console.log('📤 Requête PATCH envoyée, statut:', response.status);
-
-      // Si token expiré, rafraîchir et réessayer
-      if (response.status === 401) {
-        console.log('🔄 Token expiré détecté lors de la mise à jour, tentative de rafraîchissement...');
-        const refreshed = await refreshTokenWithRetry();
-        
-        if (refreshed) {
-          // Récupérer le nouveau token du localStorage
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            console.log('✅ Nouveau token récupéré, réessai de la requête PATCH...');
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée. Veuillez vous reconnecter.');
-        }
-      }
-
+      const response = await fetchWithAuth(`${API_URL}/api/users/profile/me`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          email: formData.email || undefined,
+          telephone: formData.telephone || undefined,
+        }),
+      });
+  
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Réponse erreur:', errorText);
-        let errorMessage = 'Erreur lors de la mise à jour';
-        
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          errorMessage = errorText || errorMessage;
-        }
-        
-        throw new Error(errorMessage);
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors de la mise à jour');
       }
 
       const updatedUser = await response.json();
-      console.log('✅ Profil mis à jour avec succès:', updatedUser);
-      
-      setFormData(prev => ({
-        ...prev,
-        telephone: updatedUser.telephone || updatedUser.phone || '',
-        email: updatedUser.email || ''
-      }));
-
+  
+      // Succès
       toast.success('Profil mis à jour avec succès');
       setIsEditing(false);
-    } catch (error) {
-      console.error('❌ Erreur mise à jour profil:', error);
       
-      if (error instanceof Error && (
-        error.message.includes('Session expirée') || 
-        error.message.includes('Token invalide') ||
-        error.message.includes('Token non disponible')
-      )) {
-        toast.error('Erreur lors de la mise à jour. ');
-      } else {
-        toast.error(error instanceof Error ? error.message : 'Erreur lors de la mise à jour');
-      }
+      // Mettre à jour le contexte
+      updateUserProfile({
+        email: updatedUser.email,
+        telephone: updatedUser.telephone,
+      });
+      
+    } catch (error: any) {
+      console.error('❌ Erreur mise à jour profil:', error);
+      toast.error(error.message || 'Erreur lors de la mise à jour du profil');
     }
   };
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!token) {
-      toast.error('Vous devez être connecté pour effectuer cette action');
-      return;
-    }
     
     try {
       if (passwordData.newPassword !== passwordData.confirmPassword) {
@@ -281,37 +228,13 @@ const UserProfile: React.FC = () => {
         return;
       }
 
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${API_URL}/api/auth/update-password`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            currentPassword: passwordData.currentPassword,
-            newPassword: passwordData.newPassword,
-          }),
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Si token expiré, rafraîchir et réessayer
-      if (response.status === 401) {
-        console.log('🔄 Token expiré détecté lors du changement de mot de passe');
-        const refreshed = await refreshTokenWithRetry();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée. Veuillez vous reconnecter.');
-        }
-      }
+      const response = await fetchWithAuth(`${API_URL}/api/auth/update-password`, {
+        method: 'POST',
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        }),
+      });
 
       if (!response.ok) {
         const error = await response.json();
@@ -328,11 +251,8 @@ const UserProfile: React.FC = () => {
     } catch (error) {
       console.error('❌ Erreur mise à jour mot de passe:', error);
       
-      if (error instanceof Error && (
-        error.message.includes('Session expirée') || 
-        error.message.includes('Token invalide')
-      )) {
-        toast.error('Erreur lors de la mise à jour du mot de passe. ');
+      if (error instanceof Error && error.message.includes('SESSION_EXPIRED')) {
+        toast.error('Session expirée. Veuillez vous reconnecter.');
       } else {
         toast.error(error instanceof Error ? error.message : 'Erreur lors de la mise à jour du mot de passe');
       }
@@ -355,7 +275,18 @@ const UserProfile: React.FC = () => {
     setShowPassword(false);
   };
 
- 
+  // Afficher un loader pendant le chargement
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Chargement du profil...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className='min-h-screen bg-gray-50'>
       {/* Navigation utilisateur - Mobile First */}
@@ -398,7 +329,7 @@ const UserProfile: React.FC = () => {
         </div>
       </div>
 
-      {/* Le reste du JSX reste identique */}
+      {/* Contenu principal */}
       <div className='py-4 md:py-8'>
         <div className='max-w-4xl mx-auto px-3 sm:px-6 lg:px-8'>
           <div className='mb-4 md:mb-8'>

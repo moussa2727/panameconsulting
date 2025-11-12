@@ -144,50 +144,74 @@ async create(createUserDto: RegisterDto): Promise<User> {
   }
 
 
-async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
-  // Filtrer strictement les champs autorisés
-  const allowedFields = ['email', 'telephone'];
-  const filteredUpdate: any = {};
+  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+    console.log('🔄 Mise à jour utilisateur:', { id, updateUserDto });
   
-  Object.keys(updateUserDto).forEach(key => {
-    if (allowedFields.includes(key) && updateUserDto[key as keyof UpdateUserDto] !== undefined) {
-      filteredUpdate[key] = updateUserDto[key as keyof UpdateUserDto];
-    }
-  });
-
-  // Normaliser le téléphone si présent
-  if (filteredUpdate.telephone) {
-    filteredUpdate.telephone = this.normalizeTelephone(filteredUpdate.telephone);
-  }
-
-  try {
-    const updatedUser = await this.userModel
-      .findByIdAndUpdate(id, filteredUpdate, { 
-        new: true, 
-        runValidators: true, 
-        context: 'query' 
-      })
-      .exec();
-
-    if (!updatedUser) {
-      throw new NotFoundException('Utilisateur non trouvé');
-    }
-
-    return updatedUser;
-  } catch (error: any) {
-    if (error?.code === 11000) {
-      const fields = Object.keys(error.keyPattern || {});
-      if (fields.includes('email')) {
-        throw new BadRequestException('Cet email est déjà utilisé');
+    // Filtrer strictement les champs autorisés
+    const allowedFields = ['email', 'telephone'];
+    const filteredUpdate: any = {};
+    
+    Object.keys(updateUserDto).forEach(key => {
+      if (allowedFields.includes(key) && updateUserDto[key as keyof UpdateUserDto] !== undefined) {
+        filteredUpdate[key] = updateUserDto[key as keyof UpdateUserDto];
       }
-      if (fields.includes('telephone')) {
-        throw new BadRequestException('Ce numéro de téléphone est déjà utilisé');
-      }
-      throw new BadRequestException('Conflit de données');
+    });
+  
+    // Vérifier qu'il y a des données à mettre à jour
+    if (Object.keys(filteredUpdate).length === 0) {
+      throw new BadRequestException('Aucune donnée valide à mettre à jour');
     }
-    throw error;
+  
+    // Normaliser le téléphone si présent
+    if (filteredUpdate.telephone) {
+      filteredUpdate.telephone = this.normalizeTelephone(filteredUpdate.telephone);
+    }
+  
+    // Normaliser l'email si présent
+    if (filteredUpdate.email) {
+      filteredUpdate.email = filteredUpdate.email.toLowerCase().trim();
+    }
+  
+    console.log('✅ Données filtrées pour mise à jour:', filteredUpdate);
+  
+    try {
+      const updatedUser = await this.userModel
+        .findByIdAndUpdate(id, filteredUpdate, { 
+          new: true, 
+          runValidators: true, 
+          context: 'query' 
+        })
+        .exec();
+  
+      if (!updatedUser) {
+        throw new NotFoundException('Utilisateur non trouvé');
+      }
+  
+      console.log('✅ Utilisateur mis à jour avec succès:', updatedUser.email);
+      return updatedUser;
+    } catch (error: any) {
+      console.error('❌ Erreur mise à jour utilisateur:', error);
+      
+      if (error?.code === 11000) {
+        const fields = Object.keys(error.keyPattern || {});
+        if (fields.includes('email')) {
+          throw new BadRequestException('Cet email est déjà utilisé');
+        }
+        if (fields.includes('telephone')) {
+          throw new BadRequestException('Ce numéro de téléphone est déjà utilisé');
+        }
+        throw new BadRequestException('Conflit de données');
+      }
+      
+      // Gérer les erreurs de validation Mongoose
+      if (error.name === 'ValidationError') {
+        const messages = Object.values(error.errors).map((err: any) => err.message);
+        throw new BadRequestException(messages.join(', '));
+      }
+      
+      throw error;
+    }
   }
-}
   
   async updatePassword(userId: string, updatePasswordDto: UpdatePasswordDto): Promise<void> {
     const user = await this.userModel.findById(userId);

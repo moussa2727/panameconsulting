@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../utils/AuthContext';
 import { toast } from 'react-toastify';
 import { useNavigate, Link } from 'react-router-dom';
-import { Calendar, Clock, ChevronLeft, ChevronRight, User, FileText, Home, XCircle, History, MapPin, AlertCircle, CheckCircle, MoreVertical } from 'lucide-react';
+import { Calendar, Clock, ChevronLeft, ChevronRight, User, FileText, Home, XCircle, MapPin, AlertCircle, CheckCircle, MoreVertical } from 'lucide-react';
 
 interface Rendezvous {
   _id: string;
@@ -15,6 +15,7 @@ interface Rendezvous {
   avisAdmin?: string;
   typeConsultation?: string;
   notes?: string;
+  userConfirmed?: boolean; // Nouveau champ
 }
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
@@ -29,20 +30,21 @@ const MesRendezVous = () => {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [selectedRdv, setSelectedRdv] = useState<Rendezvous | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<string | null>(null);
+  const [hasFetched, setHasFetched] = useState(false);
+  const [confirmingRdv, setConfirmingRdv] = useState<string | null>(null);
 
-  // Vérification d'authentification au chargement
   useEffect(() => {
     if (!isAuthenticated) {
-      console.log('🔒 Utilisateur non authentifié, redirection vers /connexion');
-      navigate('/connexion');
+      console.log('🔒 Utilisateur non authentifié');
+      setIsLoading(false);
       return;
     }
     
-    if (user?.email) {
+    if (user?.email && !hasFetched) {
       console.log('✅ Utilisateur authentifié, chargement des rendez-vous...');
       fetchRendezvous();
     }
-  }, [isAuthenticated, navigate, page, user]);
+  }, [isAuthenticated, user, page, hasFetched]);
 
   const fetchRendezvous = async () => {
     if (!user?.email) {
@@ -77,7 +79,6 @@ const MesRendezVous = () => {
       let response = await makeRequest(token);
       console.log('📡 Statut réponse rendezvous:', response.status);
 
-      // Gestion du token expiré
       if (response.status === 401) {
         console.log('🔄 Token expiré, tentative de rafraîchissement...');
         const refreshed = await refreshToken();
@@ -95,38 +96,109 @@ const MesRendezVous = () => {
         }
       }
 
-      // Gestion des autres erreurs HTTP
       if (!response.ok) {
         const errorData = await response.json();
         console.error('❌ Erreur HTTP:', response.status, errorData);
         throw new Error(errorData.message || 'Erreur lors de la récupération des rendez-vous');
       }
       
-      // Traitement de la réponse réussie
       const data = await response.json();
       console.log('✅ Rendez-vous récupérés avec succès:', data.data?.length || 0, 'rendez-vous');
       
       setRendezvous(data.data || []);
       setTotalPages(Math.ceil((data.total || 0) / 6));
+      setHasFetched(true);
       
     } catch (error) {
       console.error('💥 Erreur fetchRendezvous:', error);
       
-      // Gestion spécifique des erreurs d'authentification
       if (error instanceof Error && (
         error.message.includes('Session expirée') || 
         error.message.includes('Token invalide') ||
         error.message.includes('Token non disponible')
       )) {
-        console.log('🔒 Session expirée, déconnexion...');
+        console.log('🔒 Session expirée');
         toast.error('Session expirée. Veuillez vous reconnecter.');
-        setTimeout(() => navigate('/connexion'), 2000);
       } else {
-        // Affichage d'un message d'erreur générique
         toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleUserConfirm = async (id: string) => {
+    if (!token) {
+      toast.error('Vous devez être connecté pour effectuer cette action');
+      return;
+    }
+
+    console.log('✅ Tentative de confirmation utilisateur du rendez-vous:', id);
+    setConfirmingRdv(id);
+
+    try {
+      const makeRequest = async (currentToken: string): Promise<Response> => {
+        console.log('🔑 Utilisation du token pour confirmation:', currentToken?.substring(0, 20) + '...');
+        return fetch(`${API_URL}/api/rendezvous/${id}/user-confirm`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${currentToken}`,
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include'
+        });
+      };
+
+      let response = await makeRequest(token);
+      console.log('📡 Statut réponse confirmation:', response.status);
+
+      if (response.status === 401) {
+        console.log('🔄 Token expiré, tentative de rafraîchissement...');
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          console.log('✅ Token rafraîchi avec succès');
+          const newToken = localStorage.getItem('token');
+          if (newToken) {
+            console.log('🔄 Nouvelle tentative de confirmation avec le nouveau token...');
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error('Token non disponible après rafraîchissement');
+          }
+        } else {
+          throw new Error('Session expirée. Veuillez vous reconnecter.');
+        }
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ Erreur HTTP confirmation:', response.status, errorData);
+        throw new Error(errorData.message || 'Erreur lors de la confirmation du rendez-vous');
+      }
+      
+      console.log('✅ Rendez-vous confirmé avec succès');
+      toast.success('Rendez-vous confirmé avec succès ! Nous vous attendons.');
+      
+      // Mise à jour optimiste de l'état local
+      setRendezvous(prev => prev.map(rdv => 
+        rdv._id === id ? { ...rdv, userConfirmed: true } : rdv
+      ));
+      
+      // Recharger les données pour s'assurer de la synchronisation
+      fetchRendezvous();
+      
+    } catch (error) {
+      console.error('💥 Erreur confirmation rendez-vous:', error);
+      
+      if (error instanceof Error && (
+        error.message.includes('Session expirée') || 
+        error.message.includes('Token invalide')
+      )) {
+        toast.error('Session expirée. Veuillez vous reconnecter.');
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
+      }
+    } finally {
+      setConfirmingRdv(null);
     }
   };
 
@@ -154,7 +226,6 @@ const MesRendezVous = () => {
       let response = await makeRequest(token);
       console.log('📡 Statut réponse annulation:', response.status);
 
-      // Gestion du token expiré
       if (response.status === 401) {
         console.log('🔄 Token expiré, tentative de rafraîchissement...');
         const refreshed = await refreshToken();
@@ -172,14 +243,12 @@ const MesRendezVous = () => {
         }
       }
 
-      // Gestion des autres erreurs HTTP
       if (!response.ok) {
         const errorData = await response.json();
         console.error('❌ Erreur HTTP annulation:', response.status, errorData);
         
-        // Message d'erreur spécifique pour l'annulation tardive
-        if (response.status === 400 && errorData.message?.includes('2h')) {
-          throw new Error('Annulation impossible : moins de 2 heures avant le rendez-vous');
+        if (response.status === 400 && errorData.message?.includes('2 heures')) {
+          throw new Error('Vous ne pouvez plus annuler votre rendez-vous à moins de 2 heures de l\'heure prévue');
         }
         
         throw new Error(errorData.message || 'Erreur lors de l\'annulation du rendez-vous');
@@ -188,22 +257,21 @@ const MesRendezVous = () => {
       console.log('✅ Rendez-vous annulé avec succès');
       toast.success('Rendez-vous annulé avec succès');
       
-      // Mise à jour optimiste de l'état local
       setRendezvous(prev => prev.map(rdv => 
         rdv._id === id ? { ...rdv, status: 'Annulé' } : rdv
       ));
       
+      fetchRendezvous();
+      
     } catch (error) {
       console.error('💥 Erreur annulation rendez-vous:', error);
       
-      // Gestion spécifique des erreurs d'authentification
       if (error instanceof Error && (
         error.message.includes('Session expirée') || 
         error.message.includes('Token invalide')
       )) {
         toast.error('Session expirée. Veuillez vous reconnecter.');
       } else {
-        // Affichage d'un message d'erreur générique
         toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
       }
     } finally {
@@ -226,12 +294,7 @@ const MesRendezVous = () => {
     return timeStr.replace(':', 'h');
   };
 
-  // Fonction pour vérifier si l'annulation est possible (2 heures avant)
   const canCancel = (rdv: Rendezvous) => {
-    // L'admin peut toujours annuler
-    if (user?.role === 'admin') return true;
-    
-    // Si déjà annulé ou terminé, impossible
     if (rdv.status === 'Annulé' || rdv.status === 'Terminé') return false;
     
     const now = new Date();
@@ -240,22 +303,29 @@ const MesRendezVous = () => {
     const timeDiff = rendezvousDateTime.getTime() - now.getTime();
     const hoursDiff = timeDiff / (1000 * 60 * 60);
     
-    // Annulation possible seulement si plus de 2 heures avant
-    return hoursDiff >= 2;
+    return hoursDiff > 2;
   };
 
-  // Fonction pour obtenir le message de temps restant
-  const getTimeRemainingMessage = (rdv: Rendezvous) => {
-    // L'admin n'a pas de restriction
-    if (user?.role === 'admin') return null;
+  const canUserConfirm = (rdv: Rendezvous) => {
+    // L'utilisateur peut confirmer si:
+    // 1. Le statut est "Confirmé" par l'admin
+    // 2. L'utilisateur n'a pas encore confirmé
+    // 3. Le rendez-vous n'est pas passé
+    if (rdv.status !== 'Confirmé' || rdv.userConfirmed) return false;
     
+    const now = new Date();
+    const rendezvousDateTime = new Date(`${rdv.date}T${rdv.time}`);
+    
+    return rendezvousDateTime > now;
+  };
+
+  const getTimeRemainingMessage = (rdv: Rendezvous) => {
     const now = new Date();
     const rendezvousDateTime = new Date(`${rdv.date}T${rdv.time}`);
     const timeDiff = rendezvousDateTime.getTime() - now.getTime();
     const hoursDiff = timeDiff / (1000 * 60 * 60);
     
-    // Si moins de 2 heures mais plus de 0 (rendez-vous dans le futur)
-    if (hoursDiff < 2 && hoursDiff > 0) {
+    if (hoursDiff <= 2 && hoursDiff > 0) {
       const minutesRemaining = Math.floor((timeDiff / (1000 * 60)) % 60);
       const hoursRemaining = Math.floor(timeDiff / (1000 * 60 * 60));
       
@@ -266,7 +336,20 @@ const MesRendezVous = () => {
       }
     }
     
+    if (hoursDiff <= 0) {
+      return 'Ce rendez-vous est déjà passé';
+    }
+    
     return null;
+  };
+
+  const handleCancelClick = (rdv: Rendezvous) => {
+    if (!canCancel(rdv)) {
+      const message = getTimeRemainingMessage(rdv) || 'Annulation impossible pour ce rendez-vous';
+      toast.info(message);
+      return;
+    }
+    setConfirmId(rdv._id);
   };
 
   const getStatusConfig = (status: string) => {
@@ -279,7 +362,7 @@ const MesRendezVous = () => {
     return config[status as keyof typeof config] || config['En attente'];
   };
 
-  const getStatusBadge = (status: string, avisAdmin?: string) => {
+  const getStatusBadge = (status: string, avisAdmin?: string, userConfirmed?: boolean) => {
     const config = getStatusConfig(status);
     const IconComponent = config.icon;
     
@@ -294,6 +377,12 @@ const MesRendezVous = () => {
             {avisAdmin}
           </span>
         )}
+        {status === 'Confirmé' && userConfirmed && (
+          <span className="px-2 py-1 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full flex items-center gap-1">
+            <CheckCircle className="w-3 h-3" />
+            Confirmé par vous
+          </span>
+        )}
       </div>
     );
   };
@@ -304,7 +393,6 @@ const MesRendezVous = () => {
     return rdvDate > now && rdv.status !== 'Annulé';
   };
 
-  // Affichage du loading pendant la vérification d'authentification
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
@@ -318,7 +406,7 @@ const MesRendezVous = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Navigation utilisateur améliorée */}
+      {/* Navigation */}
       <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
@@ -337,8 +425,7 @@ const MesRendezVous = () => {
                 {[
                   { to: '/user-profile', icon: User, label: 'Profil' },
                   { to: '/user-rendez-vous', icon: Calendar, label: 'Rendez-vous', active: true },
-                  { to: '/user-procedure', icon: FileText, label: 'Procédures' },
-                  { to: '/user-historique', icon: History, label: 'Historique' }
+                  { to: '/user-procedure', icon: FileText, label: 'Procédures' }
                 ].map((item) => (
                   <Link
                     key={item.to}
@@ -369,7 +456,7 @@ const MesRendezVous = () => {
 
       <div className="py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          {/* En-tête amélioré */}
+          {/* En-tête */}
           <div className="text-center mb-12">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-sky-100 rounded-2xl mb-4">
               <Calendar className="w-8 h-8 text-sky-600" />
@@ -380,7 +467,7 @@ const MesRendezVous = () => {
             </p>
           </div>
 
-          {/* Statistiques rapides */}
+          {/* Statistiques */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             {[
               { label: 'Total', value: rendezvous.length, color: 'bg-blue-500' },
@@ -400,26 +487,15 @@ const MesRendezVous = () => {
             ))}
           </div>
 
-          {/* Carte principale améliorée */}
+          {/* Carte principale */}
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
             <div className="px-6 py-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-blue-50">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-800">Rendez-vous programmés</h2>
                   <p className="text-slate-600 mt-1">
-                    {user?.role === 'admin' 
-                      ? 'Gestion complète des rendez-vous (admin)' 
-                      : 'Vos prochaines consultations avec nos experts'}
+                    Vos prochaines consultations avec nos experts
                   </p>
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => navigate('/user-historique')}
-                    className="flex items-center gap-2 px-4 py-2.5 text-sky-600 hover:bg-sky-50 rounded-xl border border-sky-200 transition-colors font-medium"
-                  >
-                    <History className="w-4 h-4" />
-                    <span>Historique complet</span>
-                  </button>
                 </div>
               </div>
             </div>
@@ -450,7 +526,7 @@ const MesRendezVous = () => {
             ) : (
               <>
                 <div className="overflow-hidden">
-                  {/* Version desktop améliorée */}
+                  {/* Version desktop */}
                   <div className="hidden lg:block">
                     <table className="w-full">
                       <thead className="bg-slate-50">
@@ -465,8 +541,9 @@ const MesRendezVous = () => {
                       <tbody className="divide-y divide-slate-100">
                         {rendezvous.map(rdv => {
                           const timeRemainingMessage = getTimeRemainingMessage(rdv);
-                          const statusConfig = getStatusConfig(rdv.status);
                           const canCancelRdv = canCancel(rdv);
+                          const canConfirmRdv = canUserConfirm(rdv);
+                          const isConfirming = confirmingRdv === rdv._id;
                           
                           return (
                             <tr key={rdv._id} className="hover:bg-slate-50/50 transition-colors group">
@@ -497,14 +574,33 @@ const MesRendezVous = () => {
                                 <span className="text-slate-600">{rdv.typeConsultation || 'Consultation standard'}</span>
                               </td>
                               <td className="px-6 py-5">
-                                {getStatusBadge(rdv.status, rdv.avisAdmin)}
+                                {getStatusBadge(rdv.status, rdv.avisAdmin, rdv.userConfirmed)}
                               </td>
                               <td className="px-6 py-5">
                                 <div className="flex items-center gap-3">
+                                  {canConfirmRdv && (
+                                    <button
+                                      onClick={() => handleUserConfirm(rdv._id)}
+                                      disabled={isConfirming}
+                                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all text-emerald-600 hover:bg-emerald-50 border border-emerald-200 hover:border-emerald-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      {isConfirming ? (
+                                        <>
+                                          <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-emerald-600"></div>
+                                          Confirmation...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <CheckCircle className="w-4 h-4" />
+                                          Confirmer ma présence
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
                                   {(rdv.status === 'En attente' || rdv.status === 'Confirmé') && (
                                     <>
                                       <button
-                                        onClick={() => canCancelRdv ? setConfirmId(rdv._id) : toast.info(timeRemainingMessage || 'Annulation impossible')}
+                                        onClick={() => handleCancelClick(rdv)}
                                         disabled={!canCancelRdv}
                                         className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                                           canCancelRdv 
@@ -538,13 +634,14 @@ const MesRendezVous = () => {
                     </table>
                   </div>
 
-                  {/* Version mobile améliorée */}
+                  {/* Version mobile */}
                   <div className="lg:hidden">
                     <div className="divide-y divide-slate-100">
                       {rendezvous.map(rdv => {
                         const timeRemainingMessage = getTimeRemainingMessage(rdv);
                         const canCancelRdv = canCancel(rdv);
-                        const statusConfig = getStatusConfig(rdv.status);
+                        const canConfirmRdv = canUserConfirm(rdv);
+                        const isConfirming = confirmingRdv === rdv._id;
                         
                         return (
                           <div key={rdv._id} className="p-6 hover:bg-slate-50/50 transition-colors">
@@ -568,7 +665,7 @@ const MesRendezVous = () => {
                               </div>
                               
                               <div className="flex items-center gap-2">
-                                {getStatusBadge(rdv.status, rdv.avisAdmin)}
+                                {getStatusBadge(rdv.status, rdv.avisAdmin, rdv.userConfirmed)}
                                 <button
                                   onClick={() => setMobileMenuOpen(mobileMenuOpen === rdv._id ? null : rdv._id)}
                                   className="p-1 text-slate-400 hover:text-slate-600 rounded"
@@ -590,28 +687,49 @@ const MesRendezVous = () => {
                             </div>
                             
                             <div className="mt-4 pt-4 border-t border-slate-100">
-                              {(rdv.status === 'En attente' || rdv.status === 'Confirmé') && (
-                                <div className="flex flex-col gap-3">
+                              <div className="flex flex-col gap-3">
+                                {canConfirmRdv && (
                                   <button
-                                    onClick={() => canCancelRdv ? setConfirmId(rdv._id) : toast.info(timeRemainingMessage || 'Annulation impossible')}
-                                    disabled={!canCancelRdv}
-                                    className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                                      canCancelRdv 
-                                        ? 'text-red-600 hover:bg-red-50 border border-red-200' 
-                                        : 'text-slate-400 cursor-not-allowed border border-slate-200'
-                                    }`}
+                                    onClick={() => handleUserConfirm(rdv._id)}
+                                    disabled={isConfirming}
+                                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all text-emerald-600 hover:bg-emerald-50 border border-emerald-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
-                                    <XCircle className="w-4 h-4" />
-                                    Annuler le rendez-vous
+                                    {isConfirming ? (
+                                      <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-emerald-600"></div>
+                                        Confirmation en cours...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CheckCircle className="w-4 h-4" />
+                                        Confirmer ma présence
+                                      </>
+                                    )}
                                   </button>
-                                  {timeRemainingMessage && (
-                                    <div className="flex items-center justify-center gap-2 text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">
-                                      <AlertCircle className="w-3 h-3" />
-                                      {timeRemainingMessage}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                                )}
+                                {(rdv.status === 'En attente' || rdv.status === 'Confirmé') && (
+                                  <>
+                                    <button
+                                      onClick={() => handleCancelClick(rdv)}
+                                      disabled={!canCancelRdv}
+                                      className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                                        canCancelRdv 
+                                          ? 'text-red-600 hover:bg-red-50 border border-red-200' 
+                                          : 'text-slate-400 cursor-not-allowed border border-slate-200'
+                                      }`}
+                                    >
+                                      <XCircle className="w-4 h-4" />
+                                      Annuler le rendez-vous
+                                    </button>
+                                    {timeRemainingMessage && (
+                                      <div className="flex items-center justify-center gap-2 text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">
+                                        <AlertCircle className="w-3 h-3" />
+                                        {timeRemainingMessage}
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                         );
@@ -620,7 +738,7 @@ const MesRendezVous = () => {
                   </div>
                 </div>
 
-                {/* Pagination améliorée */}
+                {/* Pagination */}
                 {totalPages > 1 && (
                   <div className="px-6 py-4 bg-slate-50 border-t border-slate-200">
                     <div className="flex items-center justify-between">
@@ -666,7 +784,7 @@ const MesRendezVous = () => {
         </div>
       </div>
 
-      {/* Modal de confirmation d'annulation amélioré */}
+      {/* Modal de confirmation d'annulation */}
       {confirmId && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl animate-scale-in">
@@ -676,11 +794,9 @@ const MesRendezVous = () => {
             <h3 className="text-xl font-bold text-slate-800 mb-2">Confirmer l'annulation</h3>
             <p className="text-slate-600 mb-6">
               Êtes-vous sûr de vouloir annuler ce rendez-vous ? Cette action est irréversible.
-              {user?.role !== 'admin' && (
-                <span className="block mt-2 text-sm text-amber-600">
-                  ⚠️ L'annulation n'est possible que jusqu'à 2 heures avant le rendez-vous.
-                </span>
-              )}
+              <span className="block mt-2 text-sm text-amber-600">
+                ⚠️ L'annulation n'est possible que jusqu'à 2 heures avant le rendez-vous.
+              </span>
             </p>
             <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
               <button 

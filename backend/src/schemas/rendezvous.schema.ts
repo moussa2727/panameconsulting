@@ -1,4 +1,3 @@
-// rendezvous.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -33,12 +32,17 @@ export class Rendezvous {
 
     @Prop({
         required: true,
-        enum: ['Algérie', 'Turquie', 'Maroc', 'France', 'Tunisie', 'Chine', 'Russie', 'Autre'],
-        default: 'France'
+        type: String,
+        trim: true,
+        maxlength: 100
     })
     destination: string;
 
-    @Prop({ trim: true, maxlength: 100 })
+    @Prop({ 
+        trim: true, 
+        maxlength: 100,
+        required: false
+    })
     destinationAutre?: string;
 
     @Prop({
@@ -49,11 +53,17 @@ export class Rendezvous {
 
     @Prop({
         required: true,
-        enum: ['Informatique', 'Médecine', 'Ingénierie', 'Droit', 'Commerce', 'Autre']
+        type: String,
+        trim: true,
+        maxlength: 100
     })
     filiere: string;
 
-    @Prop({ trim: true, maxlength: 100 })
+    @Prop({ 
+        trim: true, 
+        maxlength: 100,
+        required: false
+    })
     filiereAutre?: string;
 
     @Prop({
@@ -62,11 +72,11 @@ export class Rendezvous {
     })
     date: string;
 
-   @Prop({
-    required: true,
-    match: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/
-})
-time: string;
+    @Prop({
+        required: true,
+        match: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/
+    })
+    time: string;
 
     @Prop({
         required: true,
@@ -83,7 +93,8 @@ time: string;
 
     @Prop({ type: Types.ObjectId, ref: 'User' })
     userId?: Types.ObjectId;
-  _id: any;
+    
+    _id: any;
 }
 
 export const RendezvousSchema = SchemaFactory.createForClass(Rendezvous);
@@ -132,14 +143,32 @@ RendezvousSchema.pre('save', function (next: () => void) {
         throw new Error('Les créneaux doivent être espacés de 30 minutes (9h00, 9h30, 10h00, etc.)');
     }
 
+    // TRAITEMENT DES CHAMPS "AUTRE" - CORRECTION
     // Si destination est "Autre", vérifier que destinationAutre est rempli
-    if (this.destination === 'Autre' && (!this.destinationAutre || this.destinationAutre.trim() === '')) {
-        throw new Error('Veuillez préciser votre destination');
+    if (this.destination === 'Autre') {
+        if (!this.destinationAutre || this.destinationAutre.trim() === '') {
+            throw new Error('Veuillez préciser votre destination');
+        }
+        // Utiliser la valeur personnalisée comme valeur principale
+        this.destination = this.destinationAutre.trim();
     }
 
     // Si filière est "Autre", vérifier que filiereAutre est rempli
-    if (this.filiere === 'Autre' && (!this.filiereAutre || this.filiereAutre.trim() === '')) {
-        throw new Error('Veuillez préciser votre filière');
+    if (this.filiere === 'Autre') {
+        if (!this.filiereAutre || this.filiereAutre.trim() === '') {
+            throw new Error('Veuillez préciser votre filière');
+        }
+        // Utiliser la valeur personnalisée comme valeur principale
+        this.filiere = this.filiereAutre.trim();
+    }
+
+    // Nettoyer les champs *_Autre si la valeur est identique à la valeur principale
+    if (this.destinationAutre && this.destinationAutre === this.destination) {
+        this.destinationAutre = undefined;
+    }
+
+    if (this.filiereAutre && this.filiereAutre === this.filiere) {
+        this.filiereAutre = undefined;
     }
 
     next();

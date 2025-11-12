@@ -62,48 +62,47 @@ export class ProcedureService {
         }
     }
 
-    // Dans procedure.service.ts, modifiez la méthode findAll :
-async findAll(
-    page: number = 1, 
-    limit: number = 10, 
-    email?: string
-): Promise<{ data: Procedure[]; total: number; page: number; limit: number; totalPages: number }> {
-    
-    console.log('🔍 ProcedureService.findAll appelé avec:', { page, limit, email });
-    
-    const skip = (page - 1) * limit;
-    
-    const query: any = { isDeleted: false };
-    if (email) {
-        query.email = email.toLowerCase();
-        console.log('📧 Filtrage par email:', email);
-    }
-
-    try {
-        const [data, total] = await Promise.all([
-            this.procedureModel.find(query)
-                .populate('rendezVousId', 'firstName lastName date time status')
-                .skip(skip)
-                .limit(limit)
-                .sort({ createdAt: -1 })
-                .exec(),
-            this.procedureModel.countDocuments(query)
-        ]);
-
-        console.log(`✅ ${data.length} procédures trouvées pour ${email}`);
+    async findAll(
+        page: number = 1, 
+        limit: number = 10, 
+        email?: string
+    ): Promise<{ data: Procedure[]; total: number; page: number; limit: number; totalPages: number }> {
         
-        return {
-            data,
-            total,
-            page,
-            limit,
-            totalPages: Math.ceil(total / limit)
-        };
-    } catch (error) {
-        console.error('❌ Erreur récupération procédures:', error);
-        throw error;
+        console.log('🔍 ProcedureService.findAll appelé avec:', { page, limit, email });
+        
+        const skip = (page - 1) * limit;
+        
+        const query: any = { isDeleted: false };
+        if (email) {
+            query.email = email.toLowerCase();
+            console.log('📧 Filtrage par email:', email);
+        }
+    
+        try {
+            const [data, total] = await Promise.all([
+                this.procedureModel.find(query)
+                    .populate('rendezVousId', 'firstName lastName date time status')
+                    .skip(skip)
+                    .limit(limit)
+                    .sort({ createdAt: -1 })
+                    .exec(),
+                this.procedureModel.countDocuments(query)
+            ]);
+    
+            console.log(`✅ ${data.length} procédures trouvées pour ${email || 'tous les utilisateurs'}`);
+            
+            return {
+                data,
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            };
+        } catch (error) {
+            console.error('❌ Erreur récupération procédures:', error);
+            throw error;
+        }
     }
-}
 
     async findOne(id: string): Promise<Procedure> {
         if (!Types.ObjectId.isValid(id)) {

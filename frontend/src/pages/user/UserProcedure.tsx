@@ -4,7 +4,6 @@ import { useAuth } from "../../utils/AuthContext"
 import { toast } from "react-toastify"
 import {
   Home,
-  User,
   FileText,
   Calendar,
   MapPin,
@@ -48,10 +47,6 @@ interface UserProcedureProps {
   onProcedureUpdate?: () => void
 }
 
-interface FetchOptions extends RequestInit {
-  headers?: Record<string, string>
-}
-
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
 
 const UserProcedure: React.FC<UserProcedureProps> = ({ onProcedureUpdate }) => {
@@ -59,8 +54,10 @@ const UserProcedure: React.FC<UserProcedureProps> = ({ onProcedureUpdate }) => {
     user, 
     isAuthenticated, 
     token,
+    refreshToken,
     logout,
-    refreshToken
+    saveToSession,
+    getFromSession
   } = useAuth()
 
   const [userProcedures, setUserProcedures] = useState<Procedure[]>([])
@@ -75,126 +72,157 @@ const UserProcedure: React.FC<UserProcedureProps> = ({ onProcedureUpdate }) => {
   const [refreshing, setRefreshing] = useState(false)
   const [expandedProcedure, setExpandedProcedure] = useState<string | null>(null)
 
-  const fetchWithAuth = async (url: string, options: FetchOptions = {}): Promise<Response> => {
-    let currentToken = token
+  // Fonction utilitaire pour les requêtes avec gestion automatique du token
+  
+
+  // Dans UserProcedure.tsx ou AuthContext
+const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  let currentToken = token
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...options.headers as Record<string, string>,
+  }
+
+  if (currentToken) {
+    headers['Authorization'] = `Bearer ${currentToken}`
+  }
+
+  let response = await fetch(url, {
+    ...options,
+    headers,
+    credentials: 'include'
+  })
+
+  // Si token expiré (401), rafraîchir et réessayer
+  if (response.status === 401) {
+    console.log("🔄 Token expiré détecté, tentative de rafraîchissement...")
+    const refreshed = await refreshToken()
     
-    // Préparer les headers initiaux
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    }
-
-    if (currentToken) {
-      headers['Authorization'] = `Bearer ${currentToken}`
-    }
-
-    let response = await fetch(url, {
-      ...options,
-      headers,
-      credentials: 'include' as RequestCredentials
-    })
-
-    // Si token expiré, tenter de le rafraîchir
-    if (response.status === 401) {
-      console.log("🔄 Token expiré, tentative de rafraîchissement...")
-      const refreshed = await refreshToken()
-      if (refreshed) {
-        console.log("✅ Token rafraîchi avec succès")
-        // Réessayer la requête avec le nouveau token
-        currentToken = localStorage.getItem('token') // Récupérer le nouveau token
-        if (currentToken) {
-          headers['Authorization'] = `Bearer ${currentToken}`
-        }
+    if (refreshed) {
+      // Récupérer le nouveau token
+      currentToken = localStorage.getItem('token')
+      if (currentToken) {
+        console.log("✅ Nouveau token récupéré, réessai de la requête...")
+        headers['Authorization'] = `Bearer ${currentToken}`
         response = await fetch(url, {
           ...options,
           headers,
-          credentials: 'include' as RequestCredentials
+          credentials: 'include'
         })
       } else {
-        console.log("❌ Échec du rafraîchissement du token")
-        throw new Error('Session expirée')
+        // Déconnexion si impossible de rafraîchir
+        logout()
+        throw new Error('SESSION_EXPIRED')
       }
+    } else {
+      logout()
+      throw new Error('SESSION_EXPIRED')
     }
-
-    return response
   }
+
+  return response
+}
 
   // Chargement initial
   useEffect(() => {
-    if (isAuthenticated && user?.email) {
+    if (isAuthenticated) {
       fetchUserProcedures()
     }
-  }, [isAuthenticated, user?.email, page])
+  }, [isAuthenticated, page])
 
-  const fetchUserProcedures = async (): Promise<void> => {
-    if (!isAuthenticated || !user?.email) {
-      setIsLoadingProcedures(false)
-      return
-    }
 
-    setIsLoadingProcedures(true)
-    try {
-      const url = `${API_URL}/api/procedures/user?page=${page}&limit=${limit}`
-      console.log("🔍 Fetching procedures from:", url)
-      
-      const response = await fetchWithAuth(url)
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Session expirée')
-        }
-        const errorData = await response.json()
-        throw new Error(errorData.message || `Erreur ${response.status}`)
-      }
-
-      const data = await response.json()
-      console.log("✅ Données reçues:", data)
-      
-      if (data && Array.isArray(data.data)) {
-        setUserProcedures(data.data)
-        setTotalPages(data.totalPages || 1)
-      } else {
-        console.warn("⚠️ Format de données inattendu:", data)
-        setUserProcedures([])
-        setTotalPages(1)
-      }
-      
-    } catch (error: any) {
-      console.error("❌ Erreur récupération procédures:", error)
-      
-      if (error.message.includes('Session expirée') || error.message.includes('401')) {
-        toast.error("Session expirée, veuillez vous reconnecter")
-        logout('/', true)
-      } else {
-        toast.error(error.message || "Erreur lors du chargement des procédures")
-      }
-      
-      setUserProcedures([])
-    } finally {
-      setIsLoadingProcedures(false)
-      setRefreshing(false)
-    }
+  // Remplacer fetchUserProcedures
+const fetchUserProcedures = async (): Promise<void> => {
+  if (!isAuthenticated) {
+    setIsLoadingProcedures(false);
+    return;
   }
+
+  setIsLoadingProcedures(true);
+  setRefreshing(true);
+  
+  try {
+    const url = `${API_URL}/api/procedures/user?page=${page}&limit=${limit}`
+    console.log("🔍 Fetching procedures from:", url)
+    
+    const response = await fetchWithAuth(url)
+
+    if (!response.ok) {
+      // Si c'est une erreur 404, cela peut signifier aucune procédure
+      if (response.status === 404) {
+        setUserProcedures([]);
+        setTotalPages(1);
+        return;
+      }
+      
+      const errorData = await response.json()
+      throw new Error(errorData.message || `Erreur ${response.status}`)
+    }
+
+    const data = await response.json()
+    console.log("✅ Données reçues:", data)
+    
+    if (data && Array.isArray(data.data)) {
+      setUserProcedures(data.data)
+      setTotalPages(data.totalPages || 1)
+      
+      // Sauvegarder dans session storage pour cache
+      saveToSession('user_procedures_cache', {
+        data: data.data,
+        totalPages: data.totalPages || 1,
+        timestamp: Date.now()
+      })
+    } else {
+      console.warn("⚠️ Format de données inattendu:", data)
+      setUserProcedures([])
+      setTotalPages(1)
+    }
+    
+  } catch (error: any) {
+    console.error("❌ Erreur récupération procédures:", error)
+    
+    if (error.message === 'SESSION_EXPIRED') {
+      toast.error("Session expirée. Veuillez vous reconnecter.")
+      logout()
+    } else if (error.message.includes('404')) {
+      // Aucune procédure trouvée - c'est normal
+      setUserProcedures([])
+      setTotalPages(1)
+    } else {
+      toast.error(error.message || "Erreur lors du chargement des procédures")
+      
+      // Essayer de récupérer depuis le cache
+      const cache = getFromSession('user_procedures_cache')
+      if (cache && Date.now() - cache.timestamp < 5 * 60 * 1000) { // 5 minutes
+        setUserProcedures(cache.data)
+        setTotalPages(cache.totalPages)
+      } else {
+        setUserProcedures([])
+      }
+    }
+  } finally {
+    setIsLoadingProcedures(false)
+    setRefreshing(false)
+  }
+}
 
   const handleRefresh = () => {
     if (!isAuthenticated) {
       toast.error("Veuillez vous connecter")
       return
     }
-
     setRefreshing(true)
-    // Si on est déjà sur la page 1, on recharge directement
     if (page === 1) {
       fetchUserProcedures()
     } else {
-      // Sinon on retourne à la page 1
       setPage(1)
     }
   }
 
   const handleCancelProcedure = async (procId: string) => {
     if (!isAuthenticated) {
-      toast.error("Session expirée, veuillez vous reconnecter")
+      toast.error("Session expirée")
       return
     }
 
@@ -226,9 +254,8 @@ const UserProcedure: React.FC<UserProcedureProps> = ({ onProcedureUpdate }) => {
     } catch (error: any) {
       console.error("❌ Erreur annulation:", error)
       
-      if (error.message.includes('Session expirée') || error.message.includes('401')) {
-        toast.error("Session expirée, veuillez vous reconnecter")
-        logout('/', true)
+      if (error.message === 'SESSION_EXPIRED') {
+        toast.error("Session expirée")
       } else {
         toast.error(error.message || "Erreur lors de l'annulation")
       }
@@ -245,7 +272,7 @@ const UserProcedure: React.FC<UserProcedureProps> = ({ onProcedureUpdate }) => {
     setExpandedProcedure(expandedProcedure === procedureId ? null : procedureId)
   }
 
-  // Utility functions alignées avec le backend
+  // Utility functions
   const getStatusColor = (status: string) => {
     switch (status) {
       case "Terminée":
@@ -330,10 +357,9 @@ const UserProcedure: React.FC<UserProcedureProps> = ({ onProcedureUpdate }) => {
 
   const openCancelPopup = (procId: string) => {
     if (!isAuthenticated) {
-      toast.error("Session expirée, veuillez vous reconnecter")
+      toast.error("Session expirée")
       return
     }
-
     setSelectedProcedureId(procId)
     setIsCancelPopoverOpen(true)
     setCancelReason("")
@@ -389,27 +415,6 @@ const UserProcedure: React.FC<UserProcedureProps> = ({ onProcedureUpdate }) => {
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Vérification d'authentification
-  if (!isAuthenticated || !user?.email) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
-        <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-xl text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mb-4 mx-auto">
-            <XCircle className="w-8 h-8 text-red-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Accès non autorisé</h2>
-          <p className="text-slate-600 mb-6">Veuillez vous connecter pour accéder à cette page.</p>
-          <button
-            onClick={() => window.location.href = '/connexion'}
-            className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium"
-          >
-            Se connecter
-          </button>
         </div>
       </div>
     )
@@ -526,7 +531,7 @@ const UserProcedure: React.FC<UserProcedureProps> = ({ onProcedureUpdate }) => {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-slate-600">
                         <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-blue-500" />
+                          <Calendar className="w-4 h-4 text-blue-500" />
                           <span>
                             {proc.prenom} {proc.nom}
                           </span>

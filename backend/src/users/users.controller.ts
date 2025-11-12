@@ -9,7 +9,8 @@ import {
   Patch,
   Post,
   Request,
-  UseGuards
+  UseGuards,
+  BadRequestException
 } from '@nestjs/common';
 import { RegisterDto } from '../auth/dto/register.dto';
 import { UpdateUserDto } from '../auth/dto/update-user.dto';
@@ -54,15 +55,6 @@ export class UsersController {
     return this.usersService.getStats();
   }
 
-  
-
-  @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(id, updateUserDto);
-  }
-
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
@@ -101,25 +93,43 @@ export class UsersController {
     return { hasAccess };
   }
 
-  
-
   // === ENDPOINTS PUBLIC (Pour l'utilisateur connecté) ===
 
-  // users.controller.ts - Renforcer la validation
-@Patch('profile/me')
-@UseGuards(JwtAuthGuard)
-updateProfile(@Request() req: RequestWithUser, @Body() updateUserDto: UpdateUserDto) {
-  // Créer un objet avec uniquement les champs autorisés
-  const allowedUpdate: any = {};
-  
-  if (updateUserDto.email !== undefined) {
-    allowedUpdate.email = updateUserDto.email;
+  @Patch('profile/me')
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(@Request() req: RequestWithUser, @Body() updateUserDto: UpdateUserDto) {
+    console.log('📝 Mise à jour profil pour:', req.user.userId);
+    
+    // Validation des données
+    if (!updateUserDto.email && !updateUserDto.telephone) {
+      throw new BadRequestException('Au moins un champ (email ou téléphone) doit être fourni');
+    }
+
+    // Créer un objet avec uniquement les champs autorisés et non vides
+    const allowedUpdate: any = {};
+    
+    if (updateUserDto.email !== undefined && updateUserDto.email.trim() !== '') {
+      allowedUpdate.email = updateUserDto.email.trim().toLowerCase();
+    }
+    
+    if (updateUserDto.telephone !== undefined && updateUserDto.telephone.trim() !== '') {
+      allowedUpdate.telephone = updateUserDto.telephone.trim();
+    }
+
+    // Vérifier qu'au moins un champ est présent après nettoyage
+    if (Object.keys(allowedUpdate).length === 0) {
+      throw new BadRequestException('Aucune donnée valide à mettre à jour');
+    }
+
+    console.log('✅ Données autorisées pour mise à jour:', allowedUpdate);
+    
+    return this.usersService.update(req.user.userId, allowedUpdate);
   }
-  
-  if (updateUserDto.telephone !== undefined) {
-    allowedUpdate.telephone = updateUserDto.telephone;
+
+  // Nouvel endpoint pour récupérer le profil de l'utilisateur connecté
+  @Get('profile/me')
+  @UseGuards(JwtAuthGuard)
+  async getMyProfile(@Request() req: RequestWithUser) {
+    return this.usersService.findById(req.user.userId);
   }
-  
-  return this.usersService.update(req.user.userId, allowedUpdate);
-}
 }

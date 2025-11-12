@@ -16,7 +16,8 @@ import { NotificationService } from '../notification/notification.service';
 import { Rendezvous } from '../schemas/rendezvous.schema';
 import { CreateRendezvousDto } from './dto/create-rendezvous.dto';
 import { UpdateRendezvousDto } from './dto/update-rendezvous.dto';
-import { UserRole } from '@/schemas/user.schema';
+import { User, UserRole } from '@/schemas/user.schema';
+import { UpdateUserDto } from '@/auth/dto/update-user.dto';
 
 const HOLIDAYS_2025 = [
     '2025-01-01', '2025-04-18', '2025-04-21', '2025-05-01',
@@ -26,6 +27,7 @@ const HOLIDAYS_2025 = [
 
 @Injectable()
 export class RendezvousService {
+    [x: string]: any;
     private readonly logger = new Logger(RendezvousService.name);
     private readonly MAX_SLOTS_PER_DAY = 24;
     private readonly WORKING_HOURS = { start: 9, end: 16.5 };
@@ -92,19 +94,22 @@ export class RendezvousService {
             throw new BadRequestException('Vous avez déjà un rendez-vous en cours');
         }
 
+        // Traitement des champs "Autre"
+        const processedData = this.processOtherFields(createDto);
+
         // Valider les contraintes de date et heure
-        this.validateDateConstraints(createDto.date);
-        this.validateTimeSlot(createDto.time);
+        this.validateDateConstraints(processedData.date);
+        this.validateTimeSlot(processedData.time);
 
         // Vérifier la disponibilité du créneau
-        const isAvailable = await this.isSlotAvailable(createDto.date, createDto.time);
+        const isAvailable = await this.isSlotAvailable(processedData.date, processedData.time);
         if (!isAvailable) {
             throw new BadRequestException('Ce créneau horaire n\'est pas disponible');
         }
 
         // Vérifier le nombre maximum de créneaux par jour
         const dayCount = await this.rendezvousModel.countDocuments({ 
-            date: createDto.date,
+            date: processedData.date,
             status: { $ne: 'Annulé' }
         });
         
@@ -114,7 +119,7 @@ export class RendezvousService {
 
         // Créer le rendez-vous
         const created = new this.rendezvousModel({
-            ...createDto,
+            ...processedData,
             status: 'En attente'
         });
         
@@ -131,6 +136,56 @@ export class RendezvousService {
         }
         
         return saved;
+    }
+
+    private processOtherFields(createDto: CreateRendezvousDto): any {
+        const processed = { ...createDto };
+        
+        // CORRECTION : Traiter les valeurs "Autre" pour utiliser les valeurs personnalisées comme valeurs principales
+        // Destination
+        if (processed.destination === 'Autre' && processed.destinationAutre) {
+            // Remplacer la destination par la valeur personnalisée
+            processed.destination = processed.destinationAutre.trim();
+            // Garder aussi la valeur dans destinationAutre pour référence historique
+            processed.destinationAutre = processed.destinationAutre.trim();
+        } else if (processed.destination !== 'Autre') {
+            // Si pas "Autre", nettoyer destinationAutre pour éviter les données incohérentes
+            processed.destinationAutre = undefined;
+        }
+    
+        // Filière
+        if (processed.filiere === 'Autre' && processed.filiereAutre) {
+            // Remplacer la filière par la valeur personnalisée
+            processed.filiere = processed.filiereAutre.trim();
+            // Garder aussi la valeur dans filiereAutre pour référence historique
+            processed.filiereAutre = processed.filiereAutre.trim();
+        } else if (processed.filiere !== 'Autre') {
+            // Si pas "Autre", nettoyer filiereAutre pour éviter les données incohérentes
+            processed.filiereAutre = undefined;
+        }
+    
+        // Validation finale : s'assurer que les champs requis sont présents
+        if (!processed.destination || processed.destination.trim() === '') {
+            throw new BadRequestException('La destination est obligatoire');
+        }
+    
+        if (!processed.filiere || processed.filiere.trim() === '') {
+            throw new BadRequestException('La filière est obligatoire');
+        }
+    
+        // Valider que si "Autre" était sélectionné, une valeur personnalisée a bien été fournie
+        const originalDestination = createDto.destination;
+        const originalFiliere = createDto.filiere;
+        
+        if (originalDestination === 'Autre' && (!processed.destinationAutre || processed.destinationAutre.trim() === '')) {
+            throw new BadRequestException('Veuillez préciser votre destination');
+        }
+    
+        if (originalFiliere === 'Autre' && (!processed.filiereAutre || processed.filiereAutre.trim() === '')) {
+            throw new BadRequestException('Veuillez préciser votre filière');
+        }
+    
+        return processed;
     }
 
     async findAll(
@@ -198,104 +253,111 @@ export class RendezvousService {
         return this.rendezvousModel.findById(id).exec();
     }
 
-    async update(id: string, updateDto: UpdateRendezvousDto, user?: any): Promise<Rendezvous | null> {
-        this.logger.log(`Tentative de mise à jour du rendez-vous: ${id}`);
+    async update(id: string, updateUserDto: UpdateUserDto, user: any): Promise<User> {
+        console.log('🔄 Mise à jour utilisateur:', { id, updateUserDto });
         
-        const existing = await this.rendezvousModel.findById(id);
-        if (!existing) {
+        // Filtrer strictement les champs autorisés
+        const allowedFields = ['email', 'telephone'];
+        const filteredUpdate: any = {};
+        
+        Object.keys(updateUserDto).forEach(key => {
+          if (allowedFields.includes(key) && updateUserDto[key as keyof UpdateUserDto] !== undefined) {
+            filteredUpdate[key] = updateUserDto[key as keyof UpdateUserDto];
+          }
+        });
+      
+        // Vérifier qu'il y a des données à mettre à jour
+        if (Object.keys(filteredUpdate).length === 0) {
+          throw new BadRequestException('Aucune donnée valide à mettre à jour');
+        }
+      
+        // Normaliser les données
+        if (filteredUpdate.email) {
+          filteredUpdate.email = filteredUpdate.email.toLowerCase().trim();
+        }
+      
+        if (filteredUpdate.telephone) {
+          filteredUpdate.telephone = this.normalizeTelephone(filteredUpdate.telephone);
+        }
+      
+        console.log('✅ Données filtrées pour mise à jour:', filteredUpdate);
+      
+        try {
+          const updatedUser = await this.userModel
+            .findByIdAndUpdate(id, filteredUpdate, { 
+              new: true, 
+              runValidators: true 
+            })
+            .exec();
+      
+          if (!updatedUser) {
+            throw new NotFoundException('Utilisateur non trouvé');
+          }
+      
+          console.log('✅ Utilisateur mis à jour avec succès:', updatedUser.email);
+          return updatedUser;
+        } catch (error: any) {
+          console.error('❌ Erreur mise à jour utilisateur:', error);
+          
+          if (error?.code === 11000) {
+            const fields = Object.keys(error.keyPattern || {});
+            if (fields.includes('email')) {
+              throw new BadRequestException('Cet email est déjà utilisé');
+            }
+            if (fields.includes('telephone')) {
+              throw new BadRequestException('Ce numéro de téléphone est déjà utilisé');
+            }
+            throw new BadRequestException('Conflit de données');
+          }
+          
+          // Gérer les erreurs de validation Mongoose
+          if (error.name === 'ValidationError') {
+            const messages = Object.values(error.errors).map((err: any) => err.message);
+            throw new BadRequestException(messages.join(', '));
+          }
+          
+          throw error;
+        }
+      }
+
+    async removeWithPolicy(id: string, user: any): Promise<Rendezvous | null> {
+        const rdv = await this.rendezvousModel.findById(id).exec();
+        if (!rdv) {
             throw new NotFoundException('Rendez-vous non trouvé');
         }
 
-        // Vérifier les permissions
-        if (user.role !== UserRole.ADMIN && existing.email !== user.email) {
-            throw new ForbiddenException('Vous ne pouvez modifier que vos propres rendez-vous');
+        const isAdmin = user.role === UserRole.ADMIN;
+
+        // Vérifie que l'utilisateur est propriétaire ou admin
+        if (!isAdmin && rdv.email !== user.email) {
+            throw new ForbiddenException('Vous ne pouvez supprimer que vos propres rendez-vous');
         }
 
-        if (updateDto.date) {
-            this.validateDateConstraints(updateDto.date);
-        }
+        // Restriction : les utilisateurs non-admins ne peuvent plus supprimer
+        // si le rendez-vous est dans moins de 2 heures.
+        if (!isAdmin) {
+            const rdvDateTime = new Date(`${rdv.date}T${rdv.time}:00`);
+            const now = new Date();
+            const diffMs = rdvDateTime.getTime() - now.getTime();
 
-        if (updateDto.time) {
-            this.validateTimeSlot(updateDto.time);
-            
-            const isAvailable = await this.isSlotAvailable(
-                updateDto.date || existing.date, 
-                updateDto.time,
-                id
-            );
-            
-            if (!isAvailable) {
-                throw new BadRequestException('Ce créneau horaire n\'est pas disponible');
+            const twoHoursMs = 2 * 60 * 60 * 1000; // 2 heures
+
+            // Si le rendez-vous est déjà passé ou dans moins de 2h → bloquer la suppression
+            if (diffMs <= twoHoursMs) {
+                throw new BadRequestException(
+                    "Vous ne pouvez plus annuler votre rendez-vous à moins de 2 heures de l'heure prévue"
+                );
             }
         }
-        
-        try {
-            const updated = await this.rendezvousModel.findByIdAndUpdate(
-                id, 
-                { ...updateDto, $inc: { __v: 1 } },
-                { new: true, runValidators: true }
-            ).exec();
 
-            if (updated) {
-                this.logger.log(`Rendez-vous mis à jour: ${id}`);
-                
-                // Envoyer la notification de confirmation
-                try {
-                    await this.notificationService.sendConfirmation(updated);
-                    this.logger.log(`Notification de mise à jour envoyée à: ${updated.email}`);
-                } catch (error) {
-                    this.logger.error(`Erreur lors de l'envoi de la notification: ${error.message}`);
-                }
-            }
-
-            return updated;
-        } catch (error) {
-            if (error.name === 'VersionError') {
-                throw new ConflictException('Le document a été modifié par un autre utilisateur');
-            }
-            throw error;
+        // Suppression autorisée
+        const deleted = await this.rendezvousModel.findByIdAndDelete(id).exec();
+        if (deleted) {
+            this.logger.log(`Rendez-vous supprimé: ${id}`);
         }
+
+        return deleted;
     }
-
-    async removeWithPolicy(id: string, user: any): Promise<Rendezvous | null> {
-  const rdv = await this.rendezvousModel.findById(id).exec();
-  if (!rdv) {
-    throw new NotFoundException('Rendez-vous non trouvé');
-  }
-
-  const isAdmin = user.role === UserRole.ADMIN;
-
-  // Vérifie que l'utilisateur est propriétaire ou admin
-  if (!isAdmin && rdv.email !== user.email) {
-    throw new ForbiddenException('Vous ne pouvez supprimer que vos propres rendez-vous');
-  }
-
-  // Restriction : les utilisateurs non-admins ne peuvent plus supprimer
-  // si le rendez-vous est dans moins de 2 heures.
-  if (!isAdmin) {
-    const rdvDateTime = new Date(`${rdv.date}T${rdv.time}:00`);
-    const now = new Date();
-    const diffMs = rdvDateTime.getTime() - now.getTime();
-
-    const twoHoursMs = 2 * 60 * 60 * 1000; // 2 heures
-
-    // Si le rendez-vous est déjà passé ou dans moins de 2h → bloquer la suppression
-    if (diffMs <= twoHoursMs) {
-      throw new BadRequestException(
-        "Vous ne pouvez plus annuler votre rendez-vous à moins de 2 heures de l'heure prévue"
-      );
-    }
-  }
-
-  // Suppression autorisée
-  const deleted = await this.rendezvousModel.findByIdAndDelete(id).exec();
-  if (deleted) {
-    this.logger.log(`Rendez-vous supprimé: ${id}`);
-  }
-
-  return deleted;
-}
-
 
     async updateStatus(id: string, status: string, avisAdmin?: string, user?: any): Promise<Rendezvous | null> {
         this.logger.log(`Tentative de mise à jour du statut: ${id} -> ${status} (avis: ${avisAdmin})`);
@@ -456,90 +518,6 @@ export class RendezvousService {
         return slots;
     }
 
-    async getDashboardStats(startDate?: string, endDate?: string): Promise<any> {
-        const filter: any = {};
-        
-        if (startDate || endDate) {
-            filter.date = {};
-            if (startDate) filter.date.$gte = startDate;
-            if (endDate) filter.date.$lte = endDate;
-        }
-        
-        const total = await this.rendezvousModel.countDocuments(filter);
-        const today = new Date().toISOString().split('T')[0];
-        const todayCount = await this.rendezvousModel.countDocuments({ 
-            ...filter, 
-            date: today 
-        });
-
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-        
-        const thisMonthCount = await this.rendezvousModel.countDocuments({ 
-            date: { $gte: startOfMonth, $lte: endOfMonth }
-        });
-
-        return {
-            total,
-            today: todayCount,
-            thisMonth: thisMonthCount,
-            ...(startDate || endDate ? { period: { startDate, endDate } } : {})
-        };
-    }
-
-    async getDetailedStats(startDate?: string, endDate?: string): Promise<any> {
-        const match: any = {};
-        
-        if (startDate && endDate) {
-            match.date = { $gte: startDate, $lte: endDate };
-        } else if (startDate) {
-            match.date = { $gte: startDate };
-        } else if (endDate) {
-            match.date = { $lte: endDate };
-        }
-
-        return this.rendezvousModel.aggregate([
-            { $match: match },
-            { 
-                $group: {
-                    _id: '$destination',
-                    total: { $sum: 1 },
-                    confirmed: { 
-                        $sum: { 
-                            $cond: [{ $eq: ['$status', 'Confirmé'] }, 1, 0] 
-                        } 
-                    },
-                    pending: { 
-                        $sum: { 
-                            $cond: [{ $eq: ['$status', 'En attente'] }, 1, 0] 
-                        } 
-                    },
-                    completed: { 
-                        $sum: { 
-                            $cond: [{ $eq: ['$status', 'Terminé'] }, 1, 0] 
-                        } 
-                    },
-                    cancelled: { 
-                        $sum: { 
-                            $cond: [{ $eq: ['$status', 'Annulé'] }, 1, 0] 
-                        } 
-                    }
-                }
-            },
-            { 
-                $project: {
-                    destination: '$_id',
-                    _id: 0,
-                    total: 1,
-                    confirmed: 1,
-                    pending: 1,
-                    completed: 1,
-                    cancelled: 1
-                }
-            }
-        ]);
-    }
 
     @Cron('0 9 * * *')
     async sendDailyReminders(): Promise<void> {
@@ -589,5 +567,22 @@ export class RendezvousService {
         );
 
         this.logger.log(`Annulation automatique: ${result.modifiedCount} rendez-vous annulés`);
+    }
+
+    async userConfirmRendezvous(id: string, user: any): Promise<Rendezvous> {
+        const updated = await this.rendezvousModel.findByIdAndUpdate(
+            id,
+            { userConfirmed: true },
+            { new: true }
+        ).exec();
+
+        if (!updated) {
+            throw new NotFoundException('Rendez-vous non trouvé');
+        }
+        
+        // Envoyer notification
+        await this.notificationService.sendConfirmation(updated);
+        
+        return updated;
     }
 }

@@ -4,6 +4,7 @@ import {
     IsOptional, 
     IsString,
     Matches,
+    MaxLength
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -32,12 +33,12 @@ export class CreateRendezvousDto {
     telephone: string;
 
     @ApiProperty({ 
-        enum: ['Algérie', 'Turquie', 'Maroc', 'France', 'Tunisie', 'Chine', 'Russie', 'Autre'],
         example: 'France',
-        description: 'Destination souhaitée' 
+        description: 'Destination souhaitée (peut être une valeur personnalisée)' 
     })
     @IsNotEmpty({ message: 'La destination est obligatoire' })
     @IsString({ message: 'La destination doit être une chaîne de caractères' })
+    @MaxLength(100, { message: 'La destination ne peut pas dépasser 100 caractères' })
     destination: string;
 
     @ApiProperty({ 
@@ -46,6 +47,7 @@ export class CreateRendezvousDto {
     })
     @IsOptional()
     @IsString({ message: 'La destination doit être une chaîne de caractères' })
+    @MaxLength(100, { message: 'La destination ne peut pas dépasser 100 caractères' })
     destinationAutre?: string;
 
     @ApiProperty({ 
@@ -58,12 +60,12 @@ export class CreateRendezvousDto {
     niveauEtude: string;
 
     @ApiProperty({ 
-        enum: ['Informatique', 'Médecine', 'Ingénierie', 'Droit', 'Commerce', 'Autre'],
         example: 'Informatique',
-        description: 'Filière souhaitée' 
+        description: 'Filière souhaitée (peut être une valeur personnalisée)' 
     })
     @IsNotEmpty({ message: 'La filière est obligatoire' })
     @IsString({ message: 'La filière doit être une chaîne de caractères' })
+    @MaxLength(100, { message: 'La filière ne peut pas dépasser 100 caractères' })
     filiere: string;
 
     @ApiProperty({ 
@@ -72,6 +74,7 @@ export class CreateRendezvousDto {
     })
     @IsOptional()
     @IsString({ message: 'La filière doit être une chaîne de caractères' })
+    @MaxLength(100, { message: 'La filière ne peut pas dépasser 100 caractères' })
     filiereAutre?: string;
 
     @ApiProperty({ 

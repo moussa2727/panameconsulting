@@ -105,17 +105,10 @@ export class RendezvousController {
         return this.rendezvousService.removeWithPolicy(id, req.user);
     }
 
-    @Get('stats/dashboard')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN)
-    async getDashboardStats(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
-        return this.rendezvousService.getDashboardStats(startDate, endDate);
+    @Put(':id/user-confirm')
+    @UseGuards(JwtAuthGuard)
+    async userConfirm(@Param('id') id: string, @Req() req: any) {
+        return this.rendezvousService.userConfirmRendezvous(id, req.user);
     }
 
-    @Get('stats/detailed')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN)
-    async getDetailedStats(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
-        return this.rendezvousService.getDetailedStats(startDate, endDate);
-    }
 }

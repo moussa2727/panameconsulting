@@ -1,30 +1,23 @@
-// update-user.dto.ts
-import { PartialType } from '@nestjs/mapped-types';
-import { IsEmail, IsOptional, IsString } from 'class-validator';
-import { RegisterDto } from './register.dto';
+import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
-export class UpdateUserDto extends PartialType(RegisterDto) {
+export class UpdateUserDto {
+  @ApiProperty({ 
+    example: 'nouveau@email.com', 
+    description: 'Nouvel email',
+    required: false
+  })
   @IsOptional()
-  @IsEmail()
+  @IsEmail({}, { message: 'Format d\'email invalide' })
   email?: string;
 
+  @ApiProperty({ 
+    example: '+33123456789', 
+    description: 'Nouveau numéro de téléphone',
+    required: false
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: 'Le téléphone doit être une chaîne de caractères' })
+  @MinLength(5, { message: 'Le téléphone doit contenir au moins 5 caractères' })
   telephone?: string;
-
-  // Supprimer les autres champs ou les rendre non modifiables
-  @IsOptional()
-  firstName?: never;
-
-  @IsOptional()
-  lastName?: never;
-
-  @IsOptional()
-  role?: never;
-
-  @IsOptional()
-  isActive?: never;
-
-  @IsOptional()
-  password?: never;
 }

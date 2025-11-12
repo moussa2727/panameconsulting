@@ -280,6 +280,71 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
+  // === GESTION DES DONNÉES UTILISATEUR ===
+
+  const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
+
+      const response = await fetch(`${VITE_API_URL}/api/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${userToken}`,
+        },
+        credentials: 'include',
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.status === 401) {
+        // Token expiré, tenter un rafraîchissement
+        const refreshed = await refreshTokenFunction();
+        if (!refreshed) {
+          throw new Error('Session expirée, veuillez vous reconnecter');
+        }
+        return; // La fonction refreshToken gère la mise à jour
+      }
+
+      if (response.status === 429) {
+        throw new Error('Trop de requêtes, veuillez patienter');
+      }
+
+      if (!response.ok) {
+        throw new Error('Erreur de récupération du profil');
+      }
+
+      const userData = await response.json();
+      const mappedUser: User = {
+        id: userData.id,
+        email: userData.email,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        role: userData.role,
+        isActive: userData.isActive,
+        telephone: userData.telephone || userData.phone || '',
+        lastLogin: userData.lastLogin ? new Date(userData.lastLogin) : new Date()
+      };
+      
+      setUser(mappedUser);
+      saveToSession('current_user', mappedUser);
+      
+    } catch (err: any) {
+      console.error('❌ Erreur fetchUserData:', err);
+      
+      // Si c'est une erreur 401 même après rafraîchissement
+      if (err.message.includes('Session expirée')) {
+        logout('/', true);
+      }
+      
+      throw err;
+    }
+  }, [VITE_API_URL, saveToSession]);
+
+  const updateUserProfile = useCallback((updates: Partial<User>): void => {
+    setUser(prev => prev ? { ...prev, ...updates } : null);
+  }, []);
+
   // === GESTION DES TOKENS ET SESSIONS ===
 
   const setupTokenRefresh = useCallback((exp: number): void => {
@@ -306,67 +371,63 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const refreshPromise = (async (): Promise<boolean> => {
       try {
-        console.log("🔄 Tentative de rafraîchissement du token...");
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
-
         const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
           method: 'POST',
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
-          },
-          signal: controller.signal
+          }
         });
 
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const data = await response.json();
-          
-          if (data.loggedOut) {
-            console.log("🔒 Session expirée, déconnexion...");
-            logout('/', true);
-            return false;
-          }
-
-          if (data.accessToken) {
-            console.log("✅ Token rafraîchi avec succès");
-            
-            // Valider le nouveau token avant de le stocker
-            try {
-              const decoded = jwtDecode<JwtPayload>(data.accessToken);
-              if (decoded.tokenType !== 'access') {
-                throw new Error('Type de token invalide');
-              }
-
-              localStorage.setItem('token', data.accessToken);
-              setToken(data.accessToken);
-              
-              await fetchUserData(data.accessToken);
-              setupTokenRefresh(decoded.exp);
-              
-              return true;
-            } catch (validationError) {
-              console.error('❌ Token rafraîchi invalide:', validationError);
-              logout('/', true);
-              return false;
-            }
-          }
-        } else {
+        if (!response.ok) {
           console.error("❌ Échec du rafraîchissement du token");
           logout('/', true);
           return false;
         }
-      } catch (error:any) {
+
+        const data = await response.json();
+        
+        if (data.loggedOut) {
+          console.log("🔒 Session expirée, déconnexion...");
+          logout('/', true);
+          return false;
+        }
+
+        if (!data.accessToken) {
+          console.error("❌ Token d'accès manquant dans la réponse");
+          logout('/', true);
+          return false;
+        }
+
+        console.log("✅ Token rafraîchi avec succès");
+        
+        // VALIDER ET STOCKER LE NOUVEAU TOKEN
+        try {
+          const decoded = jwtDecode<JwtPayload>(data.accessToken);
+          if (decoded.tokenType !== 'access') {
+            throw new Error('Type de token invalide');
+          }
+
+          // Stocker le nouveau token
+          localStorage.setItem('token', data.accessToken);
+          setToken(data.accessToken);
+          
+          await fetchUserData(data.accessToken);
+          setupTokenRefresh(decoded.exp);
+          
+          return true;
+        } catch (validationError) {
+          console.error('❌ Token rafraîchi invalide:', validationError);
+          logout('/', true);
+          return false;
+        }
+      } catch (error: any) {
         console.error('❌ Erreur rafraîchissement token:', error);
         if (error.name !== 'AbortError') {
           logout('/', true);
         }
         return false;
       }
-      return false;
     })();
 
     refreshInFlightRef.current = refreshPromise;
@@ -376,52 +437,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       refreshInFlightRef.current = null;
     }
-  }, [VITE_API_URL]);
-
-  // === GESTION DES DONNÉES UTILISATEUR ===
-
-  const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
-
-      const response = await fetch(`${VITE_API_URL}/api/auth/me`, {
-        headers: {
-          Authorization: `Bearer ${userToken}`,
-        },
-        credentials: 'include',
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error('Erreur de récupération du profil');
-      }
-
-      const userData = await response.json();
-      const mappedUser: User = {
-        id: userData.id,
-        email: userData.email,
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        role: userData.role,
-        isActive: userData.isActive,
-        telephone: userData.telephone || userData.phone || '',
-        lastLogin: userData.lastLogin ? new Date(userData.lastLogin) : new Date()
-      };
-      
-      setUser(mappedUser);
-      
-    } catch (err) {
-      console.error('❌ Erreur fetchUserData:', err);
-      throw err;
-    }
-  }, [VITE_API_URL]);
-
-  const updateUserProfile = useCallback((updates: Partial<User>): void => {
-    setUser(prev => prev ? { ...prev, ...updates } : null);
-  }, []);
+  }, [VITE_API_URL, fetchUserData, setupTokenRefresh]);
 
   // === OPÉRATIONS D'AUTHENTIFICATION ===
 
@@ -680,14 +696,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [VITE_API_URL, token, navigate, saveToSession, cleanupSensitiveData]);
 
   const handleAuthError = useCallback((error: any): void => {
-    const errorMessage = error instanceof Error 
-      ? error.message 
-      : 'Une erreur est survenue';
+    let errorMessage = 'Une erreur est survenue';
+    
+    if (error instanceof Error) {
+      if (error.message.includes('429')) {
+        errorMessage = 'Trop de tentatives. Veuillez patienter quelques instants.';
+      } else {
+        errorMessage = error.message;
+      }
+    }
     
     setError(errorMessage);
     
     // Ne pas afficher les erreurs en mode silencieux
-    if (!error.silent) {
+    if (!error.silent && !error.message.includes('429')) {
       toast.error(errorMessage);
     }
   }, []);
@@ -723,17 +745,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       } else {
         console.log("✅ Token valide, chargement des données utilisateur...");
-        // Token valide, charger les données utilisateur
-        await fetchUserData(savedToken);
+        // Vérifier si l'utilisateur n'est pas déjà chargé
+        const currentUser = getFromSession('current_user');
+        if (!currentUser) {
+          await fetchUserData(savedToken);
+        }
         setupTokenRefresh(decoded.exp);
       }
     } catch (error) {
       console.error('❌ Erreur vérification auth:', error);
-      logout('/', true);
+      if (error instanceof Error && !error.message.includes('429')) {
+        logout('/', true);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [fetchUserData, logout, refreshTokenFunction, setupTokenRefresh, saveToSession]);
+  }, [fetchUserData, logout, refreshTokenFunction, setupTokenRefresh, saveToSession, getFromSession]);
 
   // === EFFETS ET INITIALISATION ===
 
@@ -772,31 +799,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     let isMounted = true;
     let interval: number | undefined;
-
+  
     const initializeAuth = async () => {
       if (!isMounted) return;
-      await checkAuth();
       
-      if (isMounted && token) {
-        // Vérification périodique de l'authentification
-        interval = window.setInterval(() => {
-          if (token) {
-            checkAuth().catch(() => {});
-          }
-        }, SECURITY_CONFIG.TOKEN_REFRESH_BUFFER);
-        checkIntervalRef.current = interval;
+      try {
+        await checkAuth();
+      } catch (error) {
+        console.error('❌ Erreur initialisation auth:', error);
       }
     };
-
+  
     initializeAuth();
+    
+    // Vérification périodique seulement si authentifié
+    if (token && isMounted) {
+      interval = window.setInterval(() => {
+        checkAuth().catch(() => {});
+      }, SECURITY_CONFIG.TOKEN_REFRESH_BUFFER * 2);
+    }
     
     return () => {
       isMounted = false;
       if (interval) window.clearInterval(interval);
-      if (checkIntervalRef.current) {
-        window.clearInterval(checkIntervalRef.current);
-        checkIntervalRef.current = null;
-      }
     };
   }, [checkAuth, token]);
 

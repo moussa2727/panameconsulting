@@ -2,6 +2,7 @@ import {
     Body,
     Controller,
     Get,
+    Patch,
     Post,
     Req,
     Request,
@@ -24,6 +25,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 interface CustomRequest extends Request {
     cookies?: {
@@ -163,6 +165,25 @@ async refresh(@Req() req: CustomRequest, @Body() body: any, @Res() res: Response
             isActive: user.isActive
         };
     }
+
+    @Patch('me')
+@UseGuards(JwtAuthGuard)
+@ApiOperation({ summary: 'Mettre à jour le profil utilisateur' })
+async updateProfile(
+  @Request() req: any,
+  @Body() updateUserDto: UpdateUserDto
+) {
+  const updatedUser = await this.usersService.update(req.user.sub, updateUserDto);
+  return {
+    id: updatedUser._id,
+    email: updatedUser.email,
+    firstName: updatedUser.firstName,
+    lastName: updatedUser.lastName,
+    role: updatedUser.role,
+    telephone: updatedUser.telephone,
+    isActive: updatedUser.isActive
+  };
+}
 
    @Post('forgot-password')
 @ApiOperation({ summary: 'Demande de réinitialisation de mot de passe' })
