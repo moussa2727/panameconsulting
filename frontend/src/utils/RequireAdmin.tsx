@@ -11,10 +11,9 @@ const RequireAdmin: React.FC<{ children: JSX.Element }> = ({ children }) => {
     // Debug pour voir l'état de l'authentification
     console.log('RequireAdmin - État:', { 
       isLoading, 
-      isAuthenticated, 
-      user: user ? { role: user.role, isActive: user.isActive } : 'null' 
+      isAuthenticated,
     });
-  }, [isLoading, isAuthenticated, user]);
+  }, [isLoading, isAuthenticated]);
 
   // Afficher le loading seulement pendant le chargement initial
   if (isLoading) {
@@ -28,10 +27,7 @@ const RequireAdmin: React.FC<{ children: JSX.Element }> = ({ children }) => {
   // Vérification stricte après le chargement
   if (!isAuthenticated || !user || user.role !== 'admin' || !user.isActive) {
     console.log('RequireAdmin - Accès refusé:', { 
-      isAuthenticated, 
-      hasUser: !!user, 
-      role: user?.role, 
-      isActive: user?.isActive 
+      isAuthenticated,
     });
     
     // Afficher un message d'erreur seulement si l'utilisateur est connecté mais pas admin
@@ -42,7 +38,6 @@ const RequireAdmin: React.FC<{ children: JSX.Element }> = ({ children }) => {
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
-  console.log('RequireAdmin - Accès autorisé pour:', user.email);
   return children;
 };
 

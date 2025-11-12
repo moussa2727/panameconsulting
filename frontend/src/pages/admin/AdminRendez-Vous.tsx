@@ -203,21 +203,32 @@ const AdminRendezVous = () => {
   };
 
   // Mise à jour du statut selon la logique backend
-  const updateStatus = async (id: string, status: string, avisAdmin?: string) => {
+    const updateStatus = async (id: string, status: string, avisAdmin?: string): Promise<void> => {
     if (!token) {
       toast.error('Token non disponible');
       return;
     }
 
+    console.log(`🔄 Tentative de mise à jour du statut: ${id} -> ${status} (avis: ${avisAdmin})`);
+
     try {
       const makeRequest = async (currentToken: string): Promise<Response> => {
         const bodyData: any = { status };
-        // Inclure avisAdmin seulement s'il est fourni
-        if (avisAdmin !== undefined && avisAdmin !== null) {
+        
+        // CORRECTION STRICTE: avisAdmin UNIQUEMENT et OBLIGATOIRE pour le statut "Terminé"
+        if (status === 'Terminé') {
+          if (!avisAdmin || (avisAdmin !== 'Favorable' && avisAdmin !== 'Défavorable')) {
+            throw new Error('L\'avis admin (Favorable ou Défavorable) est obligatoire pour terminer un rendez-vous');
+          }
           bodyData.avisAdmin = avisAdmin;
+        } else {
+          // CORRECTION STRICTE: Pour tous les autres statuts, NE PAS envoyer avisAdmin
+          // Le backend se chargera de le mettre à null si nécessaire
+          // On n'inclut PAS avisAdmin dans la requête pour les autres statuts
+          console.log(`ℹ️ Statut "${status}" - avisAdmin non inclus dans la requête`);
         }
 
-        console.log('Envoi des données:', bodyData); // Debug
+        console.log('📤 Données envoyées au backend:', bodyData);
 
         return fetch(`${API_URL}/api/rendezvous/${id}/status`, {
           method: 'PUT',
@@ -234,46 +245,132 @@ const AdminRendezVous = () => {
 
       // Gestion du token expiré
       if (response.status === 401) {
+        console.log('🔄 Token expiré, tentative de rafraîchissement...');
         const refreshed = await refreshToken();
         if (refreshed) {
+          console.log('✅ Token rafraîchi avec succès');
           const newToken = localStorage.getItem('token');
           if (newToken) {
+            console.log('🔄 Nouvelle tentative avec le nouveau token...');
             response = await makeRequest(newToken);
           } else {
             throw new Error('Token non disponible après rafraîchissement');
           }
         } else {
-          throw new Error('Session expirée');
+          throw new Error('Session expirée. Veuillez vous reconnecter.');
         }
       }
 
+      // Gestion des erreurs HTTP
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors de la mise à jour');
+        let errorMessage = 'Erreur lors de la mise à jour du statut';
+        
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+          
+          // Gestion spécifique des erreurs de validation backend
+          if (response.status === 400) {
+            if (errorData.message?.includes('avis admin') || errorData.message?.includes('avisAdmin')) {
+              errorMessage = 'L\'avis admin est obligatoire pour terminer un rendez-vous';
+            } else if (errorData.message?.includes('Statut invalide')) {
+              errorMessage = 'Statut invalide. Les statuts autorisés sont: En attente, Confirmé, Terminé, Annulé';
+            }
+          }
+        } catch (parseError) {
+          errorMessage = `Erreur serveur: ${response.status} ${response.statusText}`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
+      // Traitement de la réponse réussie
       const updatedRdv = await response.json();
+      console.log('✅ Statut mis à jour avec succès:', updatedRdv);
       
       // Mise à jour optimiste de l'état local
-      setRendezvous(prev => prev.map(rdv => 
-        rdv._id === id ? { ...rdv, ...updatedRdv } : rdv
-      ));
+      setRendezvous(prev => prev.map(rdv => {
+        if (rdv._id === id) {
+          const updated = { 
+            ...rdv, 
+            status: updatedRdv.status,
+            // CORRECTION: Mettre à jour avisAdmin seulement si présent dans la réponse
+            ...(updatedRdv.avisAdmin !== undefined && { avisAdmin: updatedRdv.avisAdmin })
+          };
+          
+          // CORRECTION: Si le statut n'est pas "Terminé", s'assurer que avisAdmin est undefined
+          if (updatedRdv.status !== 'Terminé' && updated.avisAdmin) {
+            updated.avisAdmin = undefined;
+          }
+          
+          return updated;
+        }
+        return rdv;
+      }));
       
+      // Mettre à jour également le rendez-vous sélectionné s'il s'agit du même
       if (selectedRendezVous?._id === id) {
-        setSelectedRendezVous(updatedRdv);
+        const updatedSelected = { 
+          ...selectedRendezVous, 
+          status: updatedRdv.status,
+          // CORRECTION: Même logique pour le rendez-vous sélectionné
+          ...(updatedRdv.avisAdmin !== undefined && { avisAdmin: updatedRdv.avisAdmin })
+        };
+        
+        if (updatedRdv.status !== 'Terminé' && updatedSelected.avisAdmin) {
+          updatedSelected.avisAdmin = undefined;
+        }
+        
+        setSelectedRendezVous(updatedSelected);
       }
 
       // Fermer les modales
       setShowAvisModal(false);
       setPendingStatusUpdate(null);
 
-      toast.success('Statut mis à jour avec succès');
+      // Message de succès contextuel
+      let successMessage = `Statut mis à jour: ${status}`;
+      if (status === 'Terminé' && avisAdmin) {
+        successMessage += ` (Avis: ${avisAdmin})`;
+        
+        // Message supplémentaire pour l'avis favorable
+        if (avisAdmin === 'Favorable') {
+          successMessage += ' - Une procédure a été créée pour cet utilisateur';
+        }
+      }
+      
+      toast.success(successMessage);
 
-    } catch (error) {
-      console.error('Erreur updateStatus:', error);
-      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
+      // Recharger les données après un délai pour s'assurer de la synchronisation
+      setTimeout(() => {
+        fetchRendezvous();
+      }, 1000);
+
+    } catch (error: any) {
+      console.error('❌ Erreur updateStatus:', error);
+      
+      // Gestion spécifique des erreurs d'authentification
+      if (error instanceof Error && (
+        error.message.includes('Session expirée') || 
+        error.message.includes('Token invalide') ||
+        error.message.includes('Token non disponible')
+      )) {
+        toast.error('Session expirée. Veuillez vous reconnecter.');
+      } else if (error.message.includes('avis admin') || error.message.includes('avisAdmin')) {
+        // Ne pas fermer la modale si l'erreur concerne l'avis admin manquant
+        toast.error(error.message);
+        // Garder la modale ouverte pour que l'admin puisse sélectionner un avis
+      } else {
+        // Affichage d'un message d'erreur générique
+        toast.error(error instanceof Error ? error.message : 'Une erreur est survenue lors de la mise à jour');
+        
+        // Fermer les modales en cas d'erreur générique
+        setShowAvisModal(false);
+        setPendingStatusUpdate(null);
+      }
     }
-  };
+    };
+
 
   // Gestion du clic sur un statut
   const handleStatusClick = (id: string, status: string) => {
@@ -385,20 +482,55 @@ const AdminRendezVous = () => {
       return;
     }
 
-    // Préparer les données selon le DTO backend
-    const createData = {
-      firstName: newRendezVous.firstName,
-      lastName: newRendezVous.lastName,
-      email: newRendezVous.email,
-      telephone: newRendezVous.telephone,
+    // LOGIQUE STRICTE POUR LES CHAMPS "AUTRE" - IDENTIQUE AU BACKEND
+    const createData: any = {
+      firstName: newRendezVous.firstName.trim(),
+      lastName: newRendezVous.lastName.trim(),
+      email: newRendezVous.email.trim(),
+      telephone: newRendezVous.telephone.trim(),
       date: newRendezVous.date,
       time: newRendezVous.time,
-      destination: newRendezVous.destination,
-      niveauEtude: newRendezVous.niveauEtude,
-      filiere: newRendezVous.filiere,
-      ...(newRendezVous.destination === 'Autre' && { destinationAutre: newRendezVous.destinationAutre }),
-      ...(newRendezVous.filiere === 'Autre' && { filiereAutre: newRendezVous.filiereAutre })
+      niveauEtude: newRendezVous.niveauEtude
     };
+
+    // Destination - logique stricte
+    if (newRendezVous.destination === 'Autre') {
+      if (!newRendezVous.destinationAutre || newRendezVous.destinationAutre.trim() === '') {
+        toast.error('Veuillez préciser votre destination');
+        return;
+      }
+      createData.destination = newRendezVous.destinationAutre.trim();
+      createData.destinationAutre = newRendezVous.destinationAutre.trim();
+    } else {
+      createData.destination = newRendezVous.destination;
+      // Pas de destinationAutre si pas "Autre"
+    }
+
+    // Filière - logique stricte
+    if (newRendezVous.filiere === 'Autre') {
+      if (!newRendezVous.filiereAutre || newRendezVous.filiereAutre.trim() === '') {
+        toast.error('Veuillez préciser votre filière');
+        return;
+      }
+      createData.filiere = newRendezVous.filiereAutre.trim();
+      createData.filiereAutre = newRendezVous.filiereAutre.trim();
+    } else {
+      createData.filiere = newRendezVous.filiere;
+      // Pas de filiereAutre si pas "Autre"
+    }
+
+    // Validation finale
+    if (!createData.destination || createData.destination.trim() === '') {
+      toast.error('La destination est obligatoire');
+      return;
+    }
+
+    if (!createData.filiere || createData.filiere.trim() === '') {
+      toast.error('La filière est obligatoire');
+      return;
+    }
+
+    console.log('📤 Création RDV - Données envoyées:', createData);
 
     try {
       const makeRequest = async (currentToken: string): Promise<Response> => {

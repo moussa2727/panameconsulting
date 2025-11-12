@@ -237,147 +237,157 @@ const RendezVous: React.FC = () => {
     setCurrentStep(prev => Math.max(prev - 1, 1));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  if (!isAuthenticated) {
+    toast.error('Veuillez vous connecter pour prendre un rendez-vous');
+    navigate('/connexion');
+    return;
+  }
+
+  if (!token) {
+    toast.error('Session invalide. Veuillez vous reconnecter.');
+    logout();
+    return;
+  }
+
+  if (!validatePhone(formData.telephone)) {
+    toast.error('Veuillez entrer un numéro de téléphone valide (au moins 10 chiffres)');
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    // Préparation des données pour l'envoi - LOGIQUE STRICTE BACKEND
+    const submitData: any = {
+      firstName: formData.firstName.trim(),
+      lastName: formData.lastName.trim(),
+      email: formData.email.trim(),
+      telephone: formData.telephone.trim(),
+      niveauEtude: formData.niveauEtude,
+      date: formData.date,
+      time: formData.time
+    };
+
+    // LOGIQUE STRICTE POUR LES CHAMPS "AUTRE" - IDENTIQUE AU BACKEND
     
-    if (!isAuthenticated) {
-      toast.error('Veuillez vous connecter pour prendre un rendez-vous');
-      navigate('/connexion');
-      return;
-    }
-  
-    if (!token) {
-      toast.error('Session invalide. Veuillez vous reconnecter.');
-      logout();
-      return;
-    }
-  
-    if (!validatePhone(formData.telephone)) {
-      toast.error('Veuillez entrer un numéro de téléphone valide (au moins 10 chiffres)');
-      return;
-    }
-  
-    setLoading(true);
-  
-    try {
-      // Préparation des données pour l'envoi - CORRECTION AVEC VALEURS FINALES
-      const submitData: any = {
-        firstName: formData.firstName.trim(),
-        lastName: formData.lastName.trim(),
-        email: formData.email.trim(),
-        telephone: formData.telephone.trim(),
-        niveauEtude: formData.niveauEtude,
-        date: formData.date,
-        time: formData.time
-      };
-  
-      // CORRECTION : Utiliser la valeur personnalisée comme valeur principale
-      // Si "Autre" est sélectionné ET une valeur personnalisée est fournie
-      if (formData.destination === 'Autre' && formData.destinationAutre) {
-        // La valeur finale devient la valeur personnalisée
-        submitData.destination = formData.destinationAutre.trim();
-        submitData.destinationAutre = formData.destinationAutre.trim(); // Garder aussi dans destinationAutre
-      } else {
-        // Sinon utiliser la valeur normale de l'enum
-        submitData.destination = formData.destination;
-        // Ne pas envoyer destinationAutre si pas "Autre"
+    // Destination
+    if (formData.destination === 'Autre') {
+      if (!formData.destinationAutre || formData.destinationAutre.trim() === '') {
+        throw new Error('Veuillez préciser votre destination');
       }
-  
-      if (formData.filiere === 'Autre' && formData.filiereAutre) {
-        // La valeur finale devient la valeur personnalisée
-        submitData.filiere = formData.filiereAutre.trim();
-        submitData.filiereAutre = formData.filiereAutre.trim(); // Garder aussi dans filiereAutre
-      } else {
-        // Sinon utiliser la valeur normale de l'enum
-        submitData.filiere = formData.filiere;
-        // Ne pas envoyer filiereAutre si pas "Autre"
+      // STRICT: destination = valeur personnalisée, destinationAutre = aussi la valeur
+      submitData.destination = formData.destinationAutre.trim();
+      submitData.destinationAutre = formData.destinationAutre.trim();
+    } else {
+      // STRICT: destination = valeur normale, pas de destinationAutre
+      submitData.destination = formData.destination;
+      // Ne pas envoyer destinationAutre si pas "Autre"
+    }
+
+    // Filière
+    if (formData.filiere === 'Autre') {
+      if (!formData.filiereAutre || formData.filiereAutre.trim() === '') {
+        throw new Error('Veuillez préciser votre filière');
       }
-  
-      // Nettoyer les données undefined/null/empty
-      Object.keys(submitData).forEach(key => {
-        if (submitData[key] === undefined || submitData[key] === null || submitData[key] === '') {
-          delete submitData[key];
-        }
+      // STRICT: filiere = valeur personnalisée, filiereAutre = aussi la valeur
+      submitData.filiere = formData.filiereAutre.trim();
+      submitData.filiereAutre = formData.filiereAutre.trim();
+    } else {
+      // STRICT: filiere = valeur normale, pas de filiereAutre
+      submitData.filiere = formData.filiere;
+      // Ne pas envoyer filiereAutre si pas "Autre"
+    }
+
+    // Validation finale stricte
+    if (!submitData.destination || submitData.destination.trim() === '') {
+      throw new Error('La destination est obligatoire');
+    }
+
+    if (!submitData.filiere || submitData.filiere.trim() === '') {
+      throw new Error('La filière est obligatoire');
+    }
+
+    console.log('📤 Données envoyées (strict):', submitData);
+
+    const makeRequest = async (currentToken: string): Promise<Response> => {
+      return fetch(`${API_URL}/api/rendezvous`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${currentToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(submitData),
       });
-  
-      console.log('📤 Données envoyées:', submitData); // Debug
-  
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${API_URL}/api/rendezvous`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(submitData),
-        });
-      };
-  
-      let response = await makeRequest(token);
-  
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
+    };
+
+    let response = await makeRequest(token);
+
+    if (response.status === 401) {
+      const refreshed = await refreshToken();
+      if (refreshed) {
+        const newToken = localStorage.getItem('token');
+        if (newToken) {
+          response = await makeRequest(newToken);
         } else {
-          throw new Error('Session expirée. Veuillez vous reconnecter.');
+          throw new Error('Token non disponible après rafraîchissement');
         }
-      }
-  
-      if (!response.ok) {
-        let errorMessage = 'Erreur lors de la création du rendez-vous';
-        
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-          
-          if (errorData.errors) {
-            const validationErrors = Object.values(errorData.errors).join(', ');
-            errorMessage = `Erreur de validation: ${validationErrors}`;
-          }
-        } catch {
-          errorMessage = `Erreur serveur: ${response.status} ${response.statusText}`;
-        }
-        
-        throw new Error(errorMessage);
-      }
-  
-      const result = await response.json();
-      
-      toast.success('Rendez-vous créé avec succès !');
-      
-      setTimeout(() => {
-        navigate('/user-rendez-vous');
-      }, 1500);
-  
-    } catch (error: any) {
-      console.error('❌ Erreur création rendez-vous:', error);
-      
-      if (error.message.includes('Session expirée') || error.message.includes('Token invalide')) {
-        toast.error('Session expirée. Redirection...');
-        setTimeout(() => logout(), 1500);
-      } else if (error.message.includes('déjà un rendez-vous en cours')) {
-        toast.error('Vous avez déjà un rendez-vous en cours. Annulez-le avant d\'en prendre un nouveau.');
-      } else if (error.message.includes('créneau horaire') || error.message.includes('disponible')) {
-        toast.error('Ce créneau n\'est plus disponible. Veuillez choisir un autre horaire.');
-        if (formData.date) {
-          fetchAvailableSlots(formData.date);
-        }
-      } else if (error.message.includes('500') || error.message.includes('Internal Server Error')) {
-        toast.error('Erreur serveur. Veuillez réessayer dans quelques instants.');
-        console.error('Détails erreur 500:', error);
       } else {
-        toast.error(error.message || 'Erreur lors de la création du rendez-vous');
+        throw new Error('Session expirée. Veuillez vous reconnecter.');
       }
-    } finally {
-      setLoading(false);
     }
-  };
+
+    if (!response.ok) {
+      let errorMessage = 'Erreur lors de la création du rendez-vous';
+      
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+        
+        if (errorData.errors) {
+          const validationErrors = Object.values(errorData.errors).join(', ');
+          errorMessage = `Erreur de validation: ${validationErrors}`;
+        }
+      } catch {
+        errorMessage = `Erreur serveur: ${response.status} ${response.statusText}`;
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    
+    toast.success('Rendez-vous créé avec succès !');
+    
+    setTimeout(() => {
+      navigate('/user-rendez-vous');
+    }, 1500);
+
+  } catch (error: any) {
+    console.error('❌ Erreur création rendez-vous:', error);
+    
+    if (error.message.includes('Session expirée') || error.message.includes('Token invalide')) {
+      toast.error('Session expirée. Redirection...');
+      setTimeout(() => logout(), 1500);
+    } else if (error.message.includes('déjà un rendez-vous en cours')) {
+      toast.error('Vous avez déjà un rendez-vous en cours. Annulez-le avant d\'en prendre un nouveau.');
+    } else if (error.message.includes('créneau horaire') || error.message.includes('disponible')) {
+      toast.error('Ce créneau n\'est plus disponible. Veuillez choisir un autre horaire.');
+      if (formData.date) {
+        fetchAvailableSlots(formData.date);
+      }
+    } else if (error.message.includes('500') || error.message.includes('Internal Server Error')) {
+      toast.error('Erreur serveur. Veuillez réessayer dans quelques instants.');
+      console.error('Détails erreur 500:', error);
+    } else {
+      toast.error(error.message || 'Erreur lors de la création du rendez-vous');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
   
   const renderStep1 = () => (
     <div className="space-y-6">

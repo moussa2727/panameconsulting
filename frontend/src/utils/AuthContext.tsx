@@ -20,6 +20,9 @@ interface AuthContextType {
   removeFromSession: (key: string) => void;
   clearSession: () => void;
   updateUserProfile: (updates: Partial<User>) => void;
+  saveFormDraft: (formId: string, data: any, options?: FormDraftOptions) => void;
+  getFormDraft: (formId: string) => any;
+  clearFormDraft: (formId: string) => void;
 }
 
 interface User {
@@ -31,6 +34,7 @@ interface User {
   role: string;
   isActive: boolean;
   lastLogin?: Date;
+  isAdmin?: boolean;
 }
 
 interface RegisterFormData {
@@ -54,6 +58,7 @@ interface JwtPayload {
 
 interface LoginResponse {
   accessToken: string;
+  refreshToken?: string;
   user: User;
   message?: string;
 }
@@ -64,7 +69,13 @@ interface ApiError {
   code?: string;
 }
 
-// Clés autorisées pour le sessionStorage (whitelist)
+interface FormDraftOptions {
+  encrypt?: boolean;
+  ttl?: number;
+  sensitiveFields?: string[];
+}
+
+// Clés autorisées pour le sessionStorage (whitelist stricte)
 const ALLOWED_SESSION_KEYS = {
   REDIRECT_PATH: 'auth_redirect_path',
   LOGIN_TIMESTAMP: 'login_timestamp',
@@ -74,23 +85,44 @@ const ALLOWED_SESSION_KEYS = {
   FORM_DRAFTS: 'form_drafts_',
   FILTERS_STATE: 'filters_state_',
   PASSWORD_RESET_HASH: 'password_reset_hash',
-  CURRENT_USER: 'current_user' // ← AJOUTÉ ICI
+  RATE_LIMIT_INFO: 'rate_limit_info',
+  FORM_DRAFTS_METADATA: 'form_drafts_metadata'
 } as const;
 
-// Clés interdites (blacklist)
+// Clés interdites (blacklist étendue)
 const SENSITIVE_KEYS = [
   'user_email', 'user_password', 'user_id', 'user_role',
   'jwt_token', 'access_token', 'refresh_token', 'personal_data',
   'auth_token', 'credentials', 'password', 'email', 'token',
-  'secret', 'private', 'key', 'bearer', 'authorization'
+  'secret', 'private', 'key', 'bearer', 'authorization',
+  'profile', 'medical', 'health', 'financial', 'bank',
+  'social_security', 'id_card', 'passport', 'birth_date',
+  'address', 'phone_number', 'telephone', 'current_user',
+  'user_profile', 'user_data', 'personal_info'
+];
+
+// Champs sensibles à supprimer automatiquement
+const SENSITIVE_FORM_FIELDS = [
+  'email', 'password', 'confirmPassword', 'currentPassword',
+  'phone', 'telephone', 'mobile', 'phoneNumber',
+  'address', 'street', 'city', 'zipCode', 'postalCode',
+  'birthDate', 'birthday', 'age', 'socialSecurity',
+  'idNumber', 'passport', 'securityAnswer', 'secretQuestion',
+  'bankAccount', 'iban', 'bic', 'creditCard', 'cvv',
+  'medicalInfo', 'healthData', 'insuranceNumber',
+  'taxNumber', 'vatNumber', 'salary', 'income'
 ];
 
 // Configuration de sécurité
 const SECURITY_CONFIG = {
-  MAX_SESSION_SIZE: 50 * 1024, // 50KB
-  TOKEN_REFRESH_BUFFER: 5 * 60 * 1000, // 5 minutes
-  SESSION_CLEANUP_INTERVAL: 30 * 60 * 1000, // 30 minutes
-  API_TIMEOUT: 10000, // 10 seconds
+  MAX_SESSION_SIZE: 50 * 1024,
+  TOKEN_REFRESH_BUFFER: 5 * 60 * 1000,
+  SESSION_CLEANUP_INTERVAL: 30 * 60 * 1000,
+  API_TIMEOUT: 15000,
+  RATE_LIMIT_RETRY_DELAY: 60000,
+  MAX_RETRY_ATTEMPTS: 2,
+  FORM_DRAFT_TTL: 24 * 60 * 60 * 1000,
+  MAX_FORM_DRAFT_SIZE: 10 * 1024,
 } as const;
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -107,31 +139,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  
   const refreshInFlightRef = useRef<Promise<boolean> | null>(null);
+  const rateLimitRetryCountRef = useRef<number>(0);
   const navigate = useNavigate();
   const location = useLocation();
   const refreshTimeoutRef = useRef<number | null>(null);
   const checkIntervalRef = useRef<number | null>(null);
   const cleanupIntervalRef = useRef<number | null>(null);
+  const rateLimitRetryTimeoutRef = useRef<number | null>(null);
 
   const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-  // === UTILITAIRES DE SÉCURITÉ ===
-
-  const sanitizeData = (data: any): any => {
-    if (!data || typeof data !== 'object') return data;
-
-    const sensitiveFields = ['password', 'token', 'accessToken', 'refreshToken', 'secret', 'key'];
-    const sanitized = { ...data };
-
-    sensitiveFields.forEach(field => {
-      if (sanitized[field]) {
-        sanitized[field] = '***REDACTED***';
-      }
-    });
-
-    return sanitized;
-  };
+  // === FONCTIONS SESSIONSTORAGE SÉCURISÉES (DÉPLACÉES EN PREMIER) ===
 
   const safeJsonParse = <T,>(jsonString: string | null, defaultValue: T): T => {
     try {
@@ -141,24 +161,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // === FONCTIONS SESSIONSTORAGE SÉCURISÉES ===
-
   const validateSessionKey = useCallback((key: string): boolean => {
     if (!key || typeof key !== 'string') return false;
 
-    // Vérifier si la clé est dans la blacklist
     const lowerKey = key.toLowerCase();
+    
+    // Blacklist étendue - bloquer toute clé contenant des termes sensibles
     if (SENSITIVE_KEYS.some(sensitive => lowerKey.includes(sensitive.toLowerCase()))) {
       console.warn(`🚨 Tentative de stockage de donnée sensible bloquée: ${key}`);
       return false;
     }
     
-    // Vérifier si la clé est dans la whitelist ou commence par un préfixe autorisé
-    const isAllowed = Object.values(ALLOWED_SESSION_KEYS).some(allowedKey => 
-      key === allowedKey || 
-      key.startsWith(ALLOWED_SESSION_KEYS.FORM_DRAFTS) || 
-      key.startsWith(ALLOWED_SESSION_KEYS.FILTERS_STATE)
-    );
+    // Whitelist stricte
+    const isAllowed = Object.values(ALLOWED_SESSION_KEYS).some(allowedKey => {
+      if (key === allowedKey) return true;
+      if (key.startsWith(ALLOWED_SESSION_KEYS.FORM_DRAFTS)) {
+        const formId = key.replace(ALLOWED_SESSION_KEYS.FORM_DRAFTS, '');
+        return formId.length > 0 && formId.length <= 100 && !formId.includes('..');
+      }
+      if (key.startsWith(ALLOWED_SESSION_KEYS.FILTERS_STATE)) {
+        return true;
+      }
+      return false;
+    });
     
     if (!isAllowed) {
       console.warn(`🚨 Clé sessionStorage non autorisée bloquée: ${key}`);
@@ -174,7 +199,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const SENSITIVE_EXACT = new Set([
       'email', 'password', 'token', 'accessToken', 'refreshToken',
       'authorization', 'bearer', 'id', 'role', 'credentials',
-      'secret', 'privateKey', 'apiKey'
+      'secret', 'privateKey', 'apiKey', 'socialSecurity', 'phone',
+      'telephone', 'address', 'birthDate', 'userId'
     ].map(k => k.toLowerCase()));
 
     const hasSensitiveData = Object.keys(data).some(key => 
@@ -186,9 +212,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return false;
     }
 
-    // Vérifier la profondeur de l'objet (éviter les objets trop complexes)
     const checkDepth = (obj: any, depth = 0): boolean => {
-      if (depth > 5) return false; // Profondeur maximale
+      if (depth > 5) return false;
       if (typeof obj !== 'object' || obj === null) return true;
       
       return Object.values(obj).every(value => checkDepth(value, depth + 1));
@@ -203,13 +228,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // Ne pas valider le contenu pour les clés whitelisted connues et sûres
       const skipContentValidation = (
         key === ALLOWED_SESSION_KEYS.UI_PREFERENCES ||
         key === ALLOWED_SESSION_KEYS.SESSION_METADATA ||
         key === ALLOWED_SESSION_KEYS.LOGIN_TIMESTAMP ||
         key === ALLOWED_SESSION_KEYS.REDIRECT_PATH ||
-        key === ALLOWED_SESSION_KEYS.CURRENT_USER || // ← AJOUTÉ ICI
+        key === ALLOWED_SESSION_KEYS.RATE_LIMIT_INFO ||
+        key === ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA ||
         key.startsWith(ALLOWED_SESSION_KEYS.FORM_DRAFTS) ||
         key.startsWith(ALLOWED_SESSION_KEYS.FILTERS_STATE)
       );
@@ -218,7 +243,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       
-      // Limiter la taille des données
       const dataString = JSON.stringify(data);
       const dataSize = new Blob([dataString]).size;
       if (dataSize > SECURITY_CONFIG.MAX_SESSION_SIZE) {
@@ -258,11 +282,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const clearSession = useCallback((): void => {
     try {
-      // Sauvegarder les préférences UI avant de tout effacer
       const uiPreferences = getFromSession(ALLOWED_SESSION_KEYS.UI_PREFERENCES);
       sessionStorage.clear();
       
-      // Restaurer les préférences UI si elles existaient
       if (uiPreferences) {
         saveToSession(ALLOWED_SESSION_KEYS.UI_PREFERENCES, uiPreferences);
       }
@@ -271,18 +293,168 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [getFromSession, saveToSession]);
 
-  const cleanupSensitiveData = useCallback((): void => {
-    // Nettoyer toutes les clés sensibles potentielles
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const key = sessionStorage.key(i);
-      if (key && SENSITIVE_KEYS.some(sensitive => key.toLowerCase().includes(sensitive.toLowerCase()))) {
-        sessionStorage.removeItem(key);
-        console.debug(`🧹 Donnée sensible supprimée: ${key}`);
-      }
+  // === FONCTIONS DE SÉCURITÉ DES BROUILLONS ===
+
+  const sanitizeFormData = useCallback((data: any, sensitiveFields: string[] = SENSITIVE_FORM_FIELDS): any => {
+    if (!data || typeof data !== 'object') return data;
+
+    const sanitized = Array.isArray(data) ? [...data] : { ...data };
+    
+    const removeSensitiveFields = (obj: any) => {
+      if (!obj || typeof obj !== 'object') return;
+      
+      Object.keys(obj).forEach(key => {
+        const lowerKey = key.toLowerCase();
+        
+        // Supprimer les champs sensibles
+        if (sensitiveFields.some(sensitive => 
+          lowerKey.includes(sensitive.toLowerCase())
+        )) {
+          delete obj[key];
+          return;
+        }
+        
+        // Nettoyer récursivement
+        if (typeof obj[key] === 'object' && obj[key] !== null) {
+          removeSensitiveFields(obj[key]);
+        }
+      });
+    };
+    
+    removeSensitiveFields(sanitized);
+    return sanitized;
+  }, []);
+
+  const validateFormDraftSize = useCallback((data: any): boolean => {
+    try {
+      const dataString = JSON.stringify(data);
+      return new Blob([dataString]).size <= SECURITY_CONFIG.MAX_FORM_DRAFT_SIZE;
+    } catch {
+      return false;
     }
   }, []);
 
-  // === GESTION DES DONNÉES UTILISATEUR ===
+  const cleanupExpiredFormDrafts = useCallback((): void => {
+    try {
+      const now = Date.now();
+      const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
+      
+      Object.keys(metadata).forEach(key => {
+        const draftMetadata = metadata[key];
+        const ttl = draftMetadata.ttl || SECURITY_CONFIG.FORM_DRAFT_TTL;
+        
+        if (now - draftMetadata.createdAt > ttl) {
+          removeFromSession(`${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${key}`);
+          delete metadata[key];
+          console.debug(`🧹 Brouillon expiré supprimé: ${key}`);
+        }
+      });
+      
+      saveToSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA, metadata);
+    } catch (error) {
+      console.error('❌ Erreur nettoyage brouillons expirés:', error);
+    }
+  }, [getFromSession, removeFromSession, saveToSession]);
+
+  // === GESTION SÉCURISÉE DES BROUILLONS ===
+
+  const saveFormDraft = useCallback((formId: string, data: any, options: FormDraftOptions = {}): void => {
+    try {
+      const { encrypt = false, ttl, sensitiveFields = SENSITIVE_FORM_FIELDS } = options;
+      
+      // Validation du formId
+      if (!formId || typeof formId !== 'string' || formId.length > 100) {
+        console.warn('🚨 ID de formulaire invalide');
+        return;
+      }
+      
+      // Nettoyage des données sensibles
+      const sanitizedData = sanitizeFormData(data, sensitiveFields);
+      
+      // Validation de la taille
+      if (!validateFormDraftSize(sanitizedData)) {
+        console.warn('🚨 Brouillon trop volumineux');
+        return;
+      }
+      
+      const draftKey = `${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`;
+      
+      // Sauvegarde des données
+      saveToSession(draftKey, {
+        data: sanitizedData,
+        version: '1.0',
+        sanitized: true
+      });
+      
+      // Métadonnées du brouillon
+      const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
+      metadata[formId] = {
+        createdAt: Date.now(),
+        ttl: ttl || SECURITY_CONFIG.FORM_DRAFT_TTL,
+        size: new Blob([JSON.stringify(sanitizedData)]).size
+      };
+      
+      saveToSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA, metadata);
+      
+      console.debug(`💾 Brouillon sauvegardé: ${formId}`, { 
+        size: metadata[formId].size,
+        sanitized: true 
+      });
+      
+    } catch (error) {
+      console.error('❌ Erreur sauvegarde brouillon:', error);
+    }
+  }, [sanitizeFormData, validateFormDraftSize, saveToSession, getFromSession]);
+
+  const getFormDraft = useCallback((formId: string): any => {
+    try {
+      if (!formId) return null;
+      
+      const draftKey = `${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`;
+      const draft = getFromSession(draftKey);
+      
+      if (!draft) return null;
+      
+      // Vérifier l'expiration
+      const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
+      const draftMetadata = metadata[formId];
+      
+      if (draftMetadata) {
+        const ttl = draftMetadata.ttl || SECURITY_CONFIG.FORM_DRAFT_TTL;
+        if (Date.now() - draftMetadata.createdAt > ttl) {
+          removeFromSession(draftKey);
+          delete metadata[formId];
+          saveToSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA, metadata);
+          return null;
+        }
+      }
+      
+      return draft.data || null;
+    } catch (error) {
+      console.error('❌ Erreur récupération brouillon:', error);
+      return null;
+    }
+  }, [getFromSession, removeFromSession, saveToSession]);
+
+  const clearFormDraft = useCallback((formId: string): void => {
+    try {
+      if (!formId) return;
+      
+      const draftKey = `${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`;
+      removeFromSession(draftKey);
+      
+      // Nettoyer les métadonnées
+      const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
+      delete metadata[formId];
+      saveToSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA, metadata);
+      
+      console.debug(`🗑️ Brouillon supprimé: ${formId}`);
+    } catch (error) {
+      console.error('❌ Erreur suppression brouillon:', error);
+    }
+  }, [removeFromSession, getFromSession, saveToSession]);
+
+  // === FONCTIONS CORE D'AUTHENTIFICATION ===
 
   const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
     try {
@@ -290,8 +462,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
 
       const response = await fetch(`${VITE_API_URL}/api/auth/me`, {
+        method: 'GET',
         headers: {
-          Authorization: `Bearer ${userToken}`,
+          'Authorization': `Bearer ${userToken}`,
+          'Content-Type': 'application/json',
         },
         credentials: 'include',
         signal: controller.signal
@@ -299,62 +473,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       clearTimeout(timeoutId);
 
-      if (response.status === 401) {
-        // Token expiré, tenter un rafraîchissement
-        const refreshed = await refreshTokenFunction();
-        if (!refreshed) {
-          throw new Error('Session expirée, veuillez vous reconnecter');
-        }
-        return; // La fonction refreshToken gère la mise à jour
-      }
-
-      if (response.status === 429) {
-        throw new Error('Trop de requêtes, veuillez patienter');
-      }
-
       if (!response.ok) {
-        throw new Error('Erreur de récupération du profil');
+        if (response.status === 401) {
+          throw new Error('Token invalide ou expiré');
+        }
+        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
       }
 
-      const userData = await response.json();
-      const mappedUser: User = {
-        id: userData.id,
-        email: userData.email,
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        role: userData.role,
-        isActive: userData.isActive,
-        telephone: userData.telephone || userData.phone || '',
-        lastLogin: userData.lastLogin ? new Date(userData.lastLogin) : new Date()
+      const userData: User = await response.json();
+      
+      const userWithRole: User = {
+        ...userData,
+        isAdmin: userData.role === 'admin' || userData.isAdmin
       };
       
-      setUser(mappedUser);
-      // UTILISER LA CLÉ AUTORISÉE
-      saveToSession(ALLOWED_SESSION_KEYS.CURRENT_USER, mappedUser);
+      setUser(userWithRole);
+      // NE PAS sauvegarder l'utilisateur dans le sessionStorage
       
     } catch (err: any) {
-      console.error('❌ Erreur fetchUserData:', err);
-      
-      // Si c'est une erreur 401 même après rafraîchissement
-      if (err.message.includes('Session expirée')) {
-        logout('/', true);
+      console.error('❌ Erreur récupération données utilisateur:', err);
+      if (err.name !== 'AbortError') {
+        throw new Error('Impossible de récupérer les informations utilisateur');
       }
-      
-      throw err;
     }
-  }, [VITE_API_URL, saveToSession]);
-
-  const updateUserProfile = useCallback((updates: Partial<User>): void => {
-    setUser(prev => prev ? { ...prev, ...updates } : null);
-    
-    // Mettre à jour également dans sessionStorage
-    if (user) {
-      const updatedUser = { ...user, ...updates };
-      saveToSession(ALLOWED_SESSION_KEYS.CURRENT_USER, updatedUser);
-    }
-  }, [user, saveToSession]);
-
-  // === GESTION DES TOKENS ET SESSIONS ===
+  }, [VITE_API_URL]);
 
   const setupTokenRefresh = useCallback((exp: number): void => {
     if (refreshTimeoutRef.current) {
@@ -373,7 +515,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
-    // Éviter les rafraîchissements concurrents
     if (refreshInFlightRef.current) {
       return refreshInFlightRef.current;
     }
@@ -410,14 +551,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         console.log("✅ Token rafraîchi avec succès");
         
-        // VALIDER ET STOCKER LE NOUVEAU TOKEN
         try {
           const decoded = jwtDecode<JwtPayload>(data.accessToken);
           if (decoded.tokenType !== 'access') {
             throw new Error('Type de token invalide');
           }
 
-          // Stocker le nouveau token
           localStorage.setItem('token', data.accessToken);
           setToken(data.accessToken);
           
@@ -448,6 +587,128 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [VITE_API_URL, fetchUserData, setupTokenRefresh]);
 
+  // === GESTION DU RATE LIMITING ===
+
+  const getRateLimitInfo = useCallback((): { lastRetry: number; retryCount: number } => {
+    return getFromSession(ALLOWED_SESSION_KEYS.RATE_LIMIT_INFO) || { lastRetry: 0, retryCount: 0 };
+  }, [getFromSession]);
+
+  const setRateLimitInfo = useCallback((info: { lastRetry: number; retryCount: number }) => {
+    saveToSession(ALLOWED_SESSION_KEYS.RATE_LIMIT_INFO, info);
+  }, [saveToSession]);
+
+  const canRetryAfterRateLimit = useCallback((): boolean => {
+    const rateLimitInfo = getRateLimitInfo();
+    const now = Date.now();
+    const timeSinceLastRetry = now - rateLimitInfo.lastRetry;
+    
+    return timeSinceLastRetry >= SECURITY_CONFIG.RATE_LIMIT_RETRY_DELAY && 
+           rateLimitInfo.retryCount < SECURITY_CONFIG.MAX_RETRY_ATTEMPTS;
+  }, [getRateLimitInfo]);
+
+  const handleRateLimit = useCallback(async (operation: string): Promise<boolean> => {
+    const rateLimitInfo = getRateLimitInfo();
+    const now = Date.now();
+    
+    if (!canRetryAfterRateLimit()) {
+      const nextRetryTime = rateLimitInfo.lastRetry + SECURITY_CONFIG.RATE_LIMIT_RETRY_DELAY;
+      const waitTime = Math.ceil((nextRetryTime - now) / 1000);
+      
+      console.warn(`⏰ Rate limit atteint pour ${operation}. Prochaine tentative dans ${waitTime}s`);
+      
+      if (rateLimitInfo.retryCount >= SECURITY_CONFIG.MAX_RETRY_ATTEMPTS) {
+        toast.error('Trop de tentatives. Veuillez réessayer dans quelques minutes.');
+        setError('Trop de tentatives. Veuillez patienter.');
+        return false;
+      }
+      
+      return new Promise((resolve) => {
+        if (rateLimitRetryTimeoutRef.current) {
+          window.clearTimeout(rateLimitRetryTimeoutRef.current);
+        }
+        
+        rateLimitRetryTimeoutRef.current = window.setTimeout(() => {
+          resolve(true);
+        }, SECURITY_CONFIG.RATE_LIMIT_RETRY_DELAY);
+      });
+    }
+    
+    const newRetryCount = rateLimitInfo.retryCount + 1;
+    setRateLimitInfo({
+      lastRetry: now,
+      retryCount: newRetryCount
+    });
+    
+    console.log(`🔄 Retry ${newRetryCount}/${SECURITY_CONFIG.MAX_RETRY_ATTEMPTS} pour ${operation}`);
+    return true;
+  }, [getRateLimitInfo, canRetryAfterRateLimit, setRateLimitInfo]);
+
+  const resetRateLimit = useCallback(() => {
+    setRateLimitInfo({ lastRetry: 0, retryCount: 0 });
+    if (rateLimitRetryTimeoutRef.current) {
+      window.clearTimeout(rateLimitRetryTimeoutRef.current);
+      rateLimitRetryTimeoutRef.current = null;
+    }
+    rateLimitRetryCountRef.current = 0;
+  }, [setRateLimitInfo]);
+
+  // === GESTION DES DONNÉES UTILISATEUR ===
+
+  const updateUserProfile = useCallback((updates: Partial<User>): void => {
+    setUser(prev => prev ? { ...prev, ...updates } : null);
+    // NE PAS sauvegarder dans le sessionStorage
+  }, []);
+
+  // === VÉRIFICATION D'AUTHENTIFICATION ===
+
+  const checkAuth = useCallback(async (): Promise<void> => {
+    const savedToken = localStorage.getItem('token');
+    
+    if (!savedToken) {
+      saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
+        sessionStart: Date.now(),
+        sessionId: crypto.randomUUID?.(),
+        userAgent: navigator.userAgent.substring(0, 100),
+        hasActiveSession: false
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const decoded = jwtDecode<JwtPayload>(savedToken);
+      const isTokenExpired = decoded.exp * 1000 < Date.now();
+
+      if (isTokenExpired) {
+        console.log("⏰ Token expiré, tentative de rafraîchissement...");
+        const refreshed = await refreshTokenFunction();
+        if (!refreshed) {
+          console.log("❌ Impossible de rafraîchir le token, déconnexion...");
+          logout('/', true);
+          return;
+        }
+      } else {
+        console.log("✅ Token valide, chargement des données utilisateur...");
+        // Toujours récupérer les données utilisateur depuis l'API
+        await fetchUserData(savedToken);
+        setupTokenRefresh(decoded.exp);
+      }
+    } catch (error) {
+      console.error('❌ Erreur vérification auth:', error);
+      
+      if (error instanceof Error && (error.message.includes('429') || error.message.includes('Trop de'))) {
+        console.warn('⏰ Rate limiting lors de la vérification auth, maintien de la session');
+        setIsLoading(false);
+      } else if (error instanceof Error && !error.message.includes('429')) {
+        logout('/', true);
+      } else {
+        setIsLoading(false);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchUserData, refreshTokenFunction, setupTokenRefresh, saveToSession]);
+
   // === OPÉRATIONS D'AUTHENTIFICATION ===
 
   const login = useCallback(async (email: string, password: string): Promise<void> => {
@@ -470,26 +731,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       clearTimeout(timeoutId);
 
+      if (response.status === 429) {
+        const canRetry = await handleRateLimit('login');
+        if (canRetry) {
+          return login(email, password);
+        } else {
+          throw new Error('Trop de tentatives de connexion. Veuillez patienter.');
+        }
+      }
+
       const data: LoginResponse = await response.json();
 
       if (!response.ok) {
         throw new Error(data.message || 'Erreur de connexion');
       }
 
-      // Valider la structure de la réponse
       if (!data.accessToken || !data.user || !data.user.id) {
         throw new Error('Réponse d\'authentification invalide');
       }
 
       localStorage.setItem('token', data.accessToken);
       setToken(data.accessToken);
-      setUser(data.user);
+      
+      const userWithRole: User = {
+        ...data.user,
+        isAdmin: data.user.role === 'admin' || data.user.isAdmin
+      };
+      setUser(userWithRole);
 
-      // Configurer le rafraîchissement automatique
       const decoded = jwtDecode<JwtPayload>(data.accessToken);
       setupTokenRefresh(decoded.exp);
       
-      // Sauvegarder les métadonnées de session
       saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
         sessionStart: Date.now(),
         sessionId: crypto.randomUUID?.(),
@@ -497,8 +769,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         hasActiveSession: true
       });
 
-      // Redirection basée sur le rôle
-      const redirectPath = data.user.role === 'admin' 
+      resetRateLimit();
+
+      const redirectPath = userWithRole.role === 'admin' || userWithRole.isAdmin
         ? '/gestionnaire/statistiques' 
         : '/';
       
@@ -515,14 +788,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [VITE_API_URL, navigate, setupTokenRefresh, saveToSession]);
+  }, [VITE_API_URL, navigate, setupTokenRefresh, saveToSession, handleRateLimit, resetRateLimit]);
 
   const register = useCallback(async (formData: RegisterFormData): Promise<void> => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // Validation côté client
       if (formData.password !== formData.confirmPassword) {
         throw new Error('Les mots de passe ne correspondent pas');
       }
@@ -552,6 +824,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       clearTimeout(timeoutId);
 
+      if (response.status === 429) {
+        const canRetry = await handleRateLimit('register');
+        if (canRetry) {
+          return register(formData);
+        } else {
+          throw new Error('Trop de tentatives d\'inscription. Veuillez patienter.');
+        }
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -561,16 +842,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(errorMsg);
       }
 
-      // Connexion automatique après inscription
+      resetRateLimit();
+
       await login(formData.email, formData.password);
       
-    } catch (err) {
-      handleAuthError(err);
+    } catch (err: any) {
+      const errorMessage = err.message || "Erreur lors de l'inscription";
+      toast.error(errorMessage);
+      setError(errorMessage);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, [VITE_API_URL, login]);
+  }, [VITE_API_URL, login, handleRateLimit, resetRateLimit]);
 
   const forgotPassword = useCallback(async (email: string): Promise<void> => {
     setIsLoading(true);
@@ -580,7 +864,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
 
-      // Stocker un hash sécurisé de l'email
       const emailHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(email))
         .then(hash => Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32));
       
@@ -600,21 +883,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       clearTimeout(timeoutId);
 
+      if (response.status === 429) {
+        const canRetry = await handleRateLimit('forgotPassword');
+        if (canRetry) {
+          return forgotPassword(email);
+        } else {
+          throw new Error('Trop de demandes de réinitialisation. Veuillez patienter.');
+        }
+      }
+
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.message || "Erreur lors de l'envoi de l'email");
       }
 
+      resetRateLimit();
+
       toast.success(`Un email de réinitialisation a été envoyé à ${email}`);
       navigate('/connexion');
       
-    } catch (err) {
-      handleAuthError(err);
+    } catch (err: any) {
+      const errorMessage = err.message || "Erreur lors de la demande de réinitialisation";
+      toast.error(errorMessage);
+      setError(errorMessage);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, [VITE_API_URL, navigate, saveToSession]);
+  }, [VITE_API_URL, navigate, saveToSession, handleRateLimit, resetRateLimit]);
 
   const resetPassword = useCallback(async (resetToken: string, newPassword: string): Promise<void> => {
     setIsLoading(true);
@@ -633,42 +929,71 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ token: resetToken, newPassword }),
+        body: JSON.stringify({ 
+          token: resetToken, 
+          newPassword,
+          confirmPassword: newPassword 
+        }),
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
+
+      if (response.status === 429) {
+        const canRetry = await handleRateLimit('resetPassword');
+        if (canRetry) {
+          return resetPassword(resetToken, newPassword);
+        } else {
+          throw new Error('Trop de tentatives de réinitialisation. Veuillez patienter.');
+        }
+      }
 
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.message || 'Erreur lors de la réinitialisation');
       }
 
+      resetRateLimit();
+
       removeFromSession(ALLOWED_SESSION_KEYS.PASSWORD_RESET_HASH);
       toast.success('Mot de passe réinitialisé avec succès');
       navigate('/connexion');
       
-    } catch (err) {
-      handleAuthError(err);
+    } catch (err: any) {
+      const errorMessage = err.message || 'Erreur lors de la réinitialisation';
+      toast.error(errorMessage);
+      setError(errorMessage);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, [VITE_API_URL, navigate, removeFromSession]);
+  }, [VITE_API_URL, navigate, removeFromSession, handleRateLimit, resetRateLimit]);
 
-  const logout = useCallback((redirectPath?: string, silent?: boolean): void => {
+  const logout = useCallback(async (redirectPath?: string, silent?: boolean): Promise<void> => {
     const tokenToRevoke = token || localStorage.getItem('token');
     
-    // Nettoyage immédiat des états locaux
+    // Nettoyer tous les brouillons à la déconnexion
+    const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
+    Object.keys(metadata).forEach(formId => {
+      removeFromSession(`${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`);
+    });
+    removeFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA);
+
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
     setError(null);
 
-    // SUPPRIMER L'UTILISATEUR DE LA SESSION AVEC LA CLÉ AUTORISÉE
-    removeFromSession(ALLOWED_SESSION_KEYS.CURRENT_USER);
+    resetRateLimit();
 
-    // Annuler les timers
+    document.cookie = 'access_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    document.cookie = 'refresh_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    
+    if (process.env.NODE_ENV === 'development') {
+      document.cookie = 'access_token=; Path=/; Domain=localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+      document.cookie = 'refresh_token=; Path=/; Domain=localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    }
+
     if (refreshTimeoutRef.current) {
       window.clearTimeout(refreshTimeoutRef.current);
       refreshTimeoutRef.current = null;
@@ -679,21 +1004,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       checkIntervalRef.current = null;
     }
 
-    // Appel API de déconnexion seulement si pas silencieux et token disponible
-    if (!silent && tokenToRevoke) {
-      fetch(`${VITE_API_URL}/api/auth/logout`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${tokenToRevoke}`,
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include'
-      }).catch((error) => {
-        console.warn('⚠️ Erreur lors de la déconnexion API:', error);
-      });
+    if (rateLimitRetryTimeoutRef.current) {
+      window.clearTimeout(rateLimitRetryTimeoutRef.current);
+      rateLimitRetryTimeoutRef.current = null;
     }
 
-    // Mettre à jour les métadonnées de session
+    if (!silent && tokenToRevoke) {
+      try {
+        const response = await fetch(`${VITE_API_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${tokenToRevoke}`,
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          console.warn('⚠️ Erreur lors de la déconnexion API');
+        }
+      } catch (error) {
+        console.warn('⚠️ Erreur réseau lors de la déconnexion API:', error);
+      }
+    }
+
     saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
       sessionStart: Date.now(),
       sessionId: crypto.randomUUID?.(),
@@ -702,87 +1036,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     // Nettoyer les données sensibles
-    cleanupSensitiveData();
+    cleanupExpiredFormDrafts();
     
     navigate(redirectPath ?? '/', { replace: true });
-  }, [VITE_API_URL, token, navigate, saveToSession, cleanupSensitiveData, removeFromSession]);
-
-  const handleAuthError = useCallback((error: any): void => {
-    let errorMessage = 'Une erreur est survenue';
-    
-    if (error instanceof Error) {
-      if (error.message.includes('429')) {
-        errorMessage = 'Trop de tentatives. Veuillez patienter quelques instants.';
-      } else {
-        errorMessage = error.message;
-      }
-    }
-    
-    setError(errorMessage);
-    
-    // Ne pas afficher les erreurs en mode silencieux
-    if (!error.silent && !error.message.includes('429')) {
-      toast.error(errorMessage);
-    }
-  }, []);
-
-  // === VÉRIFICATION D'AUTHENTIFICATION ===
-
-  const checkAuth = useCallback(async (): Promise<void> => {
-    const savedToken = localStorage.getItem('token');
-    
-    if (!savedToken) {
-      saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
-        sessionStart: Date.now(),
-        sessionId: crypto.randomUUID?.(),
-        userAgent: navigator.userAgent.substring(0, 100),
-        hasActiveSession: false
-      });
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      // Vérifier si le token est expiré
-      const decoded = jwtDecode<JwtPayload>(savedToken);
-      const isTokenExpired = decoded.exp * 1000 < Date.now();
-
-      if (isTokenExpired) {
-        console.log("⏰ Token expiré, tentative de rafraîchissement...");
-        const refreshed = await refreshTokenFunction();
-        if (!refreshed) {
-          console.log("❌ Impossible de rafraîchir le token, déconnexion...");
-          logout('/', true);
-          return;
-        }
-      } else {
-        console.log("✅ Token valide, chargement des données utilisateur...");
-        // UTILISER LA CLÉ AUTORISÉE
-        const currentUser = getFromSession(ALLOWED_SESSION_KEYS.CURRENT_USER);
-        if (!currentUser) {
-          await fetchUserData(savedToken);
-        } else {
-          // Si l'utilisateur est déjà en session, l'utiliser
-          setUser(currentUser);
-        }
-        setupTokenRefresh(decoded.exp);
-      }
-    } catch (error) {
-      console.error('❌ Erreur vérification auth:', error);
-      if (error instanceof Error && !error.message.includes('429')) {
-        logout('/', true);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchUserData, logout, refreshTokenFunction, setupTokenRefresh, saveToSession, getFromSession]);
+  }, [VITE_API_URL, token, navigate, saveToSession, cleanupExpiredFormDrafts, removeFromSession, resetRateLimit, getFromSession]);
 
   // === EFFETS ET INITIALISATION ===
+
+  const cleanupSensitiveData = useCallback((): void => {
+    // Nettoyer les données sensibles existantes
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && SENSITIVE_KEYS.some(sensitive => key.toLowerCase().includes(sensitive.toLowerCase()))) {
+        sessionStorage.removeItem(key);
+        console.debug(`🧹 Donnée sensible supprimée: ${key}`);
+      }
+    }
+    
+    // Nettoyer les brouillons expirés
+    cleanupExpiredFormDrafts();
+  }, [cleanupExpiredFormDrafts]);
 
   useEffect(() => {
     cleanupSensitiveData();
     
-    // Initialiser les préférences UI par défaut
     saveToSession(ALLOWED_SESSION_KEYS.UI_PREFERENCES, {
       theme: 'light',
       language: 'fr',
@@ -791,7 +1068,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       savedAt: Date.now()
     });
 
-    // Initialiser les métadonnées de session
     saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
       sessionStart: Date.now(),
       sessionId: crypto.randomUUID?.(),
@@ -799,7 +1075,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       hasActiveSession: !!localStorage.getItem('token')
     });
 
-    // Nettoyage périodique des données sensibles
     cleanupIntervalRef.current = window.setInterval(() => {
       cleanupSensitiveData();
     }, SECURITY_CONFIG.SESSION_CLEANUP_INTERVAL);
@@ -814,7 +1089,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     let isMounted = true;
     let interval: number | undefined;
-  
+
     const initializeAuth = async () => {
       if (!isMounted) return;
       
@@ -824,14 +1099,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.error('❌ Erreur initialisation auth:', error);
       }
     };
-  
+
     initializeAuth();
     
-    // Vérification périodique seulement si authentifié
     if (token && isMounted) {
       interval = window.setInterval(() => {
         checkAuth().catch(() => {});
-      }, SECURITY_CONFIG.TOKEN_REFRESH_BUFFER * 2);
+      }, SECURITY_CONFIG.TOKEN_REFRESH_BUFFER * 4);
     }
     
     return () => {
@@ -857,6 +1131,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     removeFromSession,
     clearSession,
     updateUserProfile,
+    saveFormDraft,
+    getFormDraft,
+    clearFormDraft,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -888,4 +1165,25 @@ export const useSecureSession = <T,>(key: string, defaultValue: T) => {
   }, [key, defaultValue, removeFromSession]);
 
   return [state, setSessionState, clearSessionState] as const;
+};
+
+// Hook spécialisé pour les brouillons de formulaire sécurisés
+export const useSecureFormDraft = <T,>(formId: string, defaultValue: T) => {
+  const { saveFormDraft, getFormDraft, clearFormDraft } = useAuth();
+  
+  const [draft, setDraft] = useState<T>(() => {
+    return getFormDraft(formId) || defaultValue;
+  });
+
+  const setDraftData = useCallback((data: T, options?: FormDraftOptions): void => {
+    setDraft(data);
+    saveFormDraft(formId, data, options);
+  }, [formId, saveFormDraft]);
+
+  const clearDraft = useCallback((): void => {
+    setDraft(defaultValue);
+    clearFormDraft(formId);
+  }, [formId, defaultValue, clearFormDraft]);
+
+  return [draft, setDraftData, clearDraft] as const;
 };

@@ -383,4 +383,47 @@ export class ProcedureService {
             throw error;
         }
     }
+
+
+    async getUserProcedures(
+    email: string, 
+    page: number = 1, 
+    limit: number = 10
+): Promise<{ data: Procedure[]; total: number; page: number; limit: number; totalPages: number }> {
+    
+    console.log('🔍 ProcedureService.getUserProcedures appelé pour:', email);
+    
+    const skip = (page - 1) * limit;
+    
+    const query = { 
+        email: email.toLowerCase(), 
+        isDeleted: false 
+    };
+
+    try {
+        const [data, total] = await Promise.all([
+            this.procedureModel.find(query)
+                .populate('rendezVousId', 'firstName lastName date time status')
+                .skip(skip)
+                .limit(limit)
+                .sort({ createdAt: -1 })
+                .exec(),
+            this.procedureModel.countDocuments(query)
+        ]);
+
+        console.log(`✅ procédures trouvées.`);
+        
+        return {
+            data,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit)
+        };
+    } catch (error) {
+        console.error('❌ Erreur récupération procédures utilisateur:', error);
+        throw error;
+    }
+}
+
 }

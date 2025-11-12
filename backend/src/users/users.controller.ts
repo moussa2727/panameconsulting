@@ -19,6 +19,8 @@ import { Roles } from '../shared/decorators/roles.decorator';
 import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
 import { RolesGuard } from '../shared/guards/roles.guard';
 import { UsersService } from './users.service';
+import { Validate } from 'class-validator';
+
 
 interface RequestWithUser extends Request {
   user: {
@@ -95,41 +97,62 @@ export class UsersController {
 
   // === ENDPOINTS PUBLIC (Pour l'utilisateur connecté) ===
 
-  @Patch('profile/me')
-  @UseGuards(JwtAuthGuard)
-  async updateProfile(@Request() req: RequestWithUser, @Body() updateUserDto: UpdateUserDto) {
-    console.log('📝 Mise à jour profil pour:', req.user.userId);
-    
-    // Validation des données
-    if (!updateUserDto.email && !updateUserDto.telephone) {
-      throw new BadRequestException('Au moins un champ (email ou téléphone) doit être fourni');
-    }
-
-    // Créer un objet avec uniquement les champs autorisés et non vides
-    const allowedUpdate: any = {};
-    
-    if (updateUserDto.email !== undefined && updateUserDto.email.trim() !== '') {
-      allowedUpdate.email = updateUserDto.email.trim().toLowerCase();
-    }
-    
-    if (updateUserDto.telephone !== undefined && updateUserDto.telephone.trim() !== '') {
-      allowedUpdate.telephone = updateUserDto.telephone.trim();
-    }
-
-    // Vérifier qu'au moins un champ est présent après nettoyage
-    if (Object.keys(allowedUpdate).length === 0) {
-      throw new BadRequestException('Aucune donnée valide à mettre à jour');
-    }
-
-    console.log('✅ Données autorisées pour mise à jour:', allowedUpdate);
-    
-    return this.usersService.update(req.user.userId, allowedUpdate);
+ @Patch('profile/me')
+@UseGuards(JwtAuthGuard)
+async updateProfile(
+  @Request() req: RequestWithUser, 
+  @Body() updateUserDto: UpdateUserDto
+) {
+  console.log('📝 Mise à jour profil pour:', req.user.userId);
+  
+  // Validation améliorée
+  if (updateUserDto.email === undefined && updateUserDto.telephone === undefined) {
+    throw new BadRequestException('Au moins un champ (email ou téléphone) doit être fourni');
   }
 
-  // Nouvel endpoint pour récupérer le profil de l'utilisateur connecté
+  // Validation de l'email si fourni
+  if (updateUserDto.email !== undefined) {
+    if (updateUserDto.email.trim() === '') {
+      throw new BadRequestException('L\'email ne peut pas être vide');
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(updateUserDto.email)) {
+      throw new BadRequestException('Format d\'email invalide');
+    }
+  }
+
+  // Validation du téléphone si fourni
+  if (updateUserDto.telephone !== undefined) {
+    if (updateUserDto.telephone.trim().length < 5) {
+      throw new BadRequestException('Le téléphone doit contenir au moins 5 caractères');
+    }
+  }
+
+  const allowedUpdate: any = {};
+  
+  if (updateUserDto.email !== undefined && updateUserDto.email.trim() !== '') {
+    allowedUpdate.email = updateUserDto.email.trim().toLowerCase();
+  }
+  
+  if (updateUserDto.telephone !== undefined && updateUserDto.telephone.trim() !== '') {
+    allowedUpdate.telephone = updateUserDto.telephone.trim();
+  }
+
+  if (Object.keys(allowedUpdate).length === 0) {
+    throw new BadRequestException('Aucune donnée valide à mettre à jour');
+  }
+
+  console.log('✅ Données autorisées pour mise à jour:', allowedUpdate);
+  
+  return this.usersService.update(req.user.userId, allowedUpdate);
+}
+
+
   @Get('profile/me')
   @UseGuards(JwtAuthGuard)
   async getMyProfile(@Request() req: RequestWithUser) {
     return this.usersService.findById(req.user.userId);
   }
+
+
 }

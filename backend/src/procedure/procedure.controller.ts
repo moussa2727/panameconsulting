@@ -65,18 +65,15 @@ export class ProcedureController {
         @Query('page') page: number = 1,
         @Query('limit') limit: number = 10
     ) {
-        // Validation renforcée de l'utilisateur
         if (!req.user || !req.user.email) {
             console.log('❌ getUserProcedures: Utilisateur non authentifié');
-            
             throw new UnauthorizedException('Token invalide ou expiré');
         }
         
         console.log('📥 getUserProcedures appelé pour:', req.user.email);
         
-        return this.procedureService.findAll(page, limit, req.user.email);
+        return this.procedureService.getUserProcedures(req.user.email, page, limit);
     }
-
 
     @Get('stats')
     @UseGuards(JwtAuthGuard, RolesGuard)
@@ -100,7 +97,6 @@ export class ProcedureController {
     async findOne(@Param('id') id: string, @Req() req: any) {
         const procedure = await this.procedureService.findOne(id);
         
-        // Vérifier les permissions
         if (procedure.email !== req.user.email && req.user.role !== UserRole.ADMIN) {
             throw new ForbiddenException('Accès non autorisé');
         }

@@ -14,7 +14,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  LogOutIcon
+  LogOutIcon,
+  SettingsIcon
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -27,16 +28,27 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isLogoutAllOpen, setIsLogoutAllOpen] = useState(false);
 
-  // Détection de la taille d'écran
+  // Détection précise des tailles d'écran
   useEffect(() => {
     const checkScreenSize = () => {
-      const mobile = window.innerWidth < 1024;
+      const width = window.innerWidth;
+      const mobile = width < 768;
+      const tablet = width >= 768 && width < 1024;
+      
       setIsMobile(mobile);
+      setIsTablet(tablet);
+      
       if (mobile) {
         setIsCollapsed(false);
+      } else if (tablet) {
+        // Sur tablette, la sidebar est réduite par défaut
+        setIsCollapsed(true);
+      } else {
+        // Sur desktop, on garde l'état précédent
       }
     };
 
@@ -90,15 +102,12 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
   const getDisplayName = (): string => {
     if (!user) return 'Administrateur';
     
-    // Utilise firstName et lastName comme défini dans AuthContext
     if (user.firstName && user.lastName) {
       return `${user.firstName} ${user.lastName}`;
     }
     
-    // Fallback sur firstName seul
     if (user.firstName) return user.firstName;
     
-    // Fallback sur email
     if (user.email) return user.email.split('@')[0];
     
     return 'Administrateur';
@@ -112,7 +121,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
 
   // Déconnexion simple - session actuelle uniquement
   const handleLogout = () => {
-    logout('/', false); // redirectPath, silent=false (déconnexion normale)
+    logout('/', false);
   };
 
   // Déconnexion de toutes les sessions (admin seulement)
@@ -125,7 +134,6 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
     try {
       const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       
-      // Utiliser le endpoint correct du backend
       const response = await fetch(`${VITE_API_URL}/api/auth/logout-all`, {
         method: 'POST',
         headers: { 
@@ -143,12 +151,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
       const result = await response.json();
       console.log('Déconnexion globale réussie:', result);
       
-      // Déconnexion côté client après succès
       logout('/', false);
       
     } catch (error) {
       console.error('Erreur lors de la déconnexion globale:', error);
-      // En cas d'erreur, procéder à une déconnexion normale
       logout('/', false);
     } finally {
       setIsLogoutAllOpen(false);
@@ -174,12 +180,12 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
 
   return (
     <>
-      {/* Version Desktop - Sidebar */}
-      <div className='hidden lg:flex min-h-screen bg-slate-50'>
+      {/* Version Desktop et Tablet - Sidebar */}
+      <div className='hidden md:flex min-h-screen bg-slate-50'>
         {/* Sidebar */}
         <div 
           className={`bg-white h-screen fixed left-0 top-0 z-40 shadow-xl border-r border-slate-200/60 flex flex-col transition-all duration-300 ${
-            isCollapsed ? 'w-16' : 'w-64'
+            isCollapsed ? 'w-16 md:w-20' : 'w-64'
           }`}
         >
           {/* En-tête avec bouton de réduction */}
@@ -187,6 +193,9 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
             <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
               {!isCollapsed && (
                 <div className='flex items-center space-x-3'>
+                  <div className='w-8 h-8 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-sm font-semibold'>
+                  <SettingsIcon className='w-5 h-5' />
+                  </div>
                   <div>
                     <h1 className='text-lg font-bold text-white'>Gestionnaire</h1>
                   </div>
@@ -195,7 +204,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
               
               <button
                 onClick={toggleSidebar}
-                className='p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent'
+                className={`p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent ${
+                  isCollapsed ? 'transform scale-110' : ''
+                }`}
+                aria-label={isCollapsed ? 'Agrandir le menu' : 'Réduire le menu'}
               >
                 {isCollapsed ? (
                   <ChevronRight className='w-4 h-4 text-white' />
@@ -221,12 +233,15 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
                           ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
                       } focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent`}
+                      title={isCollapsed ? item.name : ''}
                     >
-                      <div className={`${isActivePath(item.path) ? 'text-white' : 'text-slate-500 group-hover:text-slate-700'}`}>
+                      <div className={`${isActivePath(item.path) ? 'text-white' : 'text-slate-500 group-hover:text-slate-700'} ${
+                        isCollapsed ? 'transform scale-110' : ''
+                      }`}>
                         {item.icon}
                       </div>
                       {!isCollapsed && (
-                        <span className='font-medium'>{item.name}</span>
+                        <span className='font-medium truncate'>{item.name}</span>
                       )}
                     </Link>
                   </li>
@@ -264,17 +279,19 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
                 className={`w-full flex items-center rounded-xl transition-colors duration-200 border border-slate-300 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600 focus:ring-0 focus:outline-none focus:border-orange-300 ${
                   isCollapsed ? 'justify-center px-3 py-3' : 'space-x-3 px-4 py-3'
                 }`}
+                title={isCollapsed ? 'Déconnexion' : ''}
               >
                 <LogOut className='w-4 h-4' />
                 {!isCollapsed && <span className='font-medium text-sm'>Déconnexion</span>}
               </button>
 
-              {/* Déconnexion de toutes les sessions (admin seulement) */}
+              {/* Déconnexion de toutes les sessions */}
               <button
                 onClick={() => setIsLogoutAllOpen(true)}
                 className={`w-full flex items-center rounded-xl transition-colors duration-200 border border-slate-300 hover:border-red-300 hover:bg-red-50 hover:text-red-600 focus:ring-0 focus:outline-none focus:border-red-300 ${
                   isCollapsed ? 'justify-center px-3 py-3' : 'space-x-3 px-4 py-3'
                 }`}
+                title={isCollapsed ? 'Déconnecter tous' : ''}
               >
                 <LogOutIcon className='w-4 h-4' />
                 {!isCollapsed && <span className='font-medium text-sm'>Déconnecter tous</span>}
@@ -285,37 +302,29 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
 
         {/* Contenu principal avec marge adaptative */}
         <div className={`flex-1 transition-all duration-300 ${
-          isCollapsed ? 'ml-16' : 'ml-64'
+          isCollapsed ? 'ml-16 md:ml-20' : 'ml-64'
         }`}>
-          {children}
+          <div className='p-4 md:p-6 lg:p-8'>
+            {children}
+          </div>
         </div>
       </div>
 
       {/* Version Mobile */}
-      <div className='lg:hidden min-h-screen bg-slate-50'>
+      <div className='md:hidden min-h-screen bg-slate-50'>
         {/* Header Mobile */}
         <header className='bg-white shadow-lg border-b border-slate-200/60 sticky top-0 z-50 backdrop-blur-sm bg-white/95'>
-          <div className='px-4 sm:px-6'>
+          <div className='px-4'>
             <div className='flex justify-between items-center h-16'>
-              {/* Logo et Titre */}
+              {/* Logo et titre */}
               <div className='flex items-center space-x-3'>
-                <div>
-                  <h1 className='text-lg font-bold text-slate-800'>Tableau de bord</h1>
-                  <p className='text-xs text-slate-500'>Gestionnaire</p>
-                </div>
+                
+                <h1 className='text-lg font-bold text-slate-800'>Gestionnaire</h1>
               </div>
 
               {/* Boutons côté droit */}
-              <div className='flex items-center space-x-3'>
-                {/* Profil utilisateur */}
-                <div className='hidden sm:flex items-center space-x-2 px-3 py-2 text-slate-600'>
-                  <div className='w-8 h-8 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-sm font-semibold'>
-                    {getNameInitial()}
-                  </div>
-                  <span className='text-sm font-medium text-slate-700 max-w-24 truncate'>
-                    {getDisplayName()}
-                  </span>
-                </div>
+              <div className='flex items-center space-x-2'>
+               
 
                 {/* Menu Mobile Toggle */}
                 <button
@@ -335,40 +344,42 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
 
           {/* Menu Mobile déroulant */}
           {isMobileMenuOpen && (
-            <div className='bg-white border-t border-slate-200/60 shadow-xl absolute top-16 left-0 right-0 z-50 backdrop-blur-sm bg-white/95'>
-              <div className='px-4 py-4 space-y-2 max-h-[calc(100vh-4rem)] overflow-y-auto'>
+            <div className='bg-white border-t border-slate-200/60 shadow-xl absolute top-16 left-0 right-0 z-50 backdrop-blur-sm bg-white/95 max-h-[85vh] overflow-y-auto'>
+              <div className='px-4 py-4 space-y-2'>
                 {/* En-tête profil mobile */}
                 <div className='flex items-center space-x-3 px-4 py-3 mb-2 bg-slate-50 rounded-xl'>
-                  <div className='w-10 h-10 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-sm font-semibold'>
+                  <div className='w-12 h-12 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-lg font-semibold'>
                     {getNameInitial()}
                   </div>
                   <div className='flex-1 min-w-0'>
-                    <p className='text-sm font-medium text-slate-800 truncate'>{getDisplayName()}</p>
-                    <p className='text-xs text-slate-500'>Administrateur</p>
+                    <p className='text-base font-semibold text-slate-800 truncate'>{getDisplayName()}</p>
+                    <p className='text-sm text-slate-500'>Administrateur</p>
                   </div>
                 </div>
 
                 {/* Navigation */}
-                {menuItems.map(item => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className={`flex items-center space-x-4 px-4 py-3 rounded-xl transition-all duration-200 ${
-                      isActivePath(item.path)
-                        ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
-                    } focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent`}
-                  >
-                    <div className={`${isActivePath(item.path) ? 'text-white' : 'text-slate-500'}`}>
-                      {item.icon}
-                    </div>
-                    <span className='font-medium'>{item.name}</span>
-                  </Link>
-                ))}
+                <div className='space-y-1'>
+                  {menuItems.map(item => (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={`flex items-center space-x-4 px-4 py-4 rounded-xl transition-all duration-200 ${
+                        isActivePath(item.path)
+                          ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                      } focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent`}
+                    >
+                      <div className={`${isActivePath(item.path) ? 'text-white' : 'text-slate-500'} w-6 h-6 flex items-center justify-center`}>
+                        {item.icon}
+                      </div>
+                      <span className='font-medium text-base'>{item.name}</span>
+                    </Link>
+                  ))}
+                </div>
                 
                 {/* Séparateur */}
-                <div className='border-t border-slate-200 my-2'></div>
+                <div className='border-t border-slate-200 my-3'></div>
                 
                 {/* Boutons de déconnexion Mobile */}
                 <div className='space-y-2'>
@@ -377,10 +388,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
                       handleLogout();
                       setIsMobileMenuOpen(false);
                     }}
-                    className='flex items-center space-x-4 w-full px-4 py-3 text-slate-600 hover:bg-orange-50 hover:text-orange-600 rounded-xl transition-colors duration-200 border border-slate-300 hover:border-orange-300 focus:ring-0 focus:outline-none focus:border-orange-300'
+                    className='flex items-center space-x-4 w-full px-4 py-4 text-slate-600 hover:bg-orange-50 hover:text-orange-600 rounded-xl transition-colors duration-200 border border-slate-300 hover:border-orange-300 focus:ring-0 focus:outline-none focus:border-orange-300'
                   >
-                    <LogOut className='w-5 h-5' />
-                    <span className='font-medium'>Déconnexion</span>
+                    <LogOut className='w-6 h-6' />
+                    <span className='font-medium text-base'>Déconnexion</span>
                   </button>
 
                   <button
@@ -388,10 +399,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
                       setIsLogoutAllOpen(true);
                       setIsMobileMenuOpen(false);
                     }}
-                    className='flex items-center space-x-4 w-full px-4 py-3 text-slate-600 hover:bg-red-50 hover:text-red-600 rounded-xl transition-colors duration-200 border border-slate-300 hover:border-red-300 focus:ring-0 focus:outline-none focus:border-red-300'
+                    className='flex items-center space-x-4 w-full px-4 py-4 text-slate-600 hover:bg-red-50 hover:text-red-600 rounded-xl transition-colors duration-200 border border-slate-300 hover:border-red-300 focus:ring-0 focus:outline-none focus:border-red-300'
                   >
-                    <LogOutIcon className='w-5 h-5' />
-                    <span className='font-medium'>Déconnecter tous</span>
+                    <LogOutIcon className='w-6 h-6' />
+                    <span className='font-medium text-base'>Déconnecter tous</span>
                   </button>
                 </div>
               </div>
@@ -402,14 +413,16 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
         {/* Overlay pour fermer le menu mobile */}
         {isMobileMenuOpen && (
           <div 
-            className='fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden'
+            className='fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden'
             onClick={() => setIsMobileMenuOpen(false)}
           />
         )}
 
-        {/* Contenu principal mobile */}
-        <div className='p-4 sm:p-6'>
-          {children}
+        {/* Contenu principal mobile avec padding adaptatif */}
+        <div className='p-4'>
+          <div className='bg-white rounded-2xl shadow-sm border border-slate-200 min-h-[calc(100vh-8rem)]'>
+            {children}
+          </div>
         </div>
       </div>
 

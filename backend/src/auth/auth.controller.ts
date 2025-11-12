@@ -93,7 +93,7 @@ async login(
       httpOnly: false,
       secure: true,
       sameSite: 'none',
-      maxAge: 1000 * 60 * 60 * 24 * 180, // 180 jours
+      maxAge: 1000 * 60 * 60 * 24 * 90, // 90 jours (3 mois)
     });
     return res.json({ success: true });
   }
