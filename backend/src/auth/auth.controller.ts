@@ -26,6 +26,7 @@ import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { CookieConsentDto } from './dto/cookie-consent.dto';
 
 interface CustomRequest extends Request {
     cookies?: {
@@ -79,6 +80,23 @@ async login(
         message: 'Connexion réussie'
     });
 }
+
+@Post('cookie-consent')
+  @ApiOperation({ summary: 'Définir le consentement des cookies' })
+  @ApiResponse({ status: 200, description: 'Préférence de cookie enregistrée' })
+  setCookieConsent(
+    @Body() cookieConsentDto: CookieConsentDto,
+    @Res() res: Response
+  ) {
+    const { accepted } = cookieConsentDto;
+    res.cookie('cookie_consent', accepted ? 'true' : 'false', {
+      httpOnly: false,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 1000 * 60 * 60 * 24 * 180, // 180 jours
+    });
+    return res.json({ success: true });
+  }
 
 @Post('refresh')
 @ApiOperation({ summary: 'Rafraîchir le token' })

@@ -73,7 +73,8 @@ const ALLOWED_SESSION_KEYS = {
   NAVIGATION_STATE: 'navigation_state',
   FORM_DRAFTS: 'form_drafts_',
   FILTERS_STATE: 'filters_state_',
-  PASSWORD_RESET_HASH: 'password_reset_hash'
+  PASSWORD_RESET_HASH: 'password_reset_hash',
+  CURRENT_USER: 'current_user' // ← AJOUTÉ ICI
 } as const;
 
 // Clés interdites (blacklist)
@@ -208,6 +209,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         key === ALLOWED_SESSION_KEYS.SESSION_METADATA ||
         key === ALLOWED_SESSION_KEYS.LOGIN_TIMESTAMP ||
         key === ALLOWED_SESSION_KEYS.REDIRECT_PATH ||
+        key === ALLOWED_SESSION_KEYS.CURRENT_USER || // ← AJOUTÉ ICI
         key.startsWith(ALLOWED_SESSION_KEYS.FORM_DRAFTS) ||
         key.startsWith(ALLOWED_SESSION_KEYS.FILTERS_STATE)
       );
@@ -327,7 +329,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
       
       setUser(mappedUser);
-      saveToSession('current_user', mappedUser);
+      // UTILISER LA CLÉ AUTORISÉE
+      saveToSession(ALLOWED_SESSION_KEYS.CURRENT_USER, mappedUser);
       
     } catch (err: any) {
       console.error('❌ Erreur fetchUserData:', err);
@@ -343,7 +346,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const updateUserProfile = useCallback((updates: Partial<User>): void => {
     setUser(prev => prev ? { ...prev, ...updates } : null);
-  }, []);
+    
+    // Mettre à jour également dans sessionStorage
+    if (user) {
+      const updatedUser = { ...user, ...updates };
+      saveToSession(ALLOWED_SESSION_KEYS.CURRENT_USER, updatedUser);
+    }
+  }, [user, saveToSession]);
 
   // === GESTION DES TOKENS ET SESSIONS ===
 
@@ -656,6 +665,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     setError(null);
 
+    // SUPPRIMER L'UTILISATEUR DE LA SESSION AVEC LA CLÉ AUTORISÉE
+    removeFromSession(ALLOWED_SESSION_KEYS.CURRENT_USER);
+
     // Annuler les timers
     if (refreshTimeoutRef.current) {
       window.clearTimeout(refreshTimeoutRef.current);
@@ -693,7 +705,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     cleanupSensitiveData();
     
     navigate(redirectPath ?? '/', { replace: true });
-  }, [VITE_API_URL, token, navigate, saveToSession, cleanupSensitiveData]);
+  }, [VITE_API_URL, token, navigate, saveToSession, cleanupSensitiveData, removeFromSession]);
 
   const handleAuthError = useCallback((error: any): void => {
     let errorMessage = 'Une erreur est survenue';
@@ -745,10 +757,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       } else {
         console.log("✅ Token valide, chargement des données utilisateur...");
-        // Vérifier si l'utilisateur n'est pas déjà chargé
-        const currentUser = getFromSession('current_user');
+        // UTILISER LA CLÉ AUTORISÉE
+        const currentUser = getFromSession(ALLOWED_SESSION_KEYS.CURRENT_USER);
         if (!currentUser) {
           await fetchUserData(savedToken);
+        } else {
+          // Si l'utilisateur est déjà en session, l'utiliser
+          setUser(currentUser);
         }
         setupTokenRefresh(decoded.exp);
       }

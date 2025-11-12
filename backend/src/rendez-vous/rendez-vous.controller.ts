@@ -105,10 +105,10 @@ export class RendezvousController {
         return this.rendezvousService.removeWithPolicy(id, req.user);
     }
 
-    @Put(':id/user-confirm')
-    @UseGuards(JwtAuthGuard)
-    async userConfirm(@Param('id') id: string, @Req() req: any) {
-        return this.rendezvousService.userConfirmRendezvous(id, req.user);
-    }
+    @Put(':id/confirm')
+@UseGuards(JwtAuthGuard)
+async confirmRendezvous(@Param('id') id: string, @Req() req: any) {
+  return this.rendezvousService.confirmByUser(id, req.user);
+}
 
 }

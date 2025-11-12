@@ -47,7 +47,11 @@ interface UserProcedureProps {
   onProcedureUpdate?: () => void
 }
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
+// URLs explicites
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
+const GET_USER_PROCEDURES_URL = `${API_BASE_URL}/api/procedures/user`
+const CANCEL_PROCEDURE_URL = (procedureId: string) => `${API_BASE_URL}/api/procedures/${procedureId}/cancel`
+const HOME_URL = "/"
 
 const UserProcedure: React.FC<UserProcedureProps> = ({ onProcedureUpdate }) => {
   const { 
@@ -72,144 +76,152 @@ const UserProcedure: React.FC<UserProcedureProps> = ({ onProcedureUpdate }) => {
   const [refreshing, setRefreshing] = useState(false)
   const [expandedProcedure, setExpandedProcedure] = useState<string | null>(null)
 
-  // Fonction utilitaire pour les requêtes avec gestion automatique du token
-  
-
-  // Dans UserProcedure.tsx ou AuthContext
-const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
-  let currentToken = token
-  
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...options.headers as Record<string, string>,
-  }
-
-  if (currentToken) {
-    headers['Authorization'] = `Bearer ${currentToken}`
-  }
-
-  let response = await fetch(url, {
-    ...options,
-    headers,
-    credentials: 'include'
-  })
-
-  // Si token expiré (401), rafraîchir et réessayer
-  if (response.status === 401) {
-    console.log("🔄 Token expiré détecté, tentative de rafraîchissement...")
-    const refreshed = await refreshToken()
-    
-    if (refreshed) {
-      // Récupérer le nouveau token
-      currentToken = localStorage.getItem('token')
-      if (currentToken) {
-        console.log("✅ Nouveau token récupéré, réessai de la requête...")
-        headers['Authorization'] = `Bearer ${currentToken}`
-        response = await fetch(url, {
-          ...options,
-          headers,
-          credentials: 'include'
-        })
-      } else {
-        // Déconnexion si impossible de rafraîchir
-        logout()
-        throw new Error('SESSION_EXPIRED')
-      }
-    } else {
-      logout()
-      throw new Error('SESSION_EXPIRED')
+  // Fonction utilitaire pour les requêtes avec gestion robuste du token
+  const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
+    // Vérifier que nous avons un token valide
+    if (!token) {
+      console.log("❌ Aucun token disponible")
+      throw new Error('NO_TOKEN')
     }
-  }
 
-  return response
-}
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...options.headers as Record<string, string>,
+    }
+
+    // Toujours utiliser le token actuel du contexte
+    headers['Authorization'] = `Bearer ${token}`
+
+    console.log("🔐 Envoi requête avec token:", token.substring(0, 20) + "...")
+    
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      credentials: 'include'
+    })
+
+    // Si token expiré (401), laisser l'AuthContext gérer le rafraîchissement
+    if (response.status === 401) {
+      console.log("🔄 Token expiré détecté dans fetchWithAuth")
+      throw new Error('TOKEN_EXPIRED')
+    }
+
+    return response
+  }
 
   // Chargement initial
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && token) {
+      console.log("✅ AuthContext prêt, chargement des procédures...")
       fetchUserProcedures()
+    } else {
+      console.log("❌ AuthContext non prêt:", { isAuthenticated, token: !!token })
+      setIsLoadingProcedures(false)
     }
-  }, [isAuthenticated, page])
+  }, [isAuthenticated, token, page])
 
+  // Récupération des procédures utilisateur
+  const fetchUserProcedures = async (): Promise<void> => {
+    if (!isAuthenticated || !token) {
+      console.log("❌ Impossible de charger: non authentifié ou token manquant")
+      setIsLoadingProcedures(false)
+      return
+    }
 
-  // Remplacer fetchUserProcedures
-const fetchUserProcedures = async (): Promise<void> => {
-  if (!isAuthenticated) {
-    setIsLoadingProcedures(false);
-    return;
-  }
-
-  setIsLoadingProcedures(true);
-  setRefreshing(true);
-  
-  try {
-    const url = `${API_URL}/api/procedures/user?page=${page}&limit=${limit}`
-    console.log("🔍 Fetching procedures from:", url)
+    setIsLoadingProcedures(true)
+    setRefreshing(true)
     
-    const response = await fetchWithAuth(url)
+    try {
+      const urlWithParams = `${GET_USER_PROCEDURES_URL}?page=${page}&limit=${limit}`
+      console.log("🔍 Fetching procedures from:", urlWithParams)
+      
+      const response = await fetchWithAuth(urlWithParams)
 
-    if (!response.ok) {
-      // Si c'est une erreur 404, cela peut signifier aucune procédure
-      if (response.status === 404) {
-        setUserProcedures([]);
-        setTotalPages(1);
-        return;
+      if (!response.ok) {
+        // Si c'est une erreur 404, cela peut signifier aucune procédure
+        if (response.status === 404) {
+          console.log("📭 Aucune procédure trouvée (404)")
+          setUserProcedures([])
+          setTotalPages(1)
+          return
+        }
+        
+        const errorData = await response.json()
+        throw new Error(errorData.message || `Erreur ${response.status}`)
       }
-      
-      const errorData = await response.json()
-      throw new Error(errorData.message || `Erreur ${response.status}`)
-    }
 
-    const data = await response.json()
-    console.log("✅ Données reçues:", data)
-    
-    if (data && Array.isArray(data.data)) {
-      setUserProcedures(data.data)
-      setTotalPages(data.totalPages || 1)
+      const data = await response.json()
+      console.log("✅ Données reçues:", data)
       
-      // Sauvegarder dans session storage pour cache
-      saveToSession('user_procedures_cache', {
-        data: data.data,
-        totalPages: data.totalPages || 1,
-        timestamp: Date.now()
-      })
-    } else {
-      console.warn("⚠️ Format de données inattendu:", data)
-      setUserProcedures([])
-      setTotalPages(1)
-    }
-    
-  } catch (error: any) {
-    console.error("❌ Erreur récupération procédures:", error)
-    
-    if (error.message === 'SESSION_EXPIRED') {
-      toast.error("Session expirée. Veuillez vous reconnecter.")
-      logout()
-    } else if (error.message.includes('404')) {
-      // Aucune procédure trouvée - c'est normal
-      setUserProcedures([])
-      setTotalPages(1)
-    } else {
-      toast.error(error.message || "Erreur lors du chargement des procédures")
-      
-      // Essayer de récupérer depuis le cache
-      const cache = getFromSession('user_procedures_cache')
-      if (cache && Date.now() - cache.timestamp < 5 * 60 * 1000) { // 5 minutes
-        setUserProcedures(cache.data)
-        setTotalPages(cache.totalPages)
+      if (data && Array.isArray(data.data)) {
+        setUserProcedures(data.data)
+        setTotalPages(data.totalPages || 1)
+        
+        // Sauvegarder dans session storage pour cache
+        saveToSession('user_procedures_cache', {
+          data: data.data,
+          totalPages: data.totalPages || 1,
+          timestamp: Date.now()
+        })
       } else {
+        console.warn("⚠️ Format de données inattendu:", data)
         setUserProcedures([])
+        setTotalPages(1)
       }
+      
+    } catch (error: any) {
+      console.error("❌ Erreur récupération procédures:", error)
+      
+      if (error.message === 'TOKEN_EXPIRED') {
+        console.log("🔄 Tentative de rafraîchissement du token...")
+        try {
+          const refreshed = await refreshToken()
+          if (refreshed) {
+            console.log("✅ Token rafraîchi, nouvelle tentative...")
+            // Nouvelle tentative avec le token rafraîchi
+            await fetchUserProcedures()
+            return
+          } else {
+            console.log("❌ Échec rafraîchissement token")
+            toast.error("Session expirée. Veuillez vous reconnecter.")
+            logout()
+          }
+        } catch (refreshError) {
+          console.error("❌ Erreur lors du rafraîchissement:", refreshError)
+          toast.error("Session expirée. Veuillez vous reconnecter.")
+          logout()
+        }
+      } else if (error.message === 'NO_TOKEN') {
+        console.log("❌ Aucun token disponible")
+        toast.error("Session expirée. Veuillez vous reconnecter.")
+        logout()
+      } else if (error.message.includes('404')) {
+        // Aucune procédure trouvée - c'est normal
+        console.log("📭 Aucune procédure trouvée")
+        setUserProcedures([])
+        setTotalPages(1)
+      } else {
+        toast.error(error.message || "Erreur lors du chargement des procédures")
+        
+        // Essayer de récupérer depuis le cache
+        const cache = getFromSession('user_procedures_cache')
+        if (cache && Date.now() - cache.timestamp < 5 * 60 * 1000) { // 5 minutes
+          console.log("📦 Utilisation du cache")
+          setUserProcedures(cache.data)
+          setTotalPages(cache.totalPages)
+        } else {
+          setUserProcedures([])
+        }
+      }
+    } finally {
+      setIsLoadingProcedures(false)
+      setRefreshing(false)
     }
-  } finally {
-    setIsLoadingProcedures(false)
-    setRefreshing(false)
   }
-}
 
   const handleRefresh = () => {
-    if (!isAuthenticated) {
-      toast.error("Veuillez vous connecter")
+    if (!isAuthenticated || !token) {
+      toast.error("Session expirée")
       return
     }
     setRefreshing(true)
@@ -221,7 +233,7 @@ const fetchUserProcedures = async (): Promise<void> => {
   }
 
   const handleCancelProcedure = async (procId: string) => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !token) {
       toast.error("Session expirée")
       return
     }
@@ -233,7 +245,10 @@ const fetchUserProcedures = async (): Promise<void> => {
 
     setIsCancelling(true)
     try {
-      const response = await fetchWithAuth(`${API_URL}/api/procedures/${procId}/cancel`, {
+      const cancelUrl = CANCEL_PROCEDURE_URL(procId)
+      console.log("🗑️ Cancelling procedure at:", cancelUrl)
+      
+      const response = await fetchWithAuth(cancelUrl, {
         method: "PUT",
         body: JSON.stringify({ reason: cancelReason.trim() }),
       })
@@ -254,8 +269,23 @@ const fetchUserProcedures = async (): Promise<void> => {
     } catch (error: any) {
       console.error("❌ Erreur annulation:", error)
       
-      if (error.message === 'SESSION_EXPIRED') {
-        toast.error("Session expirée")
+      if (error.message === 'TOKEN_EXPIRED') {
+        console.log("🔄 Tentative de rafraîchissement pour annulation...")
+        try {
+          const refreshed = await refreshToken()
+          if (refreshed) {
+            console.log("✅ Token rafraîchi, nouvelle tentative d'annulation...")
+            // Nouvelle tentative avec le token rafraîchi
+            await handleCancelProcedure(procId)
+            return
+          } else {
+            toast.error("Session expirée. Veuillez vous reconnecter.")
+            logout()
+          }
+        } catch (refreshError) {
+          toast.error("Session expirée. Veuillez vous reconnecter.")
+          logout()
+        }
       } else {
         toast.error(error.message || "Erreur lors de l'annulation")
       }
@@ -265,7 +295,7 @@ const fetchUserProcedures = async (): Promise<void> => {
   }
 
   const navigateToHome = () => {
-    window.location.href = "/"
+    window.location.href = HOME_URL
   }
 
   const toggleProcedureDetails = (procedureId: string) => {
@@ -324,7 +354,6 @@ const fetchUserProcedures = async (): Promise<void> => {
     const stepNameMap: { [key: string]: string } = {
       'DEMANDE_ADMISSION': 'Demande d\'admission',
       'DEMANDE_VISA': 'Demande de visa',
-      'PREPARATION_DEPART': 'Préparation du départ',
       'PREPARATIF_VOYAGE': 'Préparatif de voyage'
     }
     
@@ -356,7 +385,7 @@ const fetchUserProcedures = async (): Promise<void> => {
   }
 
   const openCancelPopup = (procId: string) => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !token) {
       toast.error("Session expirée")
       return
     }

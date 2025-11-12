@@ -569,20 +569,52 @@ export class RendezvousService {
         this.logger.log(`Annulation automatique: ${result.modifiedCount} rendez-vous annulés`);
     }
 
-    async userConfirmRendezvous(id: string, user: any): Promise<Rendezvous> {
-        const updated = await this.rendezvousModel.findByIdAndUpdate(
-            id,
-            { userConfirmed: true },
-            { new: true }
-        ).exec();
+   async confirmByUser(id: string, user: any): Promise<Rendezvous | null> {
+  const rdv = await this.rendezvousModel.findById(id).exec();
+  if (!rdv) {
+    throw new NotFoundException('Rendez-vous non trouvé');
+  }
 
-        if (!updated) {
-            throw new NotFoundException('Rendez-vous non trouvé');
-        }
-        
-        // Envoyer notification
-        await this.notificationService.sendConfirmation(updated);
-        
-        return updated;
-    }
+  // Vérifier que l'utilisateur est propriétaire
+  if (rdv.email !== user.email) {
+    throw new ForbiddenException('Vous ne pouvez confirmer que vos propres rendez-vous');
+  }
+
+  // Vérifier que le statut actuel est "En attente"
+  if (rdv.status !== 'En attente') {
+    throw new BadRequestException('Seuls les rendez-vous en attente peuvent être confirmés');
+  }
+
+  // Vérifier que le rendez-vous n'est pas passé
+  const now = new Date();
+  const rdvDateTime = new Date(`${rdv.date}T${rdv.time}`);
+  if (rdvDateTime < now) {
+    throw new BadRequestException('Impossible de confirmer un rendez-vous passé');
+  }
+
+  // Mettre à jour le statut
+  const updated = await this.rendezvousModel.findByIdAndUpdate(
+    id, 
+    { status: 'Confirmé' }, 
+    { new: true }
+  );
+
+  if (!updated) {
+    this.logger.warn(`Tentative de confirmation d'un rendez-vous non trouvé: ${id}`);
+    throw new Error('Rendez-vous non trouvé');
+  }
+
+  this.logger.log(`Rendez-vous confirmé par l'utilisateur: ${id}`);
+
+  // Envoyer notification
+  try {
+    await this.notificationService.sendStatusUpdate(updated);
+    this.logger.log(`Notification de confirmation envoyée à: ${updated.email}`);
+  } catch (error) {
+    this.logger.error(`Erreur lors de l'envoi de la notification de confirmation: ${error.message}`);
+    
+  }
+
+  return updated;
+}
 }
