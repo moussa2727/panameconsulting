@@ -193,9 +193,9 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
             <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
               {!isCollapsed && (
                 <div className='flex items-center space-x-3'>
-                  <div className='w-8 h-8 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-sm font-semibold'>
-                  <SettingsIcon className='w-5 h-5' />
-                  </div>
+                  <Link to='/' className='w-8 h-8 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-sm font-semibold'>
+                     <SettingsIcon className='w-5 h-5' />
+                  </Link>
                   <div>
                     <h1 className='text-lg font-bold text-white'>Gestionnaire</h1>
                   </div>

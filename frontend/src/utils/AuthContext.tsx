@@ -514,78 +514,102 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
-    if (refreshInFlightRef.current) {
-      return refreshInFlightRef.current;
-    }
+  // Dans AuthContext.tsx - Ajoutez cette fonction
+const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
+  if (refreshInFlightRef.current) {
+    console.log('🔄 Refresh déjà en cours, attente...');
+    return refreshInFlightRef.current;
+  }
 
-    const refreshPromise = (async (): Promise<boolean> => {
-      try {
-        const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        });
+  console.log('🔄 Début du rafraîchissement du token...');
 
-        if (!response.ok) {
-          console.error("❌ Échec du rafraîchissement du token");
-          logout('/', true);
-          return false;
-        }
+  const refreshPromise = (async (): Promise<boolean> => {
+    try {
+      // Vérifier s'il y a un refresh token dans les cookies
+      const hasRefreshToken = document.cookie.includes('refresh_token');
+      console.log('🍪 Refresh token présent:', hasRefreshToken);
+      
+      const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include', // Important pour envoyer les cookies
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-        const data = await response.json();
+      console.log('📡 Réponse refresh:', response.status, response.statusText);
+
+      if (!response.ok) {
+        console.error("❌ Échec du rafraîchissement:", response.status);
         
-        if (data.loggedOut) {
-          console.log("🔒 Session expirée, déconnexion...");
+        if (response.status === 401) {
+          console.log('🔒 Refresh token invalide, déconnexion...');
           logout('/', true);
           return false;
         }
-
-        if (!data.accessToken) {
-          console.error("❌ Token d'accès manquant dans la réponse");
-          logout('/', true);
-          return false;
-        }
-
-        console.log("✅ Token rafraîchi avec succès");
         
-        try {
-          const decoded = jwtDecode<JwtPayload>(data.accessToken);
-          if (decoded.tokenType !== 'access') {
-            throw new Error('Type de token invalide');
-          }
+        throw new Error(`Erreur ${response.status}`);
+      }
 
-          localStorage.setItem('token', data.accessToken);
-          setToken(data.accessToken);
-          
-          await fetchUserData(data.accessToken);
-          setupTokenRefresh(decoded.exp);
-          
-          return true;
-        } catch (validationError) {
-          console.error('❌ Token rafraîchi invalide:', validationError);
-          logout('/', true);
-          return false;
-        }
-      } catch (error: any) {
-        console.error('❌ Erreur rafraîchissement token:', error);
-        if (error.name !== 'AbortError') {
-          logout('/', true);
-        }
+      const data = await response.json();
+      console.log('📦 Données refresh reçues:', data);
+      
+      if (data.loggedOut) {
+        console.log("🔒 Session expirée côté serveur");
+        logout('/', true);
         return false;
       }
-    })();
 
-    refreshInFlightRef.current = refreshPromise;
-    
-    try {
-      return await refreshPromise;
-    } finally {
-      refreshInFlightRef.current = null;
+      if (!data.accessToken) {
+        console.error("❌ Token d'accès manquant");
+        logout('/', true);
+        return false;
+      }
+
+      console.log("✅ Token rafraîchi avec succès");
+      
+      try {
+        const decoded = jwtDecode<JwtPayload>(data.accessToken);
+        console.log('🔓 Nouveau token décodé:', {
+          email: decoded.email,
+          role: decoded.role,
+          exp: new Date(decoded.exp * 1000).toLocaleTimeString(),
+          tokenType: decoded.tokenType
+        });
+        
+        if (decoded.tokenType && decoded.tokenType !== 'access') {
+          console.warn('⚠️ Type de token inattendu:', decoded.tokenType);
+        }
+
+        localStorage.setItem('token', data.accessToken);
+        setToken(data.accessToken);
+        
+        await fetchUserData(data.accessToken);
+        setupTokenRefresh(decoded.exp);
+        
+        return true;
+      } catch (validationError) {
+        console.error('❌ Token rafraîchi invalide:', validationError);
+        logout('/', true);
+        return false;
+      }
+    } catch (error: any) {
+      console.error('❌ Erreur rafraîchissement token:', error);
+      if (error.name !== 'AbortError') {
+        logout('/', true);
+      }
+      return false;
     }
-  }, [VITE_API_URL, fetchUserData, setupTokenRefresh]);
+  })();
+
+  refreshInFlightRef.current = refreshPromise;
+  
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshInFlightRef.current = null;
+  }
+}, [VITE_API_URL, fetchUserData, setupTokenRefresh]);
 
   // === GESTION DU RATE LIMITING ===
 
