@@ -42,8 +42,6 @@ function Accueil() {
           <meta name='googlebot' content='index, follow' />
           <meta name='bingbot' content='index, follow' />
           <meta name='yandexbot' content='index, follow' />
-
-
           <meta
             name='viewport'
             content='width=device-width, initial-scale=1.0, maximum-scale=5.0'
