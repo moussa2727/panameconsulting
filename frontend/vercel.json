@@ -25,10 +25,5 @@
       "src": "/.*",
       "dest": "/index.html"
     }
-  ],
-  "error": {
-    "404": {
-      "dest": "/index.html"
-    }
-  }
+  ]
 }

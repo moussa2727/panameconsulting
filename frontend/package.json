@@ -7,6 +7,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "vercel": "vercel --prod",
+    
+
+
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --max-warnings 0",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
