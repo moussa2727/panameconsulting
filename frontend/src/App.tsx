@@ -115,11 +115,12 @@ function App() {
   return (
     <ErrorBoundary>
       <Helmet>
-        <title>Paname Consulting - Études à l'Étranger, Voyages d'Affaires & Visas</title>
+        <title>Paname Consulting - Études à l'Étranger, Voyages d'Affaires & demandes de Visas</title>
         <meta
           name="description"
           content="Paname Consulting : expert en accompagnement étudiant à l'étranger, organisation de voyages d'affaires et demandes de visa. Conseil personnalisé pour votre réussite internationale."
         />
+
       </Helmet>
 
       <div key={navigationKey}>
