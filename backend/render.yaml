@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: panameconsulting-backend
+    name: panameconsulting
     env: node
     region: oregon       # Change selon la région désirée
     plan: free           # Ou "starter"/"standard" selon ton usage

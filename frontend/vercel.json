@@ -1,20 +1,29 @@
 {
   "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
   "routes": [
     {
       "src": "/assets/(.*)",
       "headers": {
-        "cache-control": "public, max-age=31536000, immutable"
-      }
+        "Cache-Control": "public, max-age=31536000, immutable"
+      },
+      "dest": "/assets/$1"
     },
     {
-      "src": "/(.*\\.\\w+$)",
+      "src": "/(.*\\.\\w+)$",
       "dest": "/$1"
     },
     {
-      "src": "/(.*)",
-      "dest": "/index.html",
-      "methods": ["GET", "HEAD"]
+      "src": "/.*",
+      "dest": "/index.html"
     }
   ]
 }

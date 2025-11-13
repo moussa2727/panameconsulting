@@ -11,7 +11,6 @@ import {
   BadgeCheck,
   ChevronLeft,
   ChevronRight,
-  Loader,
 } from 'lucide-react';
 
 // Types

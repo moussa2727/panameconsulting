@@ -310,8 +310,6 @@ const handleSubmit = async (e: React.FormEvent) => {
       throw new Error('La filière est obligatoire');
     }
 
-    console.log('📤 Données envoyées (strict):', submitData);
-
     const makeRequest = async (currentToken: string): Promise<Response> => {
       return fetch(`${API_URL}/api/rendezvous`, {
         method: 'POST',

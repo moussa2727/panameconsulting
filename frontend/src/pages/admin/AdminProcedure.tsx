@@ -53,6 +53,9 @@ const AdminProcedures = () => {
   const [procedureToDelete, setProcedureToDelete] = useState<Procedure | null>(null);
   const [currentStepUpdate, setCurrentStepUpdate] = useState<{procedureId: string, stepName: string, currentStatus: string} | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalProcedures, setTotalProcedures] = useState(0);
 
   const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -99,7 +102,7 @@ const AdminProcedures = () => {
     }
   };
 
-  // Fonction pour faire les requêtes avec gestion du token
+  // Fonction pour faire les requêtes avec gestion du token et credentials
   const makeAuthenticatedRequest = async (url: string, options: RequestInit = {}) => {
     console.log('🔄 Préparation requête vers:', url);
     
@@ -109,20 +112,21 @@ const AdminProcedures = () => {
       throw new Error('Aucun token valide disponible');
     }
 
-    console.log('📡 Envoi requête avec token valide...');
+    console.log('📡 Envoi requête avec token valide et credentials...');
+    
     const response = await fetch(url, {
-      ...options,
+      credentials: 'include', // Inclure les cookies
       headers: {
         'Authorization': `Bearer ${validToken}`,
         'Content-Type': 'application/json',
-        ...options.headers,
       },
+      ...options,
     });
 
     console.log('📨 Réponse reçue:', response.status, response.statusText);
 
     if (response.status === 401) {
-      console.log('🔒 Token invalide même après rafraîchissement, déconnexion...');
+      console.log('🔒 Token invalide, déconnexion...');
       toast.error('Session expirée - Veuillez vous reconnecter');
       logout();
       throw new Error('Session expirée');
@@ -131,12 +135,11 @@ const AdminProcedures = () => {
     return response;
   };
 
-  // Charger les procédures avec retry
-  const fetchProcedures = async (retry = false) => {
+  // Charger les procédures avec pagination
+  const fetchProcedures = async (page: number = 1, limit: number = 50, retry = false) => {
     if (retry) {
       setRetryCount(prev => prev + 1);
       if (retryCount >= 2) {
-        console.log('🛑 Trop de tentatives, arrêt');
         toast.error('Impossible de charger les données');
         return;
       }
@@ -146,21 +149,31 @@ const AdminProcedures = () => {
       setIsLoading(true);
       console.log('🔄 Chargement des procédures...');
       
-      const response = await makeAuthenticatedRequest(`${VITE_API_URL}/api/procedures`);
+      // URL explicite avec tous les paramètres
+      const url = `${VITE_API_URL}/api/procedures?page=${page}&limit=${limit}`;
+      console.log('📋 URL complète:', url);
+      
+      const response = await makeAuthenticatedRequest(url, {
+        method: 'GET',
+      });
 
       if (!response.ok) {
         throw new Error(`Erreur ${response.status}: ${response.statusText}`);
       }
 
       const data: ProceduresResponse = await response.json();
-      console.log(`✅ ${data.data.length} procédures chargées`);
+      console.log(`✅ ${data.data.length} procédures chargées sur ${data.total} total`, data);
+      
       setProcedures(data.data);
-      setRetryCount(0); // Reset du compteur en cas de succès
+      setCurrentPage(data.page);
+      setTotalPages(data.totalPages);
+      setTotalProcedures(data.total);
+      setRetryCount(0);
+      
     } catch (error: any) {
       console.error('❌ Erreur chargement procédures:', error);
       
       if (error.message.includes('Session expirée')) {
-        // Ne pas retry si session expirée
         return;
       }
       
@@ -168,7 +181,7 @@ const AdminProcedures = () => {
       if (!retry) {
         console.log('🔄 Tentative de rechargement dans 2 secondes...');
         toast.warning('Problème de connexion, nouvelle tentative...');
-        setTimeout(() => fetchProcedures(true), 2000);
+        setTimeout(() => fetchProcedures(page, limit, true), 2000);
       } else {
         toast.error('Erreur lors du chargement des procédures');
       }
@@ -177,16 +190,48 @@ const AdminProcedures = () => {
     }
   };
 
+  // Charger toutes les procédures (sans limite)
+  const fetchAllProcedures = async () => {
+    try {
+      setIsLoading(true);
+      console.log('🔄 Chargement de TOUTES les procédures...');
+      
+      const url = `${VITE_API_URL}/api/procedures?page=1&limit=1000`;
+      console.log('📋 URL complète:', url);
+      
+      const response = await makeAuthenticatedRequest(url, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+      }
+
+      const data: ProceduresResponse = await response.json();
+      console.log(`✅ ${data.data.length} procédures chargées (toutes)`, data);
+      
+      setProcedures(data.data);
+      setTotalProcedures(data.total);
+      setRetryCount(0);
+      
+    } catch (error: any) {
+      console.error('❌ Erreur chargement toutes les procédures:', error);
+      toast.error('Erreur lors du chargement des procédures');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Mettre à jour le statut d'une procédure
   const updateProcedureStatus = async (procedureId: string, newStatus: Procedure['statut']) => {
     try {
-      const response = await makeAuthenticatedRequest(
-        `${VITE_API_URL}/api/procedures/${procedureId}`, 
-        {
-          method: 'PUT',
-          body: JSON.stringify({ statut: newStatus }),
-        }
-      );
+      const url = `${VITE_API_URL}/api/procedures/${procedureId}`;
+      console.log('📋 URL mise à jour procédure:', url);
+      
+      const response = await makeAuthenticatedRequest(url, {
+        method: 'PUT',
+        body: JSON.stringify({ statut: newStatus }),
+      });
 
       if (!response.ok) {
         throw new Error('Erreur lors de la mise à jour');
@@ -215,18 +260,18 @@ const AdminProcedures = () => {
   // Mettre à jour le statut d'une étape
   const updateStepStatus = async (procedureId: string, stepName: string, newStatus: Step['statut'], raisonRefus?: string) => {
     try {
+      const url = `${VITE_API_URL}/api/procedures/${procedureId}/steps/${stepName}`;
+      console.log('📋 URL mise à jour étape:', url);
+      
       const updateData: any = { statut: newStatus };
       if (raisonRefus) {
         updateData.raisonRefus = raisonRefus;
       }
 
-      const response = await makeAuthenticatedRequest(
-        `${VITE_API_URL}/api/procedures/${procedureId}/steps/${stepName}`,
-        {
-          method: 'PUT',
-          body: JSON.stringify(updateData),
-        }
-      );
+      const response = await makeAuthenticatedRequest(url, {
+        method: 'PUT',
+        body: JSON.stringify(updateData),
+      });
 
       if (!response.ok) {
         throw new Error('Erreur lors de la mise à jour de l\'étape');
@@ -258,13 +303,13 @@ const AdminProcedures = () => {
     if (!procedureToDelete) return;
 
     try {
-      const response = await makeAuthenticatedRequest(
-        `${VITE_API_URL}/api/procedures/${procedureToDelete._id}`,
-        {
-          method: 'DELETE',
-          body: JSON.stringify({ reason: 'Supprimé par l\'administrateur' }),
-        }
-      );
+      const url = `${VITE_API_URL}/api/procedures/${procedureToDelete._id}`;
+      console.log('📋 URL suppression:', url);
+      
+      const response = await makeAuthenticatedRequest(url, {
+        method: 'DELETE',
+        body: JSON.stringify({ reason: 'Supprimé par l\'administrateur' }),
+      });
 
       if (!response.ok) {
         throw new Error('Erreur lors de la suppression');
@@ -339,7 +384,7 @@ const AdminProcedures = () => {
     });
     
     if (token && user) {
-      fetchProcedures();
+      fetchAllProcedures();
     } else {
       setIsLoading(false);
       console.log('⚠️ Utilisateur non authentifié, attente...');
@@ -379,6 +424,7 @@ const AdminProcedures = () => {
               </h1>
               <p className="text-slate-600 mt-1">
                 {user ? `Connecté en tant que ${user.email}` : 'Chargement...'}
+                {totalProcedures > 0 && ` • ${totalProcedures} procédures au total`}
               </p>
             </div>
             
@@ -389,18 +435,62 @@ const AdminProcedures = () => {
                 </span>
               )}
               <button 
-                onClick={() => fetchProcedures()}
+                onClick={() => fetchAllProcedures()}
                 disabled={isLoading}
                 className="px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 w-fit disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <i className={`fas fa-sync-alt ${isLoading ? 'animate-spin' : ''}`}></i>
                 {isLoading ? 'Chargement...' : 'Actualiser'}
               </button>
+              <button 
+                onClick={() => fetchProcedures(1, 50)}
+                className="px-4 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 w-fit"
+              >
+                <i className="fas fa-list"></i>
+                Charger 50
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Le reste du code UI reste identique à la version précédente */}
+        {/* Indicateur de chargement */}
+        {isLoading && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+              <span className="text-blue-700 font-medium">Chargement des procédures...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Statistiques rapides */}
+        {!isLoading && procedures.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <div className="text-2xl font-bold text-slate-800">{totalProcedures}</div>
+              <div className="text-slate-600 text-sm">Total</div>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <div className="text-2xl font-bold text-blue-600">
+                {procedures.filter(p => p.statut === 'En cours').length}
+              </div>
+              <div className="text-slate-600 text-sm">En cours</div>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <div className="text-2xl font-bold text-green-600">
+                {procedures.filter(p => p.statut === 'Terminée').length}
+              </div>
+              <div className="text-slate-600 text-sm">Terminées</div>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <div className="text-2xl font-bold text-red-600">
+                {procedures.filter(p => p.statut === 'Annulée' || p.statut === 'Refusée').length}
+              </div>
+              <div className="text-slate-600 text-sm">Annulées/Refusées</div>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-7xl mx-auto">
           {/* Liste des procédures */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
@@ -452,6 +542,13 @@ const AdminProcedures = () => {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Résultats du filtrage */}
+              <div className="mt-3 text-sm text-slate-600">
+                {filteredProcedures.length} procédure(s) trouvée(s)
+                {(searchTerm || selectedStatutProcedure !== 'tous' || selectedStatutEtape !== 'toutes') && 
+                 ` (sur ${procedures.length} au total)`}
               </div>
             </div>
 
@@ -714,7 +811,6 @@ const AdminProcedures = () => {
                     key={statut}
                     onClick={async () => {
                       if (statut === 'Rejeté') {
-                        // Pour le rejet, demander la raison
                         const reason = prompt('Veuillez saisir la raison du rejet:');
                         if (reason) {
                           await updateStepStatus(
@@ -756,7 +852,7 @@ const AdminProcedures = () => {
         {/* Mobile Floating Action Button */}
         <div className="lg:hidden fixed bottom-6 right-6">
           <button 
-  onClick={() => fetchProcedures()}
+            onClick={() => fetchAllProcedures()}
             className="w-14 h-14 bg-blue-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center hover:bg-blue-600"
           >
             <i className="fas fa-sync-alt text-lg"></i>

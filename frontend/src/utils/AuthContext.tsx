@@ -514,7 +514,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // Dans AuthContext.tsx - Ajoutez cette fonction
 const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
   if (refreshInFlightRef.current) {
     console.log('🔄 Refresh déjà en cours, attente...');
@@ -527,7 +526,7 @@ const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
     try {
       // Vérifier s'il y a un refresh token dans les cookies
       const hasRefreshToken = document.cookie.includes('refresh_token');
-      console.log('🍪 Refresh token présent:', hasRefreshToken);
+      console.log('🍪 Refresh token présent .');
       
       const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
         method: 'POST',
@@ -552,7 +551,7 @@ const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
       }
 
       const data = await response.json();
-      console.log('📦 Données refresh reçues:', data);
+      console.log('📦 Données refresh reçues.');
       
       if (data.loggedOut) {
         console.log("🔒 Session expirée côté serveur");
@@ -566,13 +565,10 @@ const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
         return false;
       }
 
-      console.log("✅ Token rafraîchi avec succès");
       
       try {
         const decoded = jwtDecode<JwtPayload>(data.accessToken);
         console.log('🔓 Nouveau token décodé:', {
-          email: decoded.email,
-          role: decoded.role,
           exp: new Date(decoded.exp * 1000).toLocaleTimeString(),
           tokenType: decoded.tokenType
         });
@@ -712,7 +708,6 @@ const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
           return;
         }
       } else {
-        console.log("✅ Token valide, chargement des données utilisateur...");
         // Toujours récupérer les données utilisateur depuis l'API
         await fetchUserData(savedToken);
         setupTokenRefresh(decoded.exp);

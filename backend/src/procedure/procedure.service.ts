@@ -18,6 +18,7 @@ import { CreateProcedureDto } from './dto/create-procedure.dto';
 import { UpdateProcedureDto } from './dto/update-procedure.dto';
 import { UpdateStepDto } from './dto/update-step.dto';
 import { NotificationService } from '../notification/notification.service';
+import { UserRole } from '@/schemas/user.schema';
 
 @Injectable()
 export class ProcedureService {
@@ -62,47 +63,53 @@ export class ProcedureService {
         }
     }
 
-    async findAll(
-        page: number = 1, 
-        limit: number = 10, 
-        email?: string
-    ): Promise<{ data: Procedure[]; total: number; page: number; limit: number; totalPages: number }> {
-        
-        console.log('🔍 ProcedureService.findAll appelé avec:', { page, limit, email });
-        
-        const skip = (page - 1) * limit;
-        
-        const query: any = { isDeleted: false };
-        if (email) {
-            query.email = email.toLowerCase();
-            console.log('📧 Filtrage par email:', email);
-        }
+   
+async findAll(
+    page: number = 1, 
+    limit: number = 10, 
+    email?: string,
+    req?: any
+): Promise<{ data: Procedure[]; total: number; page: number; limit: number; totalPages: number }> {
     
-        try {
-            const [data, total] = await Promise.all([
-                this.procedureModel.find(query)
-                    .populate('rendezVousId', 'firstName lastName date time status')
-                    .skip(skip)
-                    .limit(limit)
-                    .sort({ createdAt: -1 })
-                    .exec(),
-                this.procedureModel.countDocuments(query)
-            ]);
+    console.log('🔍 ProcedureService.findAll appelé avec:', { page, limit, email });
     
-            console.log(`✅ ${data.length} procédures trouvées pour ${email || 'tous les utilisateurs'}`);
-            
-            return {
-                data,
-                total,
-                page,
-                limit,
-                totalPages: Math.ceil(total / limit)
-            };
-        } catch (error) {
-            console.error('❌ Erreur récupération procédures:', error);
-            throw error;
-        }
+    const skip = (page - 1) * limit;
+    
+    const query: any = { isDeleted: false };
+    if (email) {
+        query.email = email.toLowerCase();
+        console.log('📧 Filtrage par email:', email);
     }
+    
+    if (req.user.role !== UserRole.ADMIN) {
+        query.email = req.user.email;
+    }
+
+    try {
+        const [data, total] = await Promise.all([
+            this.procedureModel.find(query)
+                .populate('rendezVousId', 'firstName lastName date time status')
+                .skip(skip)
+                .limit(limit)
+                .sort({ createdAt: -1 })
+                .exec(),
+            this.procedureModel.countDocuments(query)
+        ]);
+
+        console.log(`✅ ${data.length} procédures trouvées pour ${email || 'tous les utilisateurs'} (page ${page}/${Math.ceil(total / limit)})`);
+        
+        return {
+            data,
+            total,
+            page: Number(page),
+            limit: Number(limit),
+            totalPages: Math.ceil(total / limit)
+        };
+    } catch (error) {
+        console.error('❌ Erreur récupération procédures:', error);
+        throw error;
+    }
+}
 
     async findOne(id: string): Promise<Procedure> {
         if (!Types.ObjectId.isValid(id)) {
@@ -424,6 +431,6 @@ export class ProcedureService {
         console.error('❌ Erreur récupération procédures utilisateur:', error);
         throw error;
     }
-}
+    }
 
 }

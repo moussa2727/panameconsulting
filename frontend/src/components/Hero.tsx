@@ -109,7 +109,6 @@ const Hero = () => {
 
 
   const handleDestinationClick = (countrySlug: string) => {
-    console.log(`Navigation vers: ${countrySlug}`);
     navigate(`/destination-${countrySlug}`);
   };
 
