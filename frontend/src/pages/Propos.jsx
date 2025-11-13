@@ -46,7 +46,7 @@ export default function Propos() {
                   }
                `}</style>
         </Helmet>
-        <main className='flex-1 mt-28 bg-gradient-to-b from-white via-sky-50 to-white'>
+        <main className='flex-1 mt-[10px] sm:mt-[10px] md:mt-[-5px] bg-gradient-to-b from-white via-sky-50 to-white'>
           <About />
           <Valeur />
           <Partners />

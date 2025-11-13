@@ -59,7 +59,6 @@ const Connexion = () => {
           sizes='16x16'
           href='/paname-consulting.png'
         />
-        <link rel='manifest' href='/manifest.json' />
         <meta name='theme-color' content='#0369a1' />
       </Helmet>
 

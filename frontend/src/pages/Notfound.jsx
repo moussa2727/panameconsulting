@@ -50,7 +50,6 @@ const NotFound = () => {
         />
         <link rel='icon' href='/paname-consulting.jpg' />
         <link rel='apple-touch-icon' href='/paname-consulting.jpg' />
-        <link rel='manifest' href='/manifest.json' />
         <link rel='canonical' href='https://panameconsulting.com/' />
         <meta httpEquiv='X-UA-Compatible' content='IE=edge' />
         {/* Balises de contrôle d'indexation */}

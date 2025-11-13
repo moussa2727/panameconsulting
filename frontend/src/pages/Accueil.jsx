@@ -57,7 +57,6 @@ function Accueil() {
           />
           <link rel='icon' href='/paname-consulting.ico' type='image/x-icon' />
           <link rel='apple-touch-icon' href='/paname-consulting.ico' />
-          <link rel='manifest' href='/manifest.json' />
           <link rel='canonical' href='https://panameconsulting.com/' />
 
           {/* Balises Open Graph pour le partage social */}
