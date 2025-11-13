@@ -27,7 +27,7 @@ const Connexion = () => {
         <meta property='og:type' content='website' />
         <meta
           property='og:image'
-          content='https://panameconsulting.com/paname-consulting.jpg'
+          content='https://panameconsulting.vercel.app/paname-consulting.jpg'
         />
         <meta property='og:image:alt' content='Logo Paname Consulting' />
 
@@ -37,7 +37,7 @@ const Connexion = () => {
         <meta name='twitter:description' content={pageDescription} />
         <meta
           name='twitter:image'
-          content='https://panameconsulting.com/paname-consulting.jpg'
+          content='https://panameconsulting.vercel.app/paname-consulting.jpg'
         />
 
         {/* Favicon et icônes */}
@@ -59,6 +59,7 @@ const Connexion = () => {
           sizes='16x16'
           href='/paname-consulting.png'
         />
+        <link rel='manifest' href='/manifest.json' />
         <meta name='theme-color' content='#0369a1' />
       </Helmet>
 
