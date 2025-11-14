@@ -673,54 +673,64 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // NE PAS sauvegarder dans le sessionStorage
   }, []);
 
-  // === VÉRIFICATION D'AUTHENTIFICATION ===
-
   const checkAuth = useCallback(async (): Promise<void> => {
-    const savedToken = localStorage.getItem('token');
-    
-    if (!savedToken) {
-      saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
-        sessionStart: Date.now(),
-        sessionId: crypto.randomUUID?.(),
-        userAgent: navigator.userAgent.substring(0, 100),
-        hasActiveSession: false
-      });
-      setIsLoading(false);
-      return;
-    }
+  const savedToken = localStorage.getItem('token');
+  
+  if (!savedToken) {
+    saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
+      sessionStart: Date.now(),
+      sessionId: crypto.randomUUID?.(),
+      userAgent: navigator.userAgent.substring(0, 100),
+      hasActiveSession: false
+    });
+    setIsLoading(false);
+    return;
+  }
 
-    try {
-      const decoded = jwtDecode<JwtPayload>(savedToken);
-      const isTokenExpired = decoded.exp * 1000 < Date.now();
+  try {
+    const decoded = jwtDecode<JwtPayload>(savedToken);
+    const isTokenExpired = decoded.exp * 1000 < Date.now();
 
-      if (isTokenExpired) {
-        console.log("⏰ Token expiré, tentative de rafraîchissement...");
-        const refreshed = await refreshTokenFunction();
-        if (!refreshed) {
-          console.log("❌ Impossible de rafraîchir le token, déconnexion...");
-          logout('/', true);
-          return;
-        }
-      } else {
-        // Toujours récupérer les données utilisateur depuis l'API
+    if (isTokenExpired) {
+      console.log("⏰ Token expiré, tentative de rafraîchissement...");
+      const refreshed = await refreshTokenFunction();
+      if (!refreshed) {
+        console.log("❌ Impossible de rafraîchir le token, déconnexion...");
+        await logout('/', true);
+        return;
+      }
+    } else {
+      // 🔥 GESTION AMÉLIORÉE DU RATE LIMITING
+      try {
         await fetchUserData(savedToken);
         setupTokenRefresh(decoded.exp);
+      } catch (fetchError: any) {
+        if (fetchError.message?.includes('429') || fetchError.message?.includes('Too Many Requests')) {
+          console.warn('⏰ Rate limiting détecté, maintien de la session temporaire');
+          // Ne pas déconnecter immédiatement pour rate limiting
+          setupTokenRefresh(decoded.exp);
+        } else {
+          throw fetchError;
+        }
       }
-    } catch (error) {
-      console.error('❌ Erreur vérification auth:', error);
-      
-      if (error instanceof Error && (error.message.includes('429') || error.message.includes('Trop de'))) {
-        console.warn('⏰ Rate limiting lors de la vérification auth, maintien de la session');
-        setIsLoading(false);
-      } else if (error instanceof Error && !error.message.includes('429')) {
-        logout('/', true);
-      } else {
-        setIsLoading(false);
-      }
-    } finally {
+    }
+  } catch (error) {
+    console.error('❌ Erreur vérification auth:', error);
+    
+    // 🔥 DÉCONNEXION SEULEMENT POUR LES ERREURS CRITIQUES
+    if (error instanceof Error && 
+        !error.message.includes('429') && 
+        !error.message.includes('Too Many Requests') &&
+        !error.message.includes('Timeout')) {
+      await logout('/', true);
+    } else {
       setIsLoading(false);
     }
-  }, [fetchUserData, refreshTokenFunction, setupTokenRefresh, saveToSession]);
+  } finally {
+    setIsLoading(false);
+  }
+}, [fetchUserData, refreshTokenFunction, setupTokenRefresh, saveToSession]);
+
 
   // === OPÉRATIONS D'AUTHENTIFICATION ===
 
@@ -982,77 +992,113 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [VITE_API_URL, navigate, removeFromSession, handleRateLimit, resetRateLimit]);
 
+
+
   const logout = useCallback(async (redirectPath?: string, silent?: boolean): Promise<void> => {
-    const tokenToRevoke = token || localStorage.getItem('token');
+  const tokenToRevoke = token || localStorage.getItem('token');
+  
+  // Nettoyer tous les brouillons à la déconnexion
+  const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
+  Object.keys(metadata).forEach(formId => {
+    removeFromSession(`${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`);
+  });
+  removeFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA);
+
+  // 🔥 SUPPRESSION COMPLÈTE DES TOKENS DU STOCKAGE LOCAL
+  localStorage.removeItem('token');
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+  
+  setToken(null);
+  setUser(null);
+  setError(null);
+
+  resetRateLimit();
+
+  // 🔥 NETTOYAGE COMPLET DES COOKIES
+  const cookies = [
+    'access_token', 'refresh_token', 'token', 'auth_token'
+  ];
+  
+  cookies.forEach(cookieName => {
+    document.cookie = `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+    document.cookie = `${cookieName}=; Path=/; Domain=localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+    document.cookie = `${cookieName}=; Path=/; Domain=.localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
     
-    // Nettoyer tous les brouillons à la déconnexion
-    const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
-    Object.keys(metadata).forEach(formId => {
-      removeFromSession(`${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`);
-    });
-    removeFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA);
-
-    localStorage.removeItem('token');
-    setToken(null);
-    setUser(null);
-    setError(null);
-
-    resetRateLimit();
-
-    document.cookie = 'access_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-    document.cookie = 'refresh_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-    
-    if (process.env.NODE_ENV === 'development') {
-      document.cookie = 'access_token=; Path=/; Domain=localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-      document.cookie = 'refresh_token=; Path=/; Domain=localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    if (process.env.NODE_ENV === 'production') {
+      document.cookie = `${cookieName}=; Path=/; Domain=.panameconsulting.com; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+      document.cookie = `${cookieName}=; Path=/; Domain=panameconsulting.com; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
     }
+  });
 
-    if (refreshTimeoutRef.current) {
-      window.clearTimeout(refreshTimeoutRef.current);
-      refreshTimeoutRef.current = null;
+  // Nettoyer les timeouts
+  if (refreshTimeoutRef.current) {
+    window.clearTimeout(refreshTimeoutRef.current);
+    refreshTimeoutRef.current = null;
+  }
+
+  if (checkIntervalRef.current) {
+    window.clearInterval(checkIntervalRef.current);
+    checkIntervalRef.current = null;
+  }
+
+  if (rateLimitRetryTimeoutRef.current) {
+    window.clearTimeout(rateLimitRetryTimeoutRef.current);
+    rateLimitRetryTimeoutRef.current = null;
+  }
+
+  if (cleanupIntervalRef.current) {
+    window.clearInterval(cleanupIntervalRef.current);
+    cleanupIntervalRef.current = null;
+  }
+
+  // Appel API de déconnexion (si pas silent et token présent)
+  if (!silent && tokenToRevoke) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      await fetch(`${VITE_API_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${tokenToRevoke}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+    } catch (error) {
+      console.warn('⚠️ Erreur lors de la déconnexion API:', error);
+
     }
+  }
 
-    if (checkIntervalRef.current) {
-      window.clearInterval(checkIntervalRef.current);
-      checkIntervalRef.current = null;
+  // Mettre à jour les métadonnées de session
+  saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
+    sessionStart: Date.now(),
+    sessionId: crypto.randomUUID?.(),
+    userAgent: navigator.userAgent.substring(0, 100),
+    hasActiveSession: false,
+    loggedOutAt: new Date().toISOString()
+  });
+
+  // Nettoyer les données sensibles
+  cleanupExpiredFormDrafts();
+  
+  // 🔥 FORCER LA NAVIGATION AVEC REMPLACEMENT
+  navigate(redirectPath ?? '/', { 
+    replace: true,
+    state: {
+      from: 'logout',
+      timestamp: Date.now()
     }
-
-    if (rateLimitRetryTimeoutRef.current) {
-      window.clearTimeout(rateLimitRetryTimeoutRef.current);
-      rateLimitRetryTimeoutRef.current = null;
-    }
-
-    if (!silent && tokenToRevoke) {
-      try {
-        const response = await fetch(`${VITE_API_URL}/api/auth/logout`, {
-          method: 'POST',
-          headers: { 
-            'Authorization': `Bearer ${tokenToRevoke}`,
-            'Content-Type': 'application/json'
-          },
-          credentials: 'include'
-        });
-
-        if (!response.ok) {
-          console.warn('⚠️ Erreur lors de la déconnexion API');
-        }
-      } catch (error) {
-        console.warn('⚠️ Erreur réseau lors de la déconnexion API:', error);
-      }
-    }
-
-    saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
-      sessionStart: Date.now(),
-      sessionId: crypto.randomUUID?.(),
-      userAgent: navigator.userAgent.substring(0, 100),
-      hasActiveSession: false
-    });
-
-    // Nettoyer les données sensibles
-    cleanupExpiredFormDrafts();
-    
-    navigate(redirectPath ?? '/', { replace: true });
-  }, [VITE_API_URL, token, navigate, saveToSession, cleanupExpiredFormDrafts, removeFromSession, resetRateLimit, getFromSession]);
+  });
+  
+  // 🔥 FORCER UN RE-RENDER COMPLET
+  window.dispatchEvent(new Event('storage'));
+}, [VITE_API_URL, token, navigate, saveToSession, cleanupExpiredFormDrafts, removeFromSession, resetRateLimit, getFromSession]);
 
   // === EFFETS ET INITIALISATION ===
 

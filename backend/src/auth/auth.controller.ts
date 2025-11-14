@@ -43,100 +43,113 @@ export class AuthController {
         private usersService: UsersService
     ) { }
 
- @Post('login')
-@UseGuards(ThrottleGuard, LocalAuthGuard)
-@ApiOperation({ summary: 'Connexion utilisateur' })
-@ApiResponse({ status: 200, description: 'Connexion réussie' })
-@ApiResponse({ status: 401, description: 'Identifiants invalides' })
-async login(
-    @Body() loginDto: LoginDto,
-    @Request() req: { user: any },
-    @Res() res: Response
-) {
-    const result = await this.authService.login(req.user);
-    
-    // Configuration des cookies avec bon typage
-    const cookieOptions: any = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
-    };
+    @Post('login')
+    @UseGuards(ThrottleGuard, LocalAuthGuard)
+    @ApiOperation({ summary: 'Connexion utilisateur' })
+    @ApiResponse({ status: 200, description: 'Connexion réussie' })
+    @ApiResponse({ status: 401, description: 'Identifiants invalides' })
+    async login(
+        @Body() loginDto: LoginDto,
+        @Request() req: { user: any },
+        @Res() res: Response
+    ) {
+        const result = await this.authService.login(req.user);
+        
+        // Configuration des cookies avec bon typage
+        const cookieOptions: any = {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
+                
+        };
 
-    res.cookie('refresh_token', result.refreshToken, {
-        ...cookieOptions,
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
-    });
-
-    res.cookie('access_token', result.accessToken, {
-        ...cookieOptions,
-        httpOnly: false,
-        maxAge: 15 * 60 * 1000 // 15 minutes
-    });
-
-    return res.json({
-        accessToken: result.accessToken,
-        user: result.user,
-        message: 'Connexion réussie'
-    });
-}
-
-@Post('cookie-consent')
-  @ApiOperation({ summary: 'Définir le consentement des cookies' })
-  @ApiResponse({ status: 200, description: 'Préférence de cookie enregistrée' })
-  setCookieConsent(
-    @Body() cookieConsentDto: CookieConsentDto,
-    @Res() res: Response
-  ) {
-    const { accepted } = cookieConsentDto;
-    res.cookie('cookie_consent', accepted ? 'true' : 'false', {
-      httpOnly: false,
-      secure: true,
-      sameSite: 'none',
-      maxAge: 1000 * 60 * 60 * 24 * 90, // 90 jours (3 mois)
-    });
-    return res.json({ success: true });
-  }
-
-@Post('refresh')
-@ApiOperation({ summary: 'Rafraîchir le token' })
-@ApiResponse({ status: 200, description: 'Token rafraîchi' })
-@ApiResponse({ status: 401, description: 'Refresh token invalide' })
-async refresh(@Req() req: CustomRequest, @Body() body: any, @Res() res: Response) {
-    const refreshToken = body?.refreshToken || req.cookies?.refresh_token;
-    const result = await this.authService.refresh(refreshToken);
-
-    if ((result as any)?.sessionExpired) {
-        res.clearCookie('refresh_token');
-        res.clearCookie('access_token');
-        return res.json({ loggedOut: true });
-    }
-
-    const cookieOptions: any = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
-    };
-
-    if (result.refreshToken) {
         res.cookie('refresh_token', result.refreshToken, {
             ...cookieOptions,
-            maxAge: 7 * 24 * 60 * 60 * 1000
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
+        });
+
+        res.cookie('access_token', result.accessToken, {
+            ...cookieOptions,
+            httpOnly: false,
+            maxAge: 15 * 60 * 1000 // 15 minutes
+        });
+
+        return res.json({
+            accessToken: result.accessToken,
+            user: result.user,
+            message: 'Connexion réussie'
         });
     }
 
-    res.cookie('access_token', result.accessToken, {
-        ...cookieOptions,
-        httpOnly: false,
-        maxAge: 15 * 60 * 1000
-    });
+    @Post('cookie-consent')
+    @ApiOperation({ summary: 'Définir le consentement des cookies' })
+    @ApiResponse({ status: 200, description: 'Préférence de cookie enregistrée' })
+    @ApiResponse({ status: 400, description: 'Données invalides' })
+    async setCookieConsent(
+        @Body() cookieConsentDto: CookieConsentDto,
+        @Res() res: Response
+    ) {
+        const { accepted } = cookieConsentDto;
+        const FOUR_WEEKS_IN_MS = 4 * 7 * 24 * 60 * 60 * 1000; // 4 semaines en millisecondes
 
-    return res.json({
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken
-    });
-}
+        // Configuration des cookies
+        const cookieOptions: any = {
+            httpOnly: false,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            maxAge: FOUR_WEEKS_IN_MS, // 🔥 4 semaines
+            domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
+        };
+
+        // Définir le cookie de consentement
+        res.cookie('cookie_consent', accepted ? 'true' : 'false', cookieOptions);
+
+        return res.json({ 
+            success: true,
+            message: `Consentement ${accepted ? 'accepté' : 'refusé'} enregistré`
+        });
+    }
+
+    @Post('refresh')
+    @ApiOperation({ summary: 'Rafraîchir le token' })
+    @ApiResponse({ status: 200, description: 'Token rafraîchi' })
+    @ApiResponse({ status: 401, description: 'Refresh token invalide' })
+    async refresh(@Req() req: CustomRequest, @Body() body: any, @Res() res: Response) {
+        const refreshToken = body?.refreshToken || req.cookies?.refresh_token;
+        const result = await this.authService.refresh(refreshToken);
+
+        if ((result as any)?.sessionExpired) {
+            res.clearCookie('refresh_token');
+            res.clearCookie('access_token');
+            return res.json({ loggedOut: true });
+        }
+
+        const cookieOptions: any = {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com'  : undefined
+        };
+
+        if (result.refreshToken) {
+            res.cookie('refresh_token', result.refreshToken, {
+                ...cookieOptions,
+                maxAge: 7 * 24 * 60 * 60 * 1000
+            });
+        }
+
+        res.cookie('access_token', result.accessToken, {
+            ...cookieOptions,
+            httpOnly: false,
+            maxAge: 15 * 60 * 1000
+        });
+
+        return res.json({
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken
+        });
+    }
 
     @Post('register')
     @ApiOperation({ summary: 'Inscription utilisateur' })
@@ -185,34 +198,34 @@ async refresh(@Req() req: CustomRequest, @Body() body: any, @Res() res: Response
     }
 
     @Patch('me')
-@UseGuards(JwtAuthGuard)
-@ApiOperation({ summary: 'Mettre à jour le profil utilisateur' })
-async updateProfile(
-  @Request() req: any,
-  @Body() updateUserDto: UpdateUserDto
-) {
-  const updatedUser = await this.usersService.update(req.user.sub, updateUserDto);
-  return {
-    id: updatedUser._id,
-    email: updatedUser.email,
-    firstName: updatedUser.firstName,
-    lastName: updatedUser.lastName,
-    role: updatedUser.role,
-    telephone: updatedUser.telephone,
-    isActive: updatedUser.isActive
-  };
-}
+    @UseGuards(JwtAuthGuard)
+    @ApiOperation({ summary: 'Mettre à jour le profil utilisateur' })
+    async updateProfile(
+        @Request() req: any,
+        @Body() updateUserDto: UpdateUserDto
+    ) {
+        const updatedUser = await this.usersService.update(req.user.sub, updateUserDto);
+        return {
+            id: updatedUser._id,
+            email: updatedUser.email,
+            firstName: updatedUser.firstName,
+            lastName: updatedUser.lastName,
+            role: updatedUser.role,
+            telephone: updatedUser.telephone,
+            isActive: updatedUser.isActive
+        };
+    }
 
-   @Post('forgot-password')
-@ApiOperation({ summary: 'Demande de réinitialisation de mot de passe' })
-@ApiResponse({ status: 200, description: 'Email envoyé si l\'utilisateur existe' })
-@ApiResponse({ status: 400, description: 'Données invalides' })
-async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
-    await this.authService.sendPasswordResetEmail(forgotPasswordDto.email);
-    return { 
-        message: 'Si votre email est enregistré, vous recevrez un lien de réinitialisation' 
-    };
-}
+    @Post('forgot-password')
+    @ApiOperation({ summary: 'Demande de réinitialisation de mot de passe' })
+    @ApiResponse({ status: 200, description: 'Email envoyé si l\'utilisateur existe' })
+    @ApiResponse({ status: 400, description: 'Données invalides' })
+    async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+        await this.authService.sendPasswordResetEmail(forgotPasswordDto.email);
+        return { 
+            message: 'Si votre email est enregistré, vous recevrez un lien de réinitialisation' 
+        };
+    }
 
     @Post('reset-password')
     @ApiOperation({ summary: 'Réinitialiser le mot de passe' })

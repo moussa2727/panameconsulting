@@ -21,6 +21,7 @@ import { CreateContactDto } from './dto/create-contact.dto';
 export class ContactController {
     constructor(private readonly contactService: ContactService) { }
 
+    // 📧 Envoyer un message (public)
     @Post()
     async create(@Body() createContactDto: CreateContactDto) {
         const contact = await this.contactService.create(createContactDto);
@@ -30,6 +31,7 @@ export class ContactController {
         };
     }
 
+    // 📋 Récupérer tous les messages (admin seulement)
     @Get()
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)
@@ -42,6 +44,7 @@ export class ContactController {
         return this.contactService.findAll(page, limit, isRead, search);
     }
 
+    // 📊 Statistiques (admin seulement)
     @Get('stats')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)
@@ -49,6 +52,7 @@ export class ContactController {
         return this.contactService.getStats();
     }
 
+    // 👁️ Voir un message spécifique (admin seulement)
     @Get(':id')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)
@@ -56,6 +60,7 @@ export class ContactController {
         return this.contactService.findOne(id);
     }
 
+    // ✅ Marquer comme lu (admin seulement)
     @Patch(':id/read')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)
@@ -67,6 +72,7 @@ export class ContactController {
         };
     }
 
+    // 📩 Répondre à un message (admin seulement)
     @Post(':id/reply')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)
@@ -86,6 +92,7 @@ export class ContactController {
         };
     }
 
+    // 🗑️ Supprimer un message (admin seulement)
     @Delete(':id')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)

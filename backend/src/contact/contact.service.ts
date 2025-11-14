@@ -9,7 +9,7 @@ import { Model } from 'mongoose';
 import { Contact } from '../schemas/contact.schema';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { NotificationService } from '../notification/notification.service';
-import { UserRole } from '@/schemas/user.schema';
+import { UserRole } from '../schemas/user.schema';
 
 @Injectable()
 export class ContactService {
@@ -20,38 +20,40 @@ export class ContactService {
         private notificationService: NotificationService
     ) {}
 
-    // Dans contact.service.ts
-async create(createContactDto: CreateContactDto): Promise<Contact> {
-    try {
-       
-
-        this.logger.log(`Nouveau message de contact reçu de ${createContactDto.email}`);
-        // ENVOYER LES NOTIFICATIONS APRÈS LA SAUVEGARDE
+    // 📨 Créer un nouveau message de contact
+    async create(createContactDto: CreateContactDto): Promise<Contact> {
         try {
-            await this.notificationService.sendContactNotification(createContactDto as Contact);
-            await this.notificationService.sendContactConfirmation(createContactDto as Contact);
-        } catch (notificationError) {
-            // Logger l'erreur mais ne pas faire échouer la création du contact
-            this.logger.error(`Erreur lors de l'envoi des notifications: ${notificationError.message}`);
-        }
-        const createdContact = new this.contactModel(createContactDto);
-        const savedContact = await createdContact.save(); // SAUVEGARDE D'ABORD
-        return savedContact;
-    } catch (error) {
-        this.logger.error(`Erreur lors de la création du contact: ${error.message}`);
-        throw new BadRequestException('Erreur lors de l\'envoi du message');
-    }
-}
+            this.logger.log(`Nouveau message de contact reçu de ${createContactDto.email}`);
+            
+            const createdContact = new this.contactModel(createContactDto);
+            const savedContact = await createdContact.save();
 
+            // Envoyer les notifications après la sauvegarde
+            try {
+                await this.notificationService.sendContactNotification(savedContact);
+                await this.notificationService.sendContactConfirmation(savedContact);
+            } catch (notificationError) {
+                this.logger.error(`Erreur lors de l'envoi des notifications: ${notificationError.message}`);
+            }
+
+            return savedContact;
+        } catch (error) {
+            this.logger.error(`Erreur lors de la création du contact: ${error.message}`);
+            throw new BadRequestException('Erreur lors de l\'envoi du message');
+        }
+    }
+
+    // 📋 Récupérer tous les messages avec pagination et filtres
     async findAll(
         page: number = 1,
         limit: number = 10,
         isRead?: boolean,
         search?: string
-    ): Promise<{ data: Contact[]; total: number; }> {
+    ): Promise<{ data: Contact[]; total: number; page: number; limit: number; }> {
         try {
             const skip = (page - 1) * limit;
             
+            // Construction des filtres
             const filters: any = {};
             if (isRead !== undefined) filters.isRead = isRead;
             if (search) {
@@ -63,21 +65,28 @@ async create(createContactDto: CreateContactDto): Promise<Contact> {
                 ];
             }
 
-            const data = await this.contactModel.find(filters)
-                .skip(skip)
-                .limit(limit)
-                .sort({ createdAt: -1 })
-                .exec();
+            const [data, total] = await Promise.all([
+                this.contactModel.find(filters)
+                    .skip(skip)
+                    .limit(limit)
+                    .sort({ createdAt: -1 })
+                    .exec(),
+                this.contactModel.countDocuments(filters)
+            ]);
             
-            const total = await this.contactModel.countDocuments(filters);
-            
-            return { data, total };
+            return { 
+                data, 
+                total,
+                page,
+                limit
+            };
         } catch (error) {
             this.logger.error(`Erreur lors de la récupération des contacts: ${error.message}`);
             throw error;
         }
     }
 
+    // 👁️ Récupérer un message spécifique
     async findOne(id: string): Promise<Contact> {
         try {
             const contact = await this.contactModel.findById(id).exec();
@@ -91,6 +100,7 @@ async create(createContactDto: CreateContactDto): Promise<Contact> {
         }
     }
 
+    // ✅ Marquer un message comme lu
     async markAsRead(id: string): Promise<Contact> {
         try {
             const contact = await this.contactModel.findByIdAndUpdate(
@@ -111,8 +121,10 @@ async create(createContactDto: CreateContactDto): Promise<Contact> {
         }
     }
 
+    // 📩 Répondre à un message (admin seulement)
     async replyToMessage(id: string, reply: string, user: any): Promise<Contact> {
         try {
+            // Vérification des droits admin
             if (!user || user.role !== UserRole.ADMIN) {
                 throw new BadRequestException('Accès refusé : admin requis');
             }
@@ -126,6 +138,7 @@ async create(createContactDto: CreateContactDto): Promise<Contact> {
                 throw new NotFoundException('Message de contact non trouvé');
             }
 
+            // Mise à jour du message avec la réponse
             const updatedContact = await this.contactModel.findByIdAndUpdate(
                 id,
                 {
@@ -141,7 +154,7 @@ async create(createContactDto: CreateContactDto): Promise<Contact> {
                 throw new NotFoundException('Erreur lors de la mise à jour du message');
             }
 
-            // Envoyer la réponse depuis EMAIL_USER vers contact.email
+            // Envoyer la réponse par email
             await this.notificationService.sendContactReply(updatedContact, reply);
 
             this.logger.log(`Réponse envoyée au contact ${contact.email} par l'admin ${user.email}`);
@@ -152,6 +165,7 @@ async create(createContactDto: CreateContactDto): Promise<Contact> {
         }
     }
 
+    // 🗑️ Supprimer un message
     async remove(id: string): Promise<void> {
         try {
             const result = await this.contactModel.findByIdAndDelete(id).exec();
@@ -166,6 +180,7 @@ async create(createContactDto: CreateContactDto): Promise<Contact> {
         }
     }
 
+    // 📊 Obtenir les statistiques des messages
     async getStats(): Promise<{
         total: number;
         unread: number;

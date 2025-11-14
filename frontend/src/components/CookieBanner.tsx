@@ -53,15 +53,18 @@ export default function CookieBanner() {
     setLastSubmissionTime(now);
 
     try {
+      // 🔥 CORRECTION : 4 semaines = 28 jours côté client aussi
+      const FOUR_WEEKS_IN_DAYS = 28;
+      
       // Mise à jour locale d'abord pour une meilleure expérience utilisateur
       Cookies.set("cookie_consent", String(accepted), { 
-        expires: 180,
+        expires: FOUR_WEEKS_IN_DAYS, // 🔥 4 semaines
         sameSite: 'strict',
         secure: window.location.protocol === 'https:'
       });
 
-      // Synchronisation avec le backend
-      const response = await fetch(`${API_URL}/auth/cookie-consent`, {
+      // URL corrigée et données simplifiées
+      const response = await fetch(`${API_URL}/api/auth/cookie-consent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -69,8 +72,7 @@ export default function CookieBanner() {
         },
         credentials: 'include',
         body: JSON.stringify({ 
-          accepted,
-          timestamp: new Date().toISOString()
+          accepted
         })
       });
 
@@ -88,7 +90,7 @@ export default function CookieBanner() {
       if (data.success) {
         setToast({
           show: true,
-          message: data.message || "Vos préférences de confidentialité ont été mises à jour avec succès.",
+          message: data.message || "Vos préférences de confidentialité ont été mises à jour avec succès pour 4 semaines.",
           type: 'success'
         });
         setVisible(false);
@@ -138,7 +140,7 @@ export default function CookieBanner() {
                     rel="noopener noreferrer"
                   >
                     politique de confidentialité
-                  </a>.
+                  </a>. Votre consentement sera valide pendant 4 semaines.
                 </p>
               </div>
               
