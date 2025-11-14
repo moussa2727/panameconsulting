@@ -55,7 +55,7 @@ const Destination = () => {
   const [loading, setLoading] = useState(true);
 
 const getFullImageUrl = (imagePath: string) => {
-  if (!imagePath) return '/placeholder-image.jpg';
+  if (!imagePath) return '/placeholder-image.avif';
   
   // Si c'est une URL complète (http/data:)
   if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
