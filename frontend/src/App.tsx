@@ -68,7 +68,7 @@ const MinimalLayout = ({ children }: { children: React.ReactNode }) => {
 function App() {
   const location = useLocation();
   const [navigationKey, setNavigationKey] = useState(0);
-  const { isLoading, isAuthenticated, user } = useAuth();
+  const { isLoading, isAuthenticated, user, saveToSession } = useAuth(); // ✅ Hook au niveau racine
   const [isAOSInitialized, setIsAOSInitialized] = useState(false);
 
   const safeScrollToTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
@@ -82,9 +82,8 @@ function App() {
     }
   }, []);
 
-  // 🔥 SAUVEGARDE DE LA REDIRECTION POUR APRÈS CONNEXION
+  // 🔥 CORRECTION: Sauvegarde de la redirection avec hook utilisé correctement
   useEffect(() => {
-    // Ne sauvegarder que pour les routes publiques qui nécessitent une authentification
     const shouldSaveRedirect = !isAuthenticated && 
       !location.pathname.startsWith('/connexion') &&
       !location.pathname.startsWith('/inscription') &&
@@ -92,10 +91,9 @@ function App() {
       location.pathname !== '/';
 
     if (shouldSaveRedirect) {
-      const { saveToSession } = useAuth();
       saveToSession('auth_redirect_path', location.pathname);
     }
-  }, [location.pathname, isAuthenticated]);
+  }, [location.pathname, isAuthenticated, saveToSession]);
 
   // Gestion du scroll en haut lors du changement de route
   useEffect(() => {
@@ -175,7 +173,7 @@ function App() {
             </MinimalLayout>
           } />
 
-          {/* 🔥 REDIRECTIONS UNIFORMISÉES POUR L'AUTHENTIFICATION */}
+          {/* Redirections uniformisées pour l'authentification */}
           <Route path='/connexion' element={
             isAuthenticated ? (
               <Navigate to={user?.role === 'admin' || user?.isAdmin ? '/gestionnaire/statistiques' : '/'} replace />
@@ -206,7 +204,7 @@ function App() {
             )
           } />
 
-          {/* 🔥 ROUTES UTILISATEUR CONNECTÉ - REDIRECTION SI NON AUTHENTIFIÉ */}
+          {/* Routes utilisateur connecté - redirection si non authentifié */}
           <Route path='/mes-rendez-vous' element={
             isAuthenticated ? (
               <MinimalLayout>
@@ -237,7 +235,7 @@ function App() {
             )
           } />
 
-          {/* 🔥 ADMINISTRATION - REDIRECTION SI NON ADMIN */}
+          {/* Administration - redirection si non admin */}
           <Route path='/gestionnaire/*' element={
             <RequireAdmin>
               <Suspense fallback={<Loader />}>
@@ -255,7 +253,7 @@ function App() {
             <Route path='rendez-vous' element={<AdminRendezVous />} />
           </Route>
 
-          {/* 🔥 REDIRECTIONS POUR COMPATIBILITÉ - UNIFORMISÉES */}
+          {/* Redirections pour compatibilité */}
           <Route path='/user-rendez-vous' element={<Navigate to="/mes-rendez-vous" replace />} />
           <Route path='/user-profile' element={<Navigate to="/mon-profil" replace />} />
           <Route path='/user-procedure' element={<Navigate to="/ma-procedure" replace />} />

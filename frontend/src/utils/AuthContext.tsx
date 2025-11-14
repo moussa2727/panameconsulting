@@ -301,7 +301,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return path;
   }, [getFromSession, removeFromSession]);
 
-const isValidRedirectPath = useCallback((path: string, user: User): boolean => {
+  const isValidRedirectPath = useCallback((path: string, user: User): boolean => {
   if (!path || typeof path !== 'string') return false;
   
   const allowedPaths = [
@@ -777,9 +777,9 @@ const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
       setToken(data.accessToken);
       
       const userWithRole: User = {
-      ...data.user,
-      isAdmin: data.user.role === 'admin' || data.user.isAdmin === true
-    };
+        ...data.user,
+        isAdmin: data.user.role === 'admin' || data.user.isAdmin === true
+      };
       setUser(userWithRole);
 
       const decoded = jwtDecode<JwtPayload>(data.accessToken);
