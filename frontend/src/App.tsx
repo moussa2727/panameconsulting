@@ -68,7 +68,7 @@ const MinimalLayout = ({ children }: { children: React.ReactNode }) => {
 function App() {
   const location = useLocation();
   const [navigationKey, setNavigationKey] = useState(0);
-  const { isLoading } = useAuth();
+  const { isLoading, isAuthenticated, user } = useAuth();
   const [isAOSInitialized, setIsAOSInitialized] = useState(false);
 
   const safeScrollToTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
@@ -81,6 +81,21 @@ function App() {
       window.scrollTo(0, 0);
     }
   }, []);
+
+  // 🔥 SAUVEGARDE DE LA REDIRECTION POUR APRÈS CONNEXION
+  useEffect(() => {
+    // Ne sauvegarder que pour les routes publiques qui nécessitent une authentification
+    const shouldSaveRedirect = !isAuthenticated && 
+      !location.pathname.startsWith('/connexion') &&
+      !location.pathname.startsWith('/inscription') &&
+      !location.pathname.startsWith('/mot-de-passe-oublie') &&
+      location.pathname !== '/';
+
+    if (shouldSaveRedirect) {
+      const { saveToSession } = useAuth();
+      saveToSession('auth_redirect_path', location.pathname);
+    }
+  }, [location.pathname, isAuthenticated]);
 
   // Gestion du scroll en haut lors du changement de route
   useEffect(() => {
@@ -111,6 +126,11 @@ function App() {
     setIsAOSInitialized(true);
   }, [isAOSInitialized]);
 
+  // Afficher le loader pendant le chargement
+  if (isLoading) {
+    return <Loader />;
+  }
+
   return (
     <ErrorBoundary>
       <Helmet>
@@ -119,7 +139,6 @@ function App() {
           name="description"
           content="Paname Consulting : expert en accompagnement étudiant à l'étranger, organisation de voyages d'affaires et demandes de visa. Conseil personnalisé pour votre réussite internationale."
         />
-
       </Helmet>
 
       <div key={navigationKey}>
@@ -156,45 +175,69 @@ function App() {
             </MinimalLayout>
           } />
 
-          {/* Authentification - layout minimal */}
+          {/* 🔥 REDIRECTIONS UNIFORMISÉES POUR L'AUTHENTIFICATION */}
           <Route path='/connexion' element={
-            <MinimalLayout>
-              <Connexion />
-            </MinimalLayout>
+            isAuthenticated ? (
+              <Navigate to={user?.role === 'admin' || user?.isAdmin ? '/gestionnaire/statistiques' : '/'} replace />
+            ) : (
+              <MinimalLayout>
+                <Connexion />
+              </MinimalLayout>
+            )
           } />
           
           <Route path='/inscription' element={
-            <MinimalLayout>
-              <Inscription />
-            </MinimalLayout>
+            isAuthenticated ? (
+              <Navigate to={user?.role === 'admin' || user?.isAdmin ? '/gestionnaire/statistiques' : '/'} replace />
+            ) : (
+              <MinimalLayout>
+                <Inscription />
+              </MinimalLayout>
+            )
           } />
           
           <Route path='/mot-de-passe-oublie' element={
-            <MinimalLayout>
-              <MotdePasseoublie />
-            </MinimalLayout>
+            isAuthenticated ? (
+              <Navigate to={user?.role === 'admin' || user?.isAdmin ? '/gestionnaire/statistiques' : '/'} replace />
+            ) : (
+              <MinimalLayout>
+                <MotdePasseoublie />
+              </MinimalLayout>
+            )
           } />
 
-          {/* Utilisateur connecté - layout minimal */}
+          {/* 🔥 ROUTES UTILISATEUR CONNECTÉ - REDIRECTION SI NON AUTHENTIFIÉ */}
           <Route path='/mes-rendez-vous' element={
-            <MinimalLayout>
-              <MesRendezVous />
-            </MinimalLayout>
+            isAuthenticated ? (
+              <MinimalLayout>
+                <MesRendezVous />
+              </MinimalLayout>
+            ) : (
+              <Navigate to="/connexion" replace state={{ from: location.pathname }} />
+            )
           } />
           
           <Route path='/mon-profil' element={
-            <MinimalLayout>
-              <UserProfile />
-            </MinimalLayout>
+            isAuthenticated ? (
+              <MinimalLayout>
+                <UserProfile />
+              </MinimalLayout>
+            ) : (
+              <Navigate to="/connexion" replace state={{ from: location.pathname }} />
+            )
           } />
           
           <Route path='/ma-procedure' element={
-            <MinimalLayout>
-              <UserProcedure />
-            </MinimalLayout>
+            isAuthenticated ? (
+              <MinimalLayout>
+                <UserProcedure />
+              </MinimalLayout>
+            ) : (
+              <Navigate to="/connexion" replace state={{ from: location.pathname }} />
+            )
           } />
 
-          {/* Administration */}
+          {/* 🔥 ADMINISTRATION - REDIRECTION SI NON ADMIN */}
           <Route path='/gestionnaire/*' element={
             <RequireAdmin>
               <Suspense fallback={<Loader />}>
@@ -212,10 +255,14 @@ function App() {
             <Route path='rendez-vous' element={<AdminRendezVous />} />
           </Route>
 
-          {/* Redirections pour compatibilité */}
+          {/* 🔥 REDIRECTIONS POUR COMPATIBILITÉ - UNIFORMISÉES */}
           <Route path='/user-rendez-vous' element={<Navigate to="/mes-rendez-vous" replace />} />
           <Route path='/user-profile' element={<Navigate to="/mon-profil" replace />} />
           <Route path='/user-procedure' element={<Navigate to="/ma-procedure" replace />} />
+          
+          {/* Redirection admin vers le dashboard */}
+          <Route path='/admin' element={<Navigate to="/gestionnaire/statistiques" replace />} />
+          <Route path='/gestionnaire' element={<Navigate to="/gestionnaire/statistiques" replace />} />
 
           {/* Route 404 */}
           <Route path='*' element={<NotFound />} />

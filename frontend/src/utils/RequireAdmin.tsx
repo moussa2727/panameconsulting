@@ -1,44 +1,64 @@
-import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from './AuthContext';
-import { toast } from 'react-toastify';
+import { useAuth } from '../utils/AuthContext';
 
-const RequireAdmin: React.FC<{ children: JSX.Element }> = ({ children }) => {
-  const { user, isLoading, isAuthenticated } = useAuth();
+interface RequireAdminProps {
+  children: React.ReactNode;
+}
+
+/**
+ * Composant de protection de route pour les administrateurs
+ * Redirige vers la page de connexion si non authentifié
+ * Redirige vers l'accueil si non administrateur
+ */
+const RequireAdmin = ({ children }: RequireAdminProps) => {
+  const { isAuthenticated, user, isLoading } = useAuth();
   const location = useLocation();
 
-  useEffect(() => {
-    // Debug pour voir l'état de l'authentification
-    console.log('RequireAdmin - État:', { 
-      isLoading, 
-      isAuthenticated,
-    });
-  }, [isLoading, isAuthenticated]);
-
-  // Afficher le loading seulement pendant le chargement initial
+  // Affichage du loader pendant la vérification
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-sky-600">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600 mx-auto mb-4"></div>
+          <p className="text-slate-600 dark:text-slate-400">Vérification des permissions...</p>
+        </div>
       </div>
     );
   }
 
-  // Vérification stricte après le chargement
-  if (!isAuthenticated || !user || user.role !== 'admin' || !user.isActive) {
-    console.log('RequireAdmin - Accès refusé:', { 
-      isAuthenticated,
-    });
-    
-    // Afficher un message d'erreur seulement si l'utilisateur est connecté mais pas admin
-    if (isAuthenticated && user && (user.role !== 'admin' || !user.isActive)) {
-      toast.error('Accès réservé aux administrateurs actifs');
-    }
-    
-    return <Navigate to="/" state={{ from: location }} replace />;
+  // Redirection si non authentifié
+  if (!isAuthenticated) {
+    return (
+      <Navigate 
+        to="/connexion" 
+        replace 
+        state={{ 
+          from: location.pathname,
+          message: 'Veuillez vous connecter pour accéder à cette page'
+        }} 
+      />
+    );
   }
 
-  return children;
+  // Vérification des droits administrateur
+  const isAdmin = user?.role === 'admin' || user?.isAdmin === true;
+  
+  // Redirection si non administrateur
+  if (!isAdmin) {
+    return (
+      <Navigate 
+        to="/" 
+        replace 
+        state={{ 
+          error: 'Accès non autorisé. Droits administrateur requis.',
+          from: location.pathname
+        }} 
+      />
+    );
+  }
+
+  // Rendu des enfants si tout est valide
+  return <>{children}</>;
 };
 
 export default RequireAdmin;

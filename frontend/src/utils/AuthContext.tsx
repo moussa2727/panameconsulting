@@ -23,6 +23,8 @@ interface AuthContextType {
   saveFormDraft: (formId: string, data: any, options?: FormDraftOptions) => void;
   getFormDraft: (formId: string) => any;
   clearFormDraft: (formId: string) => void;
+  saveRedirectPath: (path: string) => void;
+  getRedirectPath: () => string | null;
 }
 
 interface User {
@@ -75,7 +77,7 @@ interface FormDraftOptions {
   sensitiveFields?: string[];
 }
 
-// Clés autorisées pour le sessionStorage (whitelist stricte)
+// Clés autorisées pour le sessionStorage
 const ALLOWED_SESSION_KEYS = {
   REDIRECT_PATH: 'auth_redirect_path',
   LOGIN_TIMESTAMP: 'login_timestamp',
@@ -89,16 +91,12 @@ const ALLOWED_SESSION_KEYS = {
   FORM_DRAFTS_METADATA: 'form_drafts_metadata'
 } as const;
 
-// Clés interdites (blacklist étendue)
+// Clés interdites
 const SENSITIVE_KEYS = [
   'user_email', 'user_password', 'user_id', 'user_role',
   'jwt_token', 'access_token', 'refresh_token', 'personal_data',
   'auth_token', 'credentials', 'password', 'email', 'token',
-  'secret', 'private', 'key', 'bearer', 'authorization',
-  'profile', 'medical', 'health', 'financial', 'bank',
-  'social_security', 'id_card', 'passport', 'birth_date',
-  'address', 'phone_number', 'telephone', 'current_user',
-  'user_profile', 'user_data', 'personal_info'
+  'secret', 'private', 'key', 'bearer', 'authorization'
 ];
 
 // Champs sensibles à supprimer automatiquement
@@ -106,11 +104,9 @@ const SENSITIVE_FORM_FIELDS = [
   'email', 'password', 'confirmPassword', 'currentPassword',
   'phone', 'telephone', 'mobile', 'phoneNumber',
   'address', 'street', 'city', 'zipCode', 'postalCode',
-  'birthDate', 'birthday', 'age', 'socialSecurity',
+  'birthDate', 'birthday', 'socialSecurity',
   'idNumber', 'passport', 'securityAnswer', 'secretQuestion',
-  'bankAccount', 'iban', 'bic', 'creditCard', 'cvv',
-  'medicalInfo', 'healthData', 'insuranceNumber',
-  'taxNumber', 'vatNumber', 'salary', 'income'
+  'bankAccount', 'iban', 'bic', 'creditCard', 'cvv'
 ];
 
 // Configuration de sécurité
@@ -151,7 +147,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-  // === FONCTIONS SESSIONSTORAGE SÉCURISÉES (DÉPLACÉES EN PREMIER) ===
+  // === FONCTIONS SESSIONSTORAGE SÉCURISÉES ===
 
   const safeJsonParse = <T,>(jsonString: string | null, defaultValue: T): T => {
     try {
@@ -166,13 +162,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const lowerKey = key.toLowerCase();
     
-    // Blacklist étendue - bloquer toute clé contenant des termes sensibles
     if (SENSITIVE_KEYS.some(sensitive => lowerKey.includes(sensitive.toLowerCase()))) {
       console.warn(`🚨 Tentative de stockage de donnée sensible bloquée: ${key}`);
       return false;
     }
     
-    // Whitelist stricte
     const isAllowed = Object.values(ALLOWED_SESSION_KEYS).some(allowedKey => {
       if (key === allowedKey) return true;
       if (key.startsWith(ALLOWED_SESSION_KEYS.FORM_DRAFTS)) {
@@ -293,6 +287,60 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [getFromSession, saveToSession]);
 
+  // === FONCTIONS DE REDIRECTION UNIFORMISÉES ===
+
+  const saveRedirectPath = useCallback((path: string): void => {
+    if (path && typeof path === 'string') {
+      saveToSession(ALLOWED_SESSION_KEYS.REDIRECT_PATH, path);
+    }
+  }, [saveToSession]);
+
+  const getRedirectPath = useCallback((): string | null => {
+    const path = getFromSession(ALLOWED_SESSION_KEYS.REDIRECT_PATH);
+    removeFromSession(ALLOWED_SESSION_KEYS.REDIRECT_PATH);
+    return path;
+  }, [getFromSession, removeFromSession]);
+
+const isValidRedirectPath = useCallback((path: string, user: User): boolean => {
+  if (!path || typeof path !== 'string') return false;
+  
+  const allowedPaths = [
+    '/', '/services', '/contact', '/a-propos', '/rendez-vous',
+    '/mes-rendez-vous', '/mon-profil', '/ma-procedure'
+  ];
+  
+  const adminPaths = [
+    '/gestionnaire/statistiques', '/gestionnaire/utilisateurs',
+    '/gestionnaire/messages', '/gestionnaire/procedures',
+    '/gestionnaire/destinations', '/gestionnaire/rendez-vous',
+    '/gestionnaire/profil'
+  ];
+
+  // 🔥 CORRECTION : Gestion explicite du type boolean pour user.isAdmin
+  const isAllowed = allowedPaths.includes(path) || 
+    ((user.role === 'admin' || user.isAdmin === true) && adminPaths.some(adminPath => path.startsWith(adminPath)));
+
+  const isAuthRoute = [
+    '/connexion', '/inscription', '/mot-de-passe-oublie'
+  ].includes(path);
+
+  return isAllowed && !isAuthRoute;
+}, []);
+
+  const getRoleBasedRedirect = useCallback((user: User): string => {
+    const redirectPath = getRedirectPath();
+    
+    if (redirectPath && isValidRedirectPath(redirectPath, user)) {
+      return redirectPath;
+    }
+
+    if (user.role === 'admin' || user.isAdmin) {
+      return '/gestionnaire/statistiques';
+    }
+    
+    return '/';
+  }, [getRedirectPath, isValidRedirectPath]);
+
   // === FONCTIONS DE SÉCURITÉ DES BROUILLONS ===
 
   const sanitizeFormData = useCallback((data: any, sensitiveFields: string[] = SENSITIVE_FORM_FIELDS): any => {
@@ -306,7 +354,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       Object.keys(obj).forEach(key => {
         const lowerKey = key.toLowerCase();
         
-        // Supprimer les champs sensibles
         if (sensitiveFields.some(sensitive => 
           lowerKey.includes(sensitive.toLowerCase())
         )) {
@@ -314,7 +361,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return;
         }
         
-        // Nettoyer récursivement
         if (typeof obj[key] === 'object' && obj[key] !== null) {
           removeSensitiveFields(obj[key]);
         }
@@ -346,7 +392,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (now - draftMetadata.createdAt > ttl) {
           removeFromSession(`${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${key}`);
           delete metadata[key];
-          console.debug(`🧹 Brouillon expiré supprimé: ${key}`);
         }
       });
       
@@ -362,16 +407,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const { encrypt = false, ttl, sensitiveFields = SENSITIVE_FORM_FIELDS } = options;
       
-      // Validation du formId
       if (!formId || typeof formId !== 'string' || formId.length > 100) {
         console.warn('🚨 ID de formulaire invalide');
         return;
       }
       
-      // Nettoyage des données sensibles
       const sanitizedData = sanitizeFormData(data, sensitiveFields);
       
-      // Validation de la taille
       if (!validateFormDraftSize(sanitizedData)) {
         console.warn('🚨 Brouillon trop volumineux');
         return;
@@ -379,14 +421,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       const draftKey = `${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`;
       
-      // Sauvegarde des données
       saveToSession(draftKey, {
         data: sanitizedData,
         version: '1.0',
         sanitized: true
       });
       
-      // Métadonnées du brouillon
       const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
       metadata[formId] = {
         createdAt: Date.now(),
@@ -395,11 +435,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
       
       saveToSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA, metadata);
-      
-      console.debug(`💾 Brouillon sauvegardé: ${formId}`, { 
-        size: metadata[formId].size,
-        sanitized: true 
-      });
       
     } catch (error) {
       console.error('❌ Erreur sauvegarde brouillon:', error);
@@ -415,7 +450,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       if (!draft) return null;
       
-      // Vérifier l'expiration
       const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
       const draftMetadata = metadata[formId];
       
@@ -443,19 +477,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const draftKey = `${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`;
       removeFromSession(draftKey);
       
-      // Nettoyer les métadonnées
       const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
       delete metadata[formId];
       saveToSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA, metadata);
       
-      console.debug(`🗑️ Brouillon supprimé: ${formId}`);
     } catch (error) {
       console.error('❌ Erreur suppression brouillon:', error);
     }
   }, [removeFromSession, getFromSession, saveToSession]);
 
   // === FONCTIONS CORE D'AUTHENTIFICATION ===
-  const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
+
+const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
@@ -481,9 +514,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const userData: User = await response.json();
     
+    // 🔥 CORRECTION : Gestion explicite du type boolean
     const userWithRole: User = {
       ...userData,
-      isAdmin: userData.role === 'admin' || userData.isAdmin
+      isAdmin: userData.role === 'admin' || userData.isAdmin === true
     };
     
     setUser(userWithRole);
@@ -513,93 +547,70 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
-  if (refreshInFlightRef.current) {
-    console.log('🔄 Refresh déjà en cours, attente...');
-    return refreshInFlightRef.current;
-  }
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current;
+    }
 
-  console.log('🔄 Début du rafraîchissement du token...');
+    const refreshPromise = (async (): Promise<boolean> => {
+      try {
+        const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
 
-  const refreshPromise = (async (): Promise<boolean> => {
-    try {
-      const hasRefreshToken = document.cookie.includes('refresh_token');
-      console.log('🍪 Refresh token présent:', hasRefreshToken);
-      
-      const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+        if (!response.ok) {
+          if (response.status === 401) {
+            logout('/', true);
+            return false;
+          }
+          throw new Error(`Erreur ${response.status}`);
+        }
 
-      console.log('📡 Réponse refresh:', response.status, response.statusText);
-
-      if (!response.ok) {
-        console.error("❌ Échec du rafraîchissement:", response.status);
+        const data = await response.json();
         
-        if (response.status === 401) {
-          console.log('🔒 Refresh token invalide, déconnexion...');
+        if (data.loggedOut) {
           logout('/', true);
           return false;
         }
-        
-        throw new Error(`Erreur ${response.status}`);
-      }
 
-      const data = await response.json();
-      console.log('📦 Données refresh reçues');
-      
-      if (data.loggedOut) {
-        console.log("🔒 Session expirée côté serveur");
-        logout('/', true);
+        if (!data.accessToken) {
+          logout('/', true);
+          return false;
+        }
+
+        try {
+          const decoded = jwtDecode<JwtPayload>(data.accessToken);
+          setToken(data.accessToken);
+          
+          await fetchUserData(data.accessToken);
+          setupTokenRefresh(decoded.exp);
+          
+          return true;
+        } catch (validationError) {
+          console.error('❌ Token rafraîchi invalide:', validationError);
+          logout('/', true);
+          return false;
+        }
+      } catch (error: any) {
+        console.error('❌ Erreur rafraîchissement token:', error);
+        if (error.name !== 'AbortError') {
+          logout('/', true);
+        }
         return false;
       }
+    })();
 
-      if (!data.accessToken) {
-        console.error("❌ Token d'accès manquant");
-        logout('/', true);
-        return false;
-      }
-
-      try {
-        const decoded = jwtDecode<JwtPayload>(data.accessToken);
-        console.log('🔓 Nouveau token décodé');
-        
-        // CORRECTION : Vérification que le token est bien une string
-        const token = localStorage.getItem('token');
-        if (!token) {
-          // Gérer le cas où le token est null
-          throw new Error('Token non disponible');
-        }   
-        setToken(data.accessToken);
-        
-        await fetchUserData(data.accessToken);
-        setupTokenRefresh(decoded.exp);
-        
-        return true;
-      } catch (validationError) {
-        console.error('❌ Token rafraîchi invalide:', validationError);
-        logout('/', true);
-        return false;
-      }
-    } catch (error: any) {
-      console.error('❌ Erreur rafraîchissement token:', error);
-      if (error.name !== 'AbortError') {
-        logout('/', true);
-      }
-      return false;
+    refreshInFlightRef.current = refreshPromise;
+    
+    try {
+      return await refreshPromise;
+    } finally {
+      refreshInFlightRef.current = null;
     }
-  })();
-
-  refreshInFlightRef.current = refreshPromise;
-  
-  try {
-    return await refreshPromise;
-  } finally {
-    refreshInFlightRef.current = null;
-  }
-}, [VITE_API_URL, fetchUserData, setupTokenRefresh]);
+  }, [VITE_API_URL, fetchUserData, setupTokenRefresh]);
 
   // === GESTION DU RATE LIMITING ===
 
@@ -628,8 +639,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const nextRetryTime = rateLimitInfo.lastRetry + SECURITY_CONFIG.RATE_LIMIT_RETRY_DELAY;
       const waitTime = Math.ceil((nextRetryTime - now) / 1000);
       
-      console.warn(`⏰ Rate limit atteint pour ${operation}. Prochaine tentative dans ${waitTime}s`);
-      
       if (rateLimitInfo.retryCount >= SECURITY_CONFIG.MAX_RETRY_ATTEMPTS) {
         toast.error('Trop de tentatives. Veuillez réessayer dans quelques minutes.');
         setError('Trop de tentatives. Veuillez patienter.');
@@ -653,7 +662,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       retryCount: newRetryCount
     });
     
-    console.log(`🔄 Retry ${newRetryCount}/${SECURITY_CONFIG.MAX_RETRY_ATTEMPTS} pour ${operation}`);
     return true;
   }, [getRateLimitInfo, canRetryAfterRateLimit, setRateLimitInfo]);
 
@@ -670,67 +678,59 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const updateUserProfile = useCallback((updates: Partial<User>): void => {
     setUser(prev => prev ? { ...prev, ...updates } : null);
-    // NE PAS sauvegarder dans le sessionStorage
   }, []);
 
   const checkAuth = useCallback(async (): Promise<void> => {
-  const savedToken = localStorage.getItem('token');
-  
-  if (!savedToken) {
-    saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
-      sessionStart: Date.now(),
-      sessionId: crypto.randomUUID?.(),
-      userAgent: navigator.userAgent.substring(0, 100),
-      hasActiveSession: false
-    });
-    setIsLoading(false);
-    return;
-  }
+    const savedToken = localStorage.getItem('token');
+    
+    if (!savedToken) {
+      saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
+        sessionStart: Date.now(),
+        sessionId: crypto.randomUUID?.(),
+        userAgent: navigator.userAgent.substring(0, 100),
+        hasActiveSession: false
+      });
+      setIsLoading(false);
+      return;
+    }
 
-  try {
-    const decoded = jwtDecode<JwtPayload>(savedToken);
-    const isTokenExpired = decoded.exp * 1000 < Date.now();
+    try {
+      const decoded = jwtDecode<JwtPayload>(savedToken);
+      const isTokenExpired = decoded.exp * 1000 < Date.now();
 
-    if (isTokenExpired) {
-      console.log("⏰ Token expiré, tentative de rafraîchissement...");
-      const refreshed = await refreshTokenFunction();
-      if (!refreshed) {
-        console.log("❌ Impossible de rafraîchir le token, déconnexion...");
-        await logout('/', true);
-        return;
-      }
-    } else {
-      // 🔥 GESTION AMÉLIORÉE DU RATE LIMITING
-      try {
-        await fetchUserData(savedToken);
-        setupTokenRefresh(decoded.exp);
-      } catch (fetchError: any) {
-        if (fetchError.message?.includes('429') || fetchError.message?.includes('Too Many Requests')) {
-          console.warn('⏰ Rate limiting détecté, maintien de la session temporaire');
-          // Ne pas déconnecter immédiatement pour rate limiting
+      if (isTokenExpired) {
+        const refreshed = await refreshTokenFunction();
+        if (!refreshed) {
+          await logout('/', true);
+          return;
+        }
+      } else {
+        try {
+          await fetchUserData(savedToken);
           setupTokenRefresh(decoded.exp);
-        } else {
-          throw fetchError;
+        } catch (fetchError: any) {
+          if (fetchError.message?.includes('429') || fetchError.message?.includes('Too Many Requests')) {
+            setupTokenRefresh(decoded.exp);
+          } else {
+            throw fetchError;
+          }
         }
       }
-    }
-  } catch (error) {
-    console.error('❌ Erreur vérification auth:', error);
-    
-    // 🔥 DÉCONNEXION SEULEMENT POUR LES ERREURS CRITIQUES
-    if (error instanceof Error && 
-        !error.message.includes('429') && 
-        !error.message.includes('Too Many Requests') &&
-        !error.message.includes('Timeout')) {
-      await logout('/', true);
-    } else {
+    } catch (error) {
+      console.error('❌ Erreur vérification auth:', error);
+      
+      if (error instanceof Error && 
+          !error.message.includes('429') && 
+          !error.message.includes('Too Many Requests') &&
+          !error.message.includes('Timeout')) {
+        await logout('/', true);
+      } else {
+        setIsLoading(false);
+      }
+    } finally {
       setIsLoading(false);
     }
-  } finally {
-    setIsLoading(false);
-  }
-}, [fetchUserData, refreshTokenFunction, setupTokenRefresh, saveToSession]);
-
+  }, [fetchUserData, refreshTokenFunction, setupTokenRefresh, saveToSession]);
 
   // === OPÉRATIONS D'AUTHENTIFICATION ===
 
@@ -777,9 +777,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setToken(data.accessToken);
       
       const userWithRole: User = {
-        ...data.user,
-        isAdmin: data.user.role === 'admin' || data.user.isAdmin
-      };
+      ...data.user,
+      isAdmin: data.user.role === 'admin' || data.user.isAdmin === true
+    };
       setUser(userWithRole);
 
       const decoded = jwtDecode<JwtPayload>(data.accessToken);
@@ -794,9 +794,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       resetRateLimit();
 
-      const redirectPath = userWithRole.role === 'admin' || userWithRole.isAdmin
-        ? '/gestionnaire/statistiques' 
-        : '/';
+      // 🔥 REDIRECTION UNIFORMISÉE SELON LE RÔLE
+      const redirectPath = getRoleBasedRedirect(userWithRole);
       
       navigate(redirectPath, { replace: true });
       
@@ -811,7 +810,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [VITE_API_URL, navigate, setupTokenRefresh, saveToSession, handleRateLimit, resetRateLimit]);
+  }, [VITE_API_URL, navigate, setupTokenRefresh, saveToSession, handleRateLimit, resetRateLimit, getRoleBasedRedirect]);
 
   const register = useCallback(async (formData: RegisterFormData): Promise<void> => {
     setIsLoading(true);
@@ -992,127 +991,116 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [VITE_API_URL, navigate, removeFromSession, handleRateLimit, resetRateLimit]);
 
-
-
   const logout = useCallback(async (redirectPath?: string, silent?: boolean): Promise<void> => {
-  const tokenToRevoke = token || localStorage.getItem('token');
-  
-  // Nettoyer tous les brouillons à la déconnexion
-  const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
-  Object.keys(metadata).forEach(formId => {
-    removeFromSession(`${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`);
-  });
-  removeFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA);
-
-  // 🔥 SUPPRESSION COMPLÈTE DES TOKENS DU STOCKAGE LOCAL
-  localStorage.removeItem('token');
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
-  
-  setToken(null);
-  setUser(null);
-  setError(null);
-
-  resetRateLimit();
-
-  // 🔥 NETTOYAGE COMPLET DES COOKIES
-  const cookies = [
-    'access_token', 'refresh_token', 'token', 'auth_token'
-  ];
-  
-  cookies.forEach(cookieName => {
-    document.cookie = `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
-    document.cookie = `${cookieName}=; Path=/; Domain=localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
-    document.cookie = `${cookieName}=; Path=/; Domain=.localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+    const tokenToRevoke = token || localStorage.getItem('token');
     
-    if (process.env.NODE_ENV === 'production') {
-      document.cookie = `${cookieName}=; Path=/; Domain=.panameconsulting.com; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
-      document.cookie = `${cookieName}=; Path=/; Domain=panameconsulting.com; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+    // Nettoyer tous les brouillons à la déconnexion
+    const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
+    Object.keys(metadata).forEach(formId => {
+      removeFromSession(`${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`);
+    });
+    removeFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA);
+
+    // Supprimer les tokens du stockage local
+    localStorage.removeItem('token');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    
+    setToken(null);
+    setUser(null);
+    setError(null);
+
+    resetRateLimit();
+
+    // Nettoyer les cookies
+    const cookies = [
+      'access_token', 'refresh_token', 'token', 'auth_token'
+    ];
+    
+    cookies.forEach(cookieName => {
+      document.cookie = `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+      document.cookie = `${cookieName}=; Path=/; Domain=localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+    });
+
+    // Nettoyer les timeouts
+    if (refreshTimeoutRef.current) {
+      window.clearTimeout(refreshTimeoutRef.current);
+      refreshTimeoutRef.current = null;
     }
-  });
 
-  // Nettoyer les timeouts
-  if (refreshTimeoutRef.current) {
-    window.clearTimeout(refreshTimeoutRef.current);
-    refreshTimeoutRef.current = null;
-  }
-
-  if (checkIntervalRef.current) {
-    window.clearInterval(checkIntervalRef.current);
-    checkIntervalRef.current = null;
-  }
-
-  if (rateLimitRetryTimeoutRef.current) {
-    window.clearTimeout(rateLimitRetryTimeoutRef.current);
-    rateLimitRetryTimeoutRef.current = null;
-  }
-
-  if (cleanupIntervalRef.current) {
-    window.clearInterval(cleanupIntervalRef.current);
-    cleanupIntervalRef.current = null;
-  }
-
-  // Appel API de déconnexion (si pas silent et token présent)
-  if (!silent && tokenToRevoke) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      await fetch(`${VITE_API_URL}/api/auth/logout`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${tokenToRevoke}`,
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-    } catch (error) {
-      console.warn('⚠️ Erreur lors de la déconnexion API:', error);
-
+    if (checkIntervalRef.current) {
+      window.clearInterval(checkIntervalRef.current);
+      checkIntervalRef.current = null;
     }
-  }
 
-  // Mettre à jour les métadonnées de session
-  saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
-    sessionStart: Date.now(),
-    sessionId: crypto.randomUUID?.(),
-    userAgent: navigator.userAgent.substring(0, 100),
-    hasActiveSession: false,
-    loggedOutAt: new Date().toISOString()
-  });
-
-  // Nettoyer les données sensibles
-  cleanupExpiredFormDrafts();
-  
-  // 🔥 FORCER LA NAVIGATION AVEC REMPLACEMENT
-  navigate(redirectPath ?? '/', { 
-    replace: true,
-    state: {
-      from: 'logout',
-      timestamp: Date.now()
+    if (rateLimitRetryTimeoutRef.current) {
+      window.clearTimeout(rateLimitRetryTimeoutRef.current);
+      rateLimitRetryTimeoutRef.current = null;
     }
-  });
-  
-  // 🔥 FORCER UN RE-RENDER COMPLET
-  window.dispatchEvent(new Event('storage'));
-}, [VITE_API_URL, token, navigate, saveToSession, cleanupExpiredFormDrafts, removeFromSession, resetRateLimit, getFromSession]);
+
+    if (cleanupIntervalRef.current) {
+      window.clearInterval(cleanupIntervalRef.current);
+      cleanupIntervalRef.current = null;
+    }
+
+    // Appel API de déconnexion
+    if (!silent && tokenToRevoke) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        await fetch(`${VITE_API_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${tokenToRevoke}`,
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+      } catch (error) {
+        console.warn('⚠️ Erreur lors de la déconnexion API:', error);
+      }
+    }
+
+    // Mettre à jour les métadonnées de session
+    saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
+      sessionStart: Date.now(),
+      sessionId: crypto.randomUUID?.(),
+      userAgent: navigator.userAgent.substring(0, 100),
+      hasActiveSession: false,
+      loggedOutAt: new Date().toISOString()
+    });
+
+    // Nettoyer les données sensibles
+    cleanupExpiredFormDrafts();
+    
+    // 🔥 REDIRECTION UNIFORMISÉE APRÈS DÉCONNEXION
+    const finalRedirectPath = redirectPath || '/';
+    
+    navigate(finalRedirectPath, { 
+      replace: true,
+      state: {
+        from: 'logout',
+        timestamp: Date.now()
+      }
+    });
+    
+    window.dispatchEvent(new Event('storage'));
+  }, [VITE_API_URL, token, navigate, saveToSession, cleanupExpiredFormDrafts, removeFromSession, resetRateLimit, getFromSession]);
 
   // === EFFETS ET INITIALISATION ===
 
   const cleanupSensitiveData = useCallback((): void => {
-    // Nettoyer les données sensibles existantes
     for (let i = 0; i < sessionStorage.length; i++) {
       const key = sessionStorage.key(i);
       if (key && SENSITIVE_KEYS.some(sensitive => key.toLowerCase().includes(sensitive.toLowerCase()))) {
         sessionStorage.removeItem(key);
-        console.debug(`🧹 Donnée sensible supprimée: ${key}`);
       }
     }
     
-    // Nettoyer les brouillons expirés
     cleanupExpiredFormDrafts();
   }, [cleanupExpiredFormDrafts]);
 
@@ -1193,6 +1181,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     saveFormDraft,
     getFormDraft,
     clearFormDraft,
+    saveRedirectPath,
+    getRedirectPath,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -1226,7 +1216,6 @@ export const useSecureSession = <T,>(key: string, defaultValue: T) => {
   return [state, setSessionState, clearSessionState] as const;
 };
 
-// Hook spécialisé pour les brouillons de formulaire sécurisés
 export const useSecureFormDraft = <T,>(formId: string, defaultValue: T) => {
   const { saveFormDraft, getFormDraft, clearFormDraft } = useAuth();
   
