@@ -53,21 +53,19 @@ const VITE_API_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://local
 const Destination = () => {
   const [destinations, setDestinations] = useState<Destination[]>(defaultDestinations);
   const [loading, setLoading] = useState(true);
-
 const getFullImageUrl = (imagePath: string) => {
-  if (!imagePath) return '/placeholder-image.jpg';
+  if (!imagePath) {
+    return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZTJlOThmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE2IiBmaWxsPSIjNjQ3NDhiIj5JbWFnZSBub24gZGlzcG9uaWJsZTwvdGV4dD48L3N2Zz4=';
+  }
   
-  // Si c'est une URL complète (http/data:)
   if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
     return imagePath;
   }
 
-  // Pour les images en développement (Vite)
   if (import.meta.env.DEV) {
     return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
   }
 
-  // Pour la production
   return `${VITE_API_URL}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
 };
 
