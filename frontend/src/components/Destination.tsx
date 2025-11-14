@@ -48,7 +48,7 @@ const defaultDestinations: Destination[] = [
   }
 ];
 
-const VITE_API_URL = (import.meta as any).env.VITE_API_BASE_URL || '';
+const VITE_API_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 const Destination = () => {
   const [destinations, setDestinations] = useState<Destination[]>(defaultDestinations);
@@ -56,25 +56,25 @@ const Destination = () => {
 
 const getFullImageUrl = (imagePath: string) => {
   if (!imagePath) return '/placeholder-image.jpg';
-
+  
+  // Si c'est une URL complète (http/data:)
   if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
     return imagePath;
   }
 
-  if (!import.meta.env.DEV) {
-    if (imagePath.startsWith('/uploads')) {
-      return `${VITE_API_URL}${imagePath}`;
-    }
+  // Pour les images en développement (Vite)
+  if (import.meta.env.DEV) {
     return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
   }
 
-  return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+  // Pour la production
+  return `${VITE_API_URL}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
 };
 
   const fetchDestinations = async () => {
   try {
     setLoading(true);
-    const response = await fetch(`${VITE_API_URL}/api/destinations`, {
+    const response = await fetch(`${VITE_API_URL}/api/destination`, {
       credentials: 'include',
       headers: { Accept: 'application/json' }
     });
@@ -109,8 +109,16 @@ const getFullImageUrl = (imagePath: string) => {
     fetchDestinations();
   }, []);
 
+  if (loading) {
+    return (
+      <div className='flex justify-center items-center h-64'>
+        <div className='animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500'></div>
+      </div>
+    );
+  }
+
   return (
-    <section className='px-5 py-20 md:pt-12 bg-gradient-to-b from-sky-50 to-white lg:py-20'>
+    <section className='px-5 py-20 bg-gradient-to-b from-sky-50 to-white lg:py-20'>
       <ToastContainer position='bottom-right' />
       <div className='max-w-7xl mx-auto'>
         <div className='text-center mb-16'>

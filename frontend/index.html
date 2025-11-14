@@ -82,7 +82,7 @@
   }
   </script>
   
-  <!-- SUPPRIMER X-Frame-Options depuis meta - doit être géré par le serveur -->
+  <!-- Sécurité et performances -->
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
   <meta name="format-detection" content="telephone=no" />
@@ -102,6 +102,9 @@
     
     body {
       font-family: 'Inter Fallback', system-ui, -apple-system, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f8fafc;
     }
     
     /* Squelette de chargement */
@@ -128,7 +131,6 @@
   
   <script type="module" src="/src/main.jsx" defer></script>
 
-
   <!-- Noscript amélioré -->
   <noscript>
     <div style="padding: 2rem; text-align: center; font-family: system-ui, sans-serif;">
@@ -148,7 +150,7 @@
     // Feature detection basique
     if (!window.Promise || !window.fetch || !window.Symbol) {
       document.getElementById('root').innerHTML = 
-        '<div style="padding: 2rem; text-align: center;"><p>Votre navigateur n&apos;est pas supporté. Veuillez le mettre à jour.</p></div>';
+        '<div style="padding: 2rem; text-align: center; font-family: system-ui, sans-serif;"><p>Votre navigateur n&apos;est pas supporté. Veuillez le mettre à jour.</p></div>';
     }
   </script>
 </body>

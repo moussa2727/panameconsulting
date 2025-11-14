@@ -4,7 +4,7 @@ import { useAuth } from '../../utils/AuthContext';
 import { toast } from 'react-toastify';
 
 interface Contact {
-  _id: string;
+  id: string;
   firstName?: string;
   lastName?: string;
   email: string;
@@ -25,10 +25,15 @@ interface ContactStats {
   lastMonth: number;
 }
 
+interface ApiResponse {
+  data: Contact[];
+  total: number;
+}
+
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 const AdminMessages: React.FC = () => {
-  const { token, refreshToken, logout } = useAuth();
+  const { token, refreshToken, logout, isAuthenticated } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [stats, setStats] = useState<ContactStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,39 +42,52 @@ const AdminMessages: React.FC = () => {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [replyText, setReplyText] = useState('');
 
-  // Fonction sécurisée pour les appels API avec gestion du token
+  // Fonction sécurisée pour les appels API avec meilleure gestion des tokens
   const apiCall = useCallback(async (url: string, options: RequestInit = {}) => {
-    if (!token) {
-      throw new Error('Token non disponible');
+    let currentToken = token;
+    
+    // Si pas de token, essayer de rafraîchir
+    if (!currentToken) {
+      console.log('🔑 Aucun token, tentative de rafraîchissement...');
+      const refreshed = await refreshToken();
+      if (refreshed) {
+        currentToken = localStorage.getItem('token');
+        if (!currentToken) {
+          throw new Error('Session expirée');
+        }
+      } else {
+        throw new Error('Session expirée');
+      }
     }
 
-    const makeRequest = async (currentToken: string) => {
-      return fetch(url, {
+    const makeRequest = async (userToken: string) => {
+      const response = await fetch(url, {
         ...options,
         headers: {
           ...options.headers,
-          'Authorization': `Bearer ${currentToken}`,
+          'Authorization': `Bearer ${userToken}`,
           'Content-Type': 'application/json'
         },
         credentials: 'include'
       });
+      return response;
     };
 
-    let response = await makeRequest(token);
+    let response = await makeRequest(currentToken);
 
-    // Gestion du token expiré
+    // Si 401, essayer de rafraîchir le token et réessayer
     if (response.status === 401) {
-      console.log('Token expiré, tentative de rafraîchissement...');
+      console.log('🔄 Token expiré, tentative de rafraîchissement...');
       const refreshed = await refreshToken();
       if (refreshed) {
         const newToken = localStorage.getItem('token');
         if (newToken) {
           response = await makeRequest(newToken);
         } else {
-          throw new Error('Session expirée - Veuillez vous reconnecter');
+          throw new Error('Session expirée');
         }
       } else {
-        throw new Error('Session expirée - Veuillez vous reconnecter');
+        throw new Error('Session expirée');
       }
     }
 
@@ -77,62 +95,69 @@ const AdminMessages: React.FC = () => {
   }, [token, refreshToken]);
 
   const fetchContacts = useCallback(async () => {
-    if (!token) {
-      console.log('Aucun token disponible pour fetchContacts');
+    if (!isAuthenticated) {
+      console.log('🚫 Utilisateur non authentifié');
+      setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
     try {
       const queryParams = new URLSearchParams();
+      queryParams.append('page', '1');
+      queryParams.append('limit', '50');
       if (searchTerm) queryParams.append('search', searchTerm);
       if (filter === 'read') queryParams.append('isRead', 'true');
       if (filter === 'unread') queryParams.append('isRead', 'false');
 
+      console.log('📡 Fetching contacts...');
       const response = await apiCall(
         `${API_URL}/api/contact?${queryParams.toString()}`
       );
 
       if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Session expirée');
-        }
         throw new Error(`Erreur ${response.status} lors du chargement des messages`);
       }
 
-      const data = await response.json();
-      setContacts(data.data || []);
+      const data: ApiResponse = await response.json();
+      console.log('✅ Contacts chargés:', data.data.length);
+      
+      const normalizedContacts = data.data.map(contact => ({
+        ...contact,
+        id: contact.id
+      }));
+      
+      setContacts(normalizedContacts);
     } catch (error) {
-      console.error('Erreur fetchContacts:', error);
+      console.error('❌ Erreur fetchContacts:', error);
       const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue';
       
       if (errorMessage.includes('Session expirée')) {
-        toast.error('Session expirée, veuillez vous reconnecter');
-        setTimeout(() => {
-          logout('/', true);
-        }, 2000);
+        toast.error('Session expirée');
       } else {
         toast.error(errorMessage);
       }
     } finally {
       setIsLoading(false);
     }
-  }, [token, searchTerm, filter, apiCall, logout]);
+  }, [isAuthenticated, searchTerm, filter, apiCall]);
 
   const fetchStats = useCallback(async () => {
-    if (!token) return;
+    if (!isAuthenticated) return;
 
     try {
+      console.log('📊 Fetching stats...');
       const response = await apiCall(`${API_URL}/api/contact/stats`);
       
       if (response.ok) {
         const data = await response.json();
         setStats(data);
+        console.log('✅ Stats chargées:', data);
       }
     } catch (error) {
-      console.error('Erreur fetchStats:', error);
+      console.error('❌ Erreur fetchStats:', error);
     }
-  }, [token, apiCall]);
+  }, [isAuthenticated, apiCall]);
 
   const markAsRead = async (id: string) => {
     try {
@@ -141,10 +166,11 @@ const AdminMessages: React.FC = () => {
       });
 
       if (response.ok) {
+        const result = await response.json();
         setContacts(prev => prev.map(contact =>
-          contact._id === id ? { ...contact, isRead: true } : contact
+          contact.id === id ? result.contact : contact
         ));
-        if (selectedContact?._id === id) {
+        if (selectedContact?.id === id) {
           setSelectedContact(prev => prev ? { ...prev, isRead: true } : null);
         }
         toast.success('Message marqué comme lu');
@@ -171,7 +197,7 @@ const AdminMessages: React.FC = () => {
       if (response.ok) {
         const result = await response.json();
         setContacts(prev => prev.map(contact =>
-          contact._id === contactId ? result.contact : contact
+          contact.id === contactId ? result.contact : contact
         ));
         setSelectedContact(result.contact);
         setReplyText('');
@@ -195,8 +221,8 @@ const AdminMessages: React.FC = () => {
       });
 
       if (response.ok) {
-        setContacts(prev => prev.filter(contact => contact._id !== id));
-        if (selectedContact?._id === id) {
+        setContacts(prev => prev.filter(contact => contact.id !== id));
+        if (selectedContact?.id === id) {
           setSelectedContact(null);
         }
         toast.success('Message supprimé avec succès');
@@ -214,7 +240,7 @@ const AdminMessages: React.FC = () => {
     }
     if (contact.firstName) return contact.firstName;
     if (contact.lastName) return contact.lastName;
-    return contact.email.split('@')[0]; // Utiliser la partie avant @ de l'email comme nom
+    return contact.email.split('@')[0];
   };
 
   const formatDate = (dateStr: string): string => {
@@ -229,25 +255,38 @@ const AdminMessages: React.FC = () => {
 
   // Chargement initial
   useEffect(() => {
-    console.log('AdminMessages - Chargement initial, token présent:', !!token);
-    if (token) {
+    console.log('🔐 État authentification:', { isAuthenticated, token: !!token });
+    
+    if (isAuthenticated) {
+      console.log('✅ Utilisateur authentifié, chargement des données...');
       fetchContacts();
       fetchStats();
     }
-  }, []);
+  }, [isAuthenticated, fetchContacts, fetchStats]);
 
   // Rechargement quand les filtres changent
   useEffect(() => {
-    if (token) {
+    if (isAuthenticated) {
       const timeoutId = setTimeout(() => {
         fetchContacts();
-      }, 300); // Debounce de 300ms pour la recherche
+      }, 300);
         
       return () => clearTimeout(timeoutId);
     }
-  }, [searchTerm, filter, fetchContacts, token]);
+  }, [searchTerm, filter, isAuthenticated, fetchContacts]);
 
-  const filteredContacts = contacts; // Déjà filtré côté serveur
+  // Si non authentifié, afficher un message
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <Mail className="w-16 h-16 mx-auto mb-4 text-slate-400" />
+          <h2 className="text-xl font-semibold text-slate-800 mb-2">Accès non autorisé</h2>
+          <p className="text-slate-600">Veuillez vous connecter pour accéder aux messages</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 p-4">
@@ -329,22 +368,22 @@ const AdminMessages: React.FC = () => {
               <div className="flex justify-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
               </div>
-            ) : filteredContacts.length === 0 ? (
+            ) : contacts.length === 0 ? (
               <div className="p-8 text-center text-slate-500">
                 <Mail className="w-12 h-12 mx-auto mb-4 text-slate-400" />
                 <p>Aucun message trouvé</p>
               </div>
             ) : (
-              filteredContacts.map(contact => (
+              contacts.map(contact => (
                 <div
-                  key={contact._id}
+                  key={contact.id}
                   className={`border-b border-slate-100 last:border-b-0 p-4 cursor-pointer transition-colors hover:bg-slate-50 ${
-                    selectedContact?._id === contact._id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+                    selectedContact?.id === contact.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
                   } ${!contact.isRead ? 'bg-slate-50' : ''}`}
                   onClick={() => {
                     setSelectedContact(contact);
                     if (!contact.isRead) {
-                      markAsRead(contact._id);
+                      markAsRead(contact.id);
                     }
                   }}
                 >
@@ -435,7 +474,7 @@ const AdminMessages: React.FC = () => {
                     />
                     <div className="flex gap-3 mt-4">
                       <button
-                        onClick={() => sendReply(selectedContact._id)}
+                        onClick={() => sendReply(selectedContact.id)}
                         disabled={!replyText.trim()}
                         className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                       >
@@ -443,7 +482,7 @@ const AdminMessages: React.FC = () => {
                         Envoyer la réponse
                       </button>
                       <button
-                        onClick={() => deleteContact(selectedContact._id)}
+                        onClick={() => deleteContact(selectedContact.id)}
                         className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -454,7 +493,7 @@ const AdminMessages: React.FC = () => {
                 ) : (
                   <div className="flex gap-3">
                     <button
-                      onClick={() => deleteContact(selectedContact._id)}
+                      onClick={() => deleteContact(selectedContact.id)}
                       className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
                     >
                       <Trash2 className="w-4 h-4" />

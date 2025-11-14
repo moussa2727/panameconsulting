@@ -322,7 +322,6 @@ const MesRendezVous = () => {
     const timeDiff = rendezvousDateTime.getTime() - now.getTime();
     const hoursDiff = timeDiff / (1000 * 60 * 60);
     
-    // STRICTEMENT comme le backend : annulation possible SEULEMENT si plus de 2 heures
     return hoursDiff > 2; // Strictement supérieur à 2 heures
   };
 

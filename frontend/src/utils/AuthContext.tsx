@@ -455,48 +455,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [removeFromSession, getFromSession, saveToSession]);
 
   // === FONCTIONS CORE D'AUTHENTIFICATION ===
-
   const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
 
-      const response = await fetch(`${VITE_API_URL}/api/auth/me`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        signal: controller.signal
-      });
+    const response = await fetch(`${VITE_API_URL}/api/auth/me`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      signal: controller.signal
+    });
 
-      clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Token invalide ou expiré');
-        }
-        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Token invalide ou expiré');
       }
-
-      const userData: User = await response.json();
-      
-      const userWithRole: User = {
-        ...userData,
-        isAdmin: userData.role === 'admin' || userData.isAdmin
-      };
-      
-      setUser(userWithRole);
-      // NE PAS sauvegarder l'utilisateur dans le sessionStorage
-      
-    } catch (err: any) {
-      console.error('❌ Erreur récupération données utilisateur:', err);
-      if (err.name !== 'AbortError') {
-        throw new Error('Impossible de récupérer les informations utilisateur');
-      }
+      throw new Error(`Erreur ${response.status}: ${response.statusText}`);
     }
-  }, [VITE_API_URL]);
+
+    const userData: User = await response.json();
+    
+    const userWithRole: User = {
+      ...userData,
+      isAdmin: userData.role === 'admin' || userData.isAdmin
+    };
+    
+    setUser(userWithRole);
+      
+  } catch (err: any) {
+    console.error('❌ Erreur récupération données utilisateur:', err);
+    if (err.name !== 'AbortError') {
+      throw new Error('Impossible de récupérer les informations utilisateur');
+    }
+  }
+}, [VITE_API_URL]);
 
   const setupTokenRefresh = useCallback((exp: number): void => {
     if (refreshTimeoutRef.current) {
@@ -514,7 +512,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
+  const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
   if (refreshInFlightRef.current) {
     console.log('🔄 Refresh déjà en cours, attente...');
     return refreshInFlightRef.current;
@@ -524,13 +522,12 @@ const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
 
   const refreshPromise = (async (): Promise<boolean> => {
     try {
-      // Vérifier s'il y a un refresh token dans les cookies
       const hasRefreshToken = document.cookie.includes('refresh_token');
-      console.log('🍪 Refresh token présent .');
+      console.log('🍪 Refresh token présent:', hasRefreshToken);
       
       const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
         method: 'POST',
-        credentials: 'include', // Important pour envoyer les cookies
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -551,7 +548,7 @@ const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
       }
 
       const data = await response.json();
-      console.log('📦 Données refresh reçues.');
+      console.log('📦 Données refresh reçues');
       
       if (data.loggedOut) {
         console.log("🔒 Session expirée côté serveur");
@@ -565,19 +562,16 @@ const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
         return false;
       }
 
-      
       try {
         const decoded = jwtDecode<JwtPayload>(data.accessToken);
-        console.log('🔓 Nouveau token décodé:', {
-          exp: new Date(decoded.exp * 1000).toLocaleTimeString(),
-          tokenType: decoded.tokenType
-        });
+        console.log('🔓 Nouveau token décodé');
         
-        if (decoded.tokenType && decoded.tokenType !== 'access') {
-          console.warn('⚠️ Type de token inattendu:', decoded.tokenType);
-        }
-
-        localStorage.setItem('token', data.accessToken);
+        // CORRECTION : Vérification que le token est bien une string
+        const token = localStorage.getItem('token');
+        if (!token) {
+          // Gérer le cas où le token est null
+          throw new Error('Token non disponible');
+        }   
         setToken(data.accessToken);
         
         await fetchUserData(data.accessToken);
