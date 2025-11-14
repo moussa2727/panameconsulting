@@ -19,7 +19,6 @@
   <link rel="alternate" href="https://panameconsulting.vercel.app" hreflang="fr" />
   <link rel="alternate" href="https://panameconsulting.vercel.app/en" hreflang="en" />
 
-  
   <!-- Open Graph amélioré -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Paname Consulting" />
@@ -53,7 +52,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="dns-prefetch" href="https://maps.googleapis.com" />
-  
+
   <!-- Préchargement des polices critiques -->
   <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" /></noscript>
@@ -81,16 +80,14 @@
     "serviceType": ["Student Counseling", "Visa Services", "Business Travel"]
   }
   </script>
-  
+
   <!-- Sécurité et performances -->
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
   <meta name="format-detection" content="telephone=no" />
 
-  
-  <!-- Fallback CSS pour le chargement -->
+  <!-- Fallback CSS sans skeleton -->
   <style>
-    /* Critical CSS pour éviter le FOIT */
     @font-face {
       font-family: 'Inter Fallback';
       src: local('Arial');
@@ -99,39 +96,22 @@
       line-gap-override: 0%;
       size-adjust: 107%;
     }
-    
+
     body {
       font-family: 'Inter Fallback', system-ui, -apple-system, sans-serif;
       margin: 0;
       padding: 0;
       background: #f8fafc;
     }
-    
-    /* Squelette de chargement */
-    .skeleton {
-      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-      background-size: 200% 100%;
-      animation: loading 1.5s infinite;
-    }
-    
-    @keyframes loading {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
   </style>
 </head>
 
 <body class="antialiased">
-  <div id="root">
-    <!-- Squelette de chargement initial -->
-    <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f8fafc;">
-      <div class="skeleton" style="width: 200px; height: 200px; border-radius: 12px;"></div>
-    </div>
-  </div>
-  
+  <div id="root"></div>
+
   <script type="module" src="/src/main.jsx" defer></script>
 
-  <!-- Noscript amélioré -->
+  <!-- Noscript Message -->
   <noscript>
     <div style="padding: 2rem; text-align: center; font-family: system-ui, sans-serif;">
       <h1>JavaScript Requis</h1>
@@ -145,12 +125,11 @@
     <style>#root { display: none; }</style>
   </noscript>
 
-  <!-- Fallback pour les navigateurs anciens -->
+  <!-- Fallback navigateurs anciens -->
   <script>
-    // Feature detection basique
     if (!window.Promise || !window.fetch || !window.Symbol) {
       document.getElementById('root').innerHTML = 
-        '<div style="padding: 2rem; text-align: center; font-family: system-ui, sans-serif;"><p>Votre navigateur n&apos;est pas supporté. Veuillez le mettre à jour.</p></div>';
+        '<div style="padding: 2rem; text-align: center; font-family: system-ui, sans-serif;"><p>Votre navigateur n\'est pas supporté. Veuillez le mettre à jour.</p></div>';
     }
   </script>
 </body>
