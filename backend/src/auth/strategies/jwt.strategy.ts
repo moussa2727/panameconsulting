@@ -25,36 +25,38 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
     
-    async validate(payload: any) {
-        // ✅ ID masqué partiellement pour plus de sécurité
-        const maskedId = this.maskSensitiveData(payload.sub);
-        console.log(`Validation token - User: ${maskedId}`);
-        
-        const user = await this.usersService.findById(payload.sub);
-        
-        if (!user) {
-            console.log(`User not found - ID: ${maskedId}`);
-            throw new UnauthorizedException('Utilisateur non trouvé');
-        }
-        
-        if (!user.isActive) {
-            console.log(`Inactive account - ID: ${maskedId}`);
-            throw new UnauthorizedException('Compte utilisateur inactif');
-        }
+  async validate(payload: any) {
+  // ✅ Log sécurisé
+  const maskedId = this.maskSensitiveData(payload.sub);
+  console.log(`Validation token - User: ${maskedId}`);
+  
+  const user = await this.usersService.findById(payload.sub);
+  
+  if (!user) {
+    console.log(`User not found - ID: ${maskedId}`);
+    throw new UnauthorizedException('Utilisateur non trouvé');
+  }
+  
+  if (!user.isActive) {
+    console.log(`Inactive account - ID: ${maskedId}`);
+    throw new UnauthorizedException('Compte utilisateur inactif');
+  }
 
-        console.log(`User validated - ID: ${maskedId}, Role: ${user.role}`);
-        
-        // ✅ Return complet mais logs sécurisés
-        return {
-            id: (user._id as Types.ObjectId).toString(),
-            email: user.email, // ✅ Nécessaire pour le business logic
-            role: user.role,        
-            isActive: user.isActive 
-        };
-    }
+  console.log(`User validated - ID: ${maskedId}, Role: ${user.role}`);
+  
+  // ✅ Retourner sub pour compatibilité
+  return {
+    sub: (user._id as Types.ObjectId).toString(), // ✅ Critical: must be 'sub'
+    userId: (user._id as Types.ObjectId).toString(),
+    email: user.email,
+    role: user.role,        
+    isActive: user.isActive 
+  };
+}
 
-    private maskSensitiveData(data: string): string {
-        if (!data || data.length < 8) return '***';
-        return data.substring(0, 4) + '***' + data.substring(data.length - 4);
-    }
+private maskSensitiveData(data: string): string {
+  if (!data || data.length < 8) return '***';
+  return data.substring(0, 4) + '***' + data.substring(data.length - 4);
+}
+
 }

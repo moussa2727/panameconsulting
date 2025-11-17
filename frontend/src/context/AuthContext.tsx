@@ -442,7 +442,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error('❌ Erreur sauvegarde brouillon:', error);
     }
   }, [sanitizeFormData, validateFormDraftSize, saveToSession, getFromSession]);
-
+// Fonction utilitaire pour récupérer les cookies
+const getCookie = useCallback((name: string): string | null => {
+  try {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) {
+      const cookieValue = parts.pop()?.split(';').shift();
+      return cookieValue || null;
+    }
+    return null;
+  } catch (error) {
+    console.error('❌ Erreur lecture cookie:', error);
+    return null;
+  }
+}, []);
   const getFormDraft = useCallback((formId: string): any => {
     try {
       if (!formId) return null;
@@ -638,7 +652,104 @@ const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
 
   const handleRateLimit = useCallback(async (operation: string): Promise<boolean> => {
     const rateLimitInfo = getRateLimitInfo();
-    const now = Date.now();
+    const now = Date.now()// Dans la fonction refreshTokenFunction
+const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
+  if (refreshInFlightRef.current) {
+    return refreshInFlightRef.current;
+  }
+
+  const refreshPromise = (async (): Promise<boolean> => {
+    try {
+      console.log('🔄 Tentative de rafraîchissement du token...');
+      
+      // ✅ Récupérer le refresh token depuis les cookies
+      const getCookie = (name: string) => {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop()?.split(';').shift();
+        return null;
+      };
+
+      const refreshToken = getCookie('refresh_token');
+      
+      if (!refreshToken) {
+        console.warn('❌ Aucun refresh token trouvé dans les cookies');
+        logout('/', true);
+        return false;
+      }
+
+      console.log('📨 Envoi de la requête refresh...');
+      
+      const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include', // ✅ Important pour envoyer les cookies
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refreshToken }) // ✅ Envoyer le refresh token dans le body
+      });
+
+      console.log('📩 Réponse refresh:', response.status);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.warn('❌ Refresh token invalide ou expiré');
+          logout('/', true);
+          return false;
+        }
+        throw new Error(`Erreur ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.loggedOut) {
+        console.log('🔒 Session expirée - déconnexion');
+        logout('/', true);
+        return false;
+      }
+
+      if (!data.accessToken) {
+        console.warn('❌ Pas de nouveau access token reçu');
+        logout('/', true);
+        return false;
+      }
+
+      try {
+        const decoded = jwtDecode<JwtPayload>(data.accessToken);
+        console.log('✅ Nouveau token reçu, expiration:', new Date(decoded.exp * 1000));
+        
+        // ✅ Stocker le nouveau token
+        localStorage.setItem('token', data.accessToken);
+        setToken(data.accessToken);
+        
+        // ✅ Mettre à jour les données utilisateur
+        await fetchUserData(data.accessToken);
+        setupTokenRefresh(decoded.exp);
+        
+        console.log('✅ Token rafraîchi avec succès');
+        return true;
+      } catch (validationError) {
+        console.error('❌ Token rafraîchi invalide:', validationError);
+        logout('/', true);
+        return false;
+      }
+    } catch (error: any) {
+      console.error('❌ Erreur rafraîchissement token:', error);
+      if (error.name !== 'AbortError') {
+        logout('/', true);
+      }
+      return false;
+    }
+  })();
+
+  refreshInFlightRef.current = refreshPromise;
+  
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshInFlightRef.current = null;
+  }
+}, [VITE_API_URL, fetchUserData, setupTokenRefresh, logout]);
     
     if (!canRetryAfterRateLimit()) {
       const nextRetryTime = rateLimitInfo.lastRetry + SECURITY_CONFIG.RATE_LIMIT_RETRY_DELAY;
@@ -680,62 +791,99 @@ const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
   }, [setRateLimitInfo]);
 
   // === GESTION DES DONNÉES UTILISATEUR ===
-
+// Dans le AuthContext, améliorer updateUserProfile
   const updateUserProfile = useCallback((updates: Partial<User>): void => {
-    setUser(prev => prev ? { ...prev, ...updates } : null);
+    setUser(prev => {
+      if (!prev) return prev;
+      
+      // Vérification profonde des changements
+      let hasChanges = false;
+      const newUser = { ...prev };
+      
+      Object.keys(updates).forEach(key => {
+        const userKey = key as keyof User;
+        if (prev[userKey] !== updates[userKey]) {
+           updates[userKey] as any;
+          hasChanges = true;
+        }
+      });
+      
+      return hasChanges ? newUser : prev;
+    });
   }, []);
 
-  const checkAuth = useCallback(async (): Promise<void> => {
-    const savedToken = localStorage.getItem('token');
-    
-    if (!savedToken) {
-      saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
-        sessionStart: Date.now(),
-        sessionId: crypto.randomUUID?.(),
-        userAgent: navigator.userAgent.substring(0, 100),
-        hasActiveSession: false
-      });
-      setIsLoading(false);
-      return;
-    }
+const checkAuth = useCallback(async (): Promise<void> => {
+  const savedToken = localStorage.getItem('token');
+  
+  if (!savedToken) {
+    console.log('🔍 Aucun token trouvé en localStorage');
+    saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
+      sessionStart: Date.now(),
+      sessionId: crypto.randomUUID?.(),
+      userAgent: navigator.userAgent.substring(0, 100),
+      hasActiveSession: false
+    });
+    setIsLoading(false);
+    return;
+  }
 
-    try {
-      const decoded = jwtDecode<JwtPayload>(savedToken);
-      const isTokenExpired = decoded.exp * 1000 < Date.now();
+  try {
+    const decoded = jwtDecode<JwtPayload>(savedToken);
+    const isTokenExpired = decoded.exp * 1000 < Date.now();
+    const timeUntilExpiry = decoded.exp * 1000 - Date.now();
 
-      if (isTokenExpired) {
-        const refreshed = await refreshTokenFunction();
-        if (!refreshed) {
-          await logout('/', true);
-          return;
-        }
-      } else {
-        try {
-          await fetchUserData(savedToken);
-          setupTokenRefresh(decoded.exp);
-        } catch (fetchError: any) {
-          if (fetchError.message?.includes('429') || fetchError.message?.includes('Too Many Requests')) {
-            setupTokenRefresh(decoded.exp);
-          } else {
-            throw fetchError;
-          }
-        }
-      }
-    } catch (error) {
-      console.error('❌ Erreur vérification auth:', error);
-      
-      if (error instanceof Error && 
-          !error.message.includes('429') && 
-          !error.message.includes('Too Many Requests') &&
-          !error.message.includes('Timeout')) {
+    console.log(`🔍 Vérification token - Expire dans: ${Math.round(timeUntilExpiry / 1000)}s`);
+
+    if (isTokenExpired) {
+      console.log('🔄 Token expiré, tentative de rafraîchissement...');
+      const refreshed = await refreshTokenFunction();
+      if (!refreshed) {
+        console.log('❌ Échec rafraîchissement, déconnexion...');
         await logout('/', true);
-      } else {
-        setIsLoading(false);
+        return;
       }
-    } finally {
+    } else if (timeUntilExpiry < SECURITY_CONFIG.TOKEN_REFRESH_BUFFER) {
+      console.log('🔄 Token bientôt expiré, rafraîchissement anticipé...');
+      // Rafraîchir anticipativement si le token expire bientôt
+      const refreshed = await refreshTokenFunction();
+      if (!refreshed) {
+        console.warn('⚠️ Rafraîchissement anticipé échoué, utilisation du token actuel');
+        // Continuer avec le token actuel même si le rafraîchissement échoue
+        await fetchUserData(savedToken);
+        setupTokenRefresh(decoded.exp);
+      }
+    } else {
+      console.log('✅ Token valide, récupération données utilisateur...');
+      try {
+        await fetchUserData(savedToken);
+        setupTokenRefresh(decoded.exp);
+      } catch (fetchError: any) {
+        if (fetchError.message?.includes('429') || fetchError.message?.includes('Too Many Requests')) {
+          console.warn('⚠️ Rate limit, configuration refresh malgré erreur');
+          setupTokenRefresh(decoded.exp);
+        } else {
+          console.error('❌ Erreur récupération données:', fetchError);
+          throw fetchError;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('❌ Erreur vérification auth:', error);
+    
+    if (error instanceof Error && 
+        !error.message.includes('429') && 
+        !error.message.includes('Too Many Requests') &&
+        !error.message.includes('Timeout')) {
+      console.log('🔒 Erreur critique, déconnexion...');
+      await logout('/', true);
+    } else {
+      console.warn('⚠️ Erreur non critique, continuation sans auth');
       setIsLoading(false);
     }
-  }, [fetchUserData, refreshTokenFunction, setupTokenRefresh, saveToSession]);
+  } finally {
+    setIsLoading(false);
+  }
+}, [fetchUserData, refreshTokenFunction, setupTokenRefresh, saveToSession]);
 
   // === OPÉRATIONS D'AUTHENTIFICATION ===
 
@@ -1242,28 +1390,60 @@ const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
       }
     };
   }, [cleanupSensitiveData, saveToSession]);
-  const fetchUserProfile = async () => {
+
+  // === GESTION DES DONNÉES UTILISATEUR ===
+
+  const fetchUserProfile = useCallback(async (): Promise<void> => {
+  if (!token) {
+    console.warn('❌ Aucun token pour fetchUserProfile');
+    return;
+  }
+
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
+
     const response = await fetch(`${VITE_API_URL}/api/auth/me`, {
       method: 'GET',
-      credentials: 'include', // Important pour les cookies
       headers: {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getFromSession('access_token')}`
-      }
+      },
+      credentials: 'include',
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
+      if (response.status === 401) {
+        console.warn('Token invalide lors du fetch profile');
+        await logout('/', true);
+        return;
+      }
       throw new Error(`Erreur ${response.status}: ${response.statusText}`);
     }
 
     const userData = await response.json();
-    return userData;
-  } catch (error) {
-    console.error('Erreur lors de la récupération du profil:', error);
-    throw error;
+    
+    // ✅ Mise à jour optimisée avec vérification des changements
+    setUser(prev => {
+      if (!prev) return userData;
+      
+      // Vérifier si les données ont vraiment changé
+      const hasChanges = JSON.stringify(prev) !== JSON.stringify(userData);
+      return hasChanges ? userData : prev;
+    });
+    
+  } catch (err: any) {
+    console.warn('Erreur récupération profil:', err.message);
+    
+    if (err.name === 'AbortError') {
+      console.warn('Timeout récupération profil');
+    }
   }
-};
+}, [VITE_API_URL, token, logout]);
+
 
   useEffect(() => {
     let isMounted = true;

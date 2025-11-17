@@ -37,7 +37,7 @@ export class RendezvousService {
     // ==================== CORE METHODS ====================
 
     async create(createDto: CreateRendezvousDto): Promise<Rendezvous> {
-        this.logger.log(`Création rendez-vous pour: ${createDto.email}`);
+        this.logger.log(`Création rendez-vous pour un utilisateur.`);
         
         // Vérifier s'il y a déjà un rendez-vous en cours
         const pendingCount = await this.rendezvousModel.countDocuments({
@@ -75,7 +75,7 @@ export class RendezvousService {
         });
         
         const saved = await created.save();
-        this.logger.log(`Rendez-vous créé: ${saved._id} pour ${saved.email}`);
+        this.logger.log(`Rendez-vous créé .`);
 
         // Notification
         await this.sendNotification(saved, 'confirmation');
@@ -179,7 +179,7 @@ export class RendezvousService {
             throw new NotFoundException('Rendez-vous non trouvé après mise à jour');
         }
 
-        this.logger.log(`Rendez-vous mis à jour: ${id}`);
+        this.logger.log(`Rendez-vous mis à jour.`);
         return updated;
     }
 
@@ -212,7 +212,7 @@ export class RendezvousService {
             throw new NotFoundException('Rendez-vous non trouvé');
         }
 
-        this.logger.log(`Statut mis à jour: ${id} -> ${status}`);
+        this.logger.log(`Statut mis à jour: ${status}`);
 
         // Notification
         await this.sendNotification(updated, 'status');
@@ -270,7 +270,7 @@ export class RendezvousService {
             throw new NotFoundException('Rendez-vous non trouvé après annulation');
         }
 
-        this.logger.log(`Rendez-vous annulé (soft delete): ${id}`);
+        this.logger.log(`Rendez-vous annulé (soft delete).`);
         
         // Notification d'annulation
         await this.sendNotification(updated, 'status');
@@ -310,7 +310,7 @@ export class RendezvousService {
             throw new NotFoundException('Rendez-vous non trouvé après confirmation');
         }
 
-        this.logger.log(`Rendez-vous confirmé: ${id}`);
+        this.logger.log(`Rendez-vous confirmé.`);
         await this.sendNotification(updated, 'status');
         
         return updated;
@@ -491,14 +491,14 @@ export class RendezvousService {
                     await this.notificationService.sendReminder(rendezvous);
                     break;
             }
-            this.logger.log(`Notification ${type} envoyée à: ${rendezvous.email}`);
+            this.logger.log(`Notification ${type} envoyée.`);
         } catch (error) {
-            this.logger.error(`Erreur notification ${type} pour ${rendezvous.email}: ${error.message}`);
+            this.logger.error(`Erreur notification ${type}: ${error.message}`);
         }
     }
 
     private async createProcedureIfEligible(rendezvous: Rendezvous): Promise<void> {
-        this.logger.log(`Vérification éligibilité procédure pour: ${rendezvous.email}`);
+        this.logger.log(`Vérification éligibilité procédure.`);
         
         const existingProcedure = await this.procedureService.findByEmail(rendezvous.email);
 
@@ -514,7 +514,7 @@ export class RendezvousService {
                 this.logger.error(`Erreur création procédure: ${error.message}`);
             }
         } else {
-            this.logger.log(`Procédure déjà existante pour: ${rendezvous.email}`);
+            this.logger.log(`Procédure déjà existante.`);
         }
     }
 
@@ -528,7 +528,7 @@ export class RendezvousService {
             status: 'Confirmé'
         });
 
-        this.logger.log(`Envoi rappels pour ${rendezvous.length} rendez-vous`);
+        this.logger.log(`Envoi rappels.`);
 
         for (const rdv of rendezvous) {
             await this.sendNotification(rdv, 'reminder');
@@ -547,7 +547,7 @@ export class RendezvousService {
         );
 
         if (result.modifiedCount > 0) {
-            this.logger.log(`Rendez-vous passés mis à jour: ${result.modifiedCount}`);
+            this.logger.log(`Rendez-vous passés mis à jour.`);
         }
     }
 
@@ -565,7 +565,7 @@ export class RendezvousService {
         );
 
         if (result.modifiedCount > 0) {
-            this.logger.log(`Rendez-vous automatiquement annulés: ${result.modifiedCount}`);
+            this.logger.log(`Rendez-vous automatiquement annulés.`);
         }
     }
 }

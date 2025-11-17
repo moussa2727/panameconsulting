@@ -250,7 +250,7 @@ export class ProcedureService {
         const savedProcedure = await procedure.save();
         await this.notificationService.sendCancellationNotification(savedProcedure);
 
-        this.logger.log(`❌ Procédure ${id} annulée par l'utilisateur`);
+        this.logger.log(`❌ Procédure annulée par l'utilisateur`);
         return savedProcedure;
     }
 
@@ -299,7 +299,7 @@ export class ProcedureService {
         const savedProcedure = await procedure.save();
         await this.notificationService.sendCancellationNotification(savedProcedure);
 
-        this.logger.log(`🗑️ Procédure ${id} supprimée (soft delete)`);
+        this.logger.log(`🗑️ Procédure supprimée (soft delete)`);
         return savedProcedure;
     }
 

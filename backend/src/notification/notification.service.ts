@@ -108,7 +108,7 @@ export class NotificationService {
     replyTo?: string
 ): Promise<void> {
     if (!this.emailServiceAvailable || !this.transporter) {
-        this.logger.log(`Notification "${subject}" pour: ${to} (service email indisponible)`);
+        this.logger.log(`Notification "${subject}" pour (service email indisponible)`);
         return;
     }
 
@@ -126,7 +126,7 @@ export class NotificationService {
         }
 
         await this.transporter.sendMail(mailOptions);
-        this.logger.log(`Email ${context} envoyé à: ${to}`);
+        this.logger.log(`Email ${context} envoyé.`);
     } catch (error) {
         this.logger.error(`Erreur envoi ${context}: ${error.message}`);
         if (error.message.includes('BadCredentials') || error.message.includes('Invalid login')) {

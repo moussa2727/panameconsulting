@@ -80,31 +80,7 @@ class UserProfileApiService {
     return '';
   }
 
- // Mise à jour de la méthode updateProfile
 async updateProfile(profileData: UserProfileData, token: string): Promise<any> {
-  if (!token) {
-    throw new Error('Vous devez être connecté pour modifier votre profil');
-  }
-
-  // Validation finale profil
-  const finalErrors: ValidationErrors = {};
-  Object.keys(profileData).forEach(key => {
-    const error = this.validateProfileField(key, profileData[key as keyof UserProfileData] || '');
-    if (error) {
-      finalErrors[key as keyof ValidationErrors] = error;
-    }
-  });
-
-  if (Object.keys(finalErrors).length > 0) {
-    throw new Error('Veuillez corriger les erreurs dans le formulaire');
-  }
-
-  // Vérifier qu'au moins un champ modifiable est rempli (cohérence backend)
-  const hasModifiableData = profileData.email?.trim() || profileData.telephone?.trim();
-  if (!hasModifiableData) {
-    throw new Error('Au moins un champ (email ou téléphone) doit être rempli');
-  }
-
   try {
     const response = await fetch(`${this.VITE_API_URL}/api/users/profile/me`, {
       method: 'PATCH',
@@ -120,116 +96,194 @@ async updateProfile(profileData: UserProfileData, token: string): Promise<any> {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Erreur lors de la mise à jour du profil');
+      const errorData = await response.json().catch(() => ({}));
+      
+      console.warn(`Erreur mise à jour profil: ${response.status}`);
+      
+      if (response.status === 400) {
+        if (errorData.message?.includes('email est déjà utilisé')) {
+          throw new Error('Cet email est déjà utilisé');
+        }
+        if (errorData.message?.includes('numéro de téléphone est déjà utilisé')) {
+          throw new Error('Ce numéro de téléphone est déjà utilisé');
+        }
+        if (errorData.message?.includes('Format d\'email invalide')) {
+          throw new Error('Format d\'email invalide');
+        }
+        if (errorData.message?.includes('téléphone doit contenir')) {
+          throw new Error('Le téléphone doit contenir au moins 5 caractères');
+        }
+        if (errorData.message?.includes('Au moins un champ')) {
+          throw new Error('Au moins un champ (email ou téléphone) doit être fourni');
+        }
+        throw new Error('Données de profil invalides');
+      }
+      
+      if (response.status === 401) {
+        throw new Error('Session expirée - Veuillez vous reconnecter');
+      }
+      
+      throw new Error('Erreur lors de la mise à jour du profil');
     }
 
-    const updatedUser = await response.json();
-    return updatedUser;
+    const result = await response.json();
     
+    // ✅ FORMAT COHÉRENT ABSOLU
+    return {
+      id: result.id,
+      email: result.email,
+      telephone: result.telephone,
+      firstName: result.firstName,
+      lastName: result.lastName,
+      role: result.role,
+      isActive: result.isActive,
+      isAdmin: result.isAdmin !== undefined ? result.isAdmin : result.role === 'admin'
+    };
+      
   } catch (error: any) {
-    console.error('❌ Erreur mise à jour profil:', error);
+    console.warn('Erreur mise à jour profil');
     
-    let errorMessage = 'Erreur lors de la mise à jour du profil';
-    
-    if (error.message.includes('email est déjà utilisé') || error.message.includes('Cet email est déjà utilisé')) {
-      throw new Error('Cet email est déjà utilisé');
-    } else if (error.message.includes('numéro de téléphone est déjà utilisé') || error.message.includes('Ce numéro de téléphone est déjà utilisé')) {
-      throw new Error('Ce numéro de téléphone est déjà utilisé');
-    } else if (error.message.includes('Format d\'email invalide')) {
-      throw new Error('Format d\'email invalide');
-    } else if (error.message.includes('Le téléphone doit contenir au moins 5 caractères')) {
-      throw new Error('Le téléphone doit contenir au moins 5 caractères');
-    } else if (error.message.includes('Au moins un champ (email ou téléphone) doit être fourni')) {
-      throw new Error('Au moins un champ (email ou téléphone) doit être rempli');
-    } else {
-      throw new Error(error.message || errorMessage);
+    if (error.message && !error.message.includes('token')) {
+      throw error;
     }
+    throw new Error('Erreur de connexion au serveur');
   }
 }
 
-// Mise à jour de la méthode updatePassword
-async updatePassword(passwordData: PasswordData, token: string): Promise<void> {
-  if (!token) {
-    throw new Error('Vous devez être connecté pour modifier votre mot de passe');
-  }
-
-  // Validation finale mot de passe
-  const finalErrors: ValidationErrors = {};
-  Object.keys(passwordData).forEach(key => {
-    const error = this.validatePasswordField(key, passwordData[key as keyof PasswordData] || '', passwordData);
-    if (error) {
-      finalErrors[key as keyof ValidationErrors] = error;
+  // Mise à jour du mot de passe - CORRECTION DE L'ENDPOINT
+  async updatePassword(passwordData: PasswordData, token: string): Promise<void> {
+    if (!token) {
+      throw new Error('Vous devez être connecté pour modifier votre mot de passe');
     }
-  });
 
-  if (Object.keys(finalErrors).length > 0) {
-    throw new Error('Veuillez corriger les erreurs dans le formulaire');
-  }
-
-  try {
-    const response = await fetch(`${this.VITE_API_URL}/api/auth/update-password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        currentPassword: passwordData.currentPassword,
-        newPassword: passwordData.newPassword
-        // Le backend attend seulement ces deux champs
-      })
+    // Validation finale mot de passe
+    const finalErrors: ValidationErrors = {};
+    Object.keys(passwordData).forEach(key => {
+      const error = this.validatePasswordField(key, passwordData[key as keyof PasswordData] || '', passwordData);
+      if (error) {
+        finalErrors[key as keyof ValidationErrors] = error;
+      }
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Erreur lors de la mise à jour du mot de passe');
+    if (Object.keys(finalErrors).length > 0) {
+      throw new Error('Veuillez corriger les erreurs dans le formulaire');
     }
 
-  } catch (error: any) {
-    console.error('❌ Erreur mise à jour mot de passe:', error);
-    
-    let errorMessage = 'Erreur lors de la mise à jour du mot de passe';
-    
-    if (error.message.includes('Mot de passe actuel incorrect') || error.message.includes('Le mot de passe actuel est incorrect')) {
-      throw new Error('Le mot de passe actuel est incorrect');
-    } else {
-      throw new Error(error.message || errorMessage);
+    try {
+      const response = await fetch(`${this.VITE_API_URL}/api/auth/update-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+          confirmNewPassword: passwordData.confirmNewPassword // ✅ Ajouter la confirmation
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        
+        console.warn(`Erreur mise à jour mot de passe: ${response.status}`);
+        
+        if (response.status === 404) {
+          return await this.tryAlternativePasswordUpdate(passwordData, token);
+        }
+        
+        if (response.status === 400 || response.status === 401) {
+          if (errorData.message?.includes('Mot de passe actuel incorrect') || 
+              errorData.message?.includes('Le mot de passe actuel est incorrect')) {
+            throw new Error('Le mot de passe actuel est incorrect');
+          }
+          throw new Error(errorData.message || 'Erreur lors de la mise à jour du mot de passe');
+        }
+        
+        throw new Error('Erreur lors de la mise à jour du mot de passe');
+      }
+
+      await response.json();
+      
+    } catch (error: any) {
+      console.warn('Erreur mise à jour mot de passe');
+      
+      // Gestion des erreurs réseau
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        throw new Error('Erreur de connexion au serveur');
+      }
+      
+      // Propager les erreurs métier existantes
+      if (error.message && 
+          !error.message.includes('token') && 
+          !error.message.includes('Failed to fetch')) {
+        throw error;
+      }
+      
+      throw new Error('Erreur lors de la mise à jour du mot de passe');
     }
   }
-}
 
-// Mise à jour de la validation avant soumission
-validateProfileBeforeSubmit(profileData: UserProfileData): { isValid: boolean; errors: ValidationErrors } {
-  const errors: ValidationErrors = {};
-  
-  // Validation email
-  if (profileData.email && profileData.email.trim()) {
-    const emailError = this.validateProfileField('email', profileData.email);
-    if (emailError) errors.email = emailError;
-  }
-  
-  // Validation téléphone
-  if (profileData.telephone && profileData.telephone.trim()) {
-    const telephoneError = this.validateProfileField('telephone', profileData.telephone);
-    if (telephoneError) errors.telephone = telephoneError;
-  }
-  
-  // Vérification qu'au moins un champ modifiable est rempli (cohérence backend)
-  const hasModifiableData = profileData.email?.trim() || profileData.telephone?.trim();
-  if (!hasModifiableData) {
-    errors.email = 'Au moins un champ (email ou téléphone) doit être rempli';
-    errors.telephone = 'Au moins un champ (email ou téléphone) doit être rempli';
-  }
-  
-  return {
-    isValid: Object.keys(errors).length === 0,
-    errors
-  };
-}
+  private async tryAlternativePasswordUpdate(passwordData: PasswordData, token: string): Promise<void> {
+    try {
+      const response = await fetch(`${this.VITE_API_URL}/api/users/update-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+          confirmNewPassword: passwordData.confirmNewPassword
+        })
+      });
 
-  // Validation du mot de passe avant soumission
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        
+        if (response.status === 401) {
+          throw new Error('Le mot de passe actuel est incorrect');
+        }
+        
+        throw new Error(errorData.message || 'Erreur lors de la mise à jour du mot de passe');
+      }
+
+      await response.json();
+      
+    } catch (error: any) {
+      console.warn('Endpoint alternatif échoué');
+      throw new Error('Fonctionnalité temporairement indisponible');
+    }
+  }
+
+  validateProfileBeforeSubmit(profileData: UserProfileData): { isValid: boolean; errors: ValidationErrors } {
+    const errors: ValidationErrors = {};
+    let hasValidData = false;
+    if (profileData.email !== undefined && profileData.email.trim() !== '') {
+      hasValidData = true;
+      const emailError = this.validateProfileField('email', profileData.email);
+      if (emailError) errors.email = emailError;
+    }
+
+    if (profileData.telephone !== undefined && profileData.telephone.trim() !== '') {
+      hasValidData = true;
+      const telephoneError = this.validateProfileField('telephone', profileData.telephone);
+      if (telephoneError) errors.telephone = telephoneError;
+    }
+
+    if (!hasValidData) {
+      errors.email = 'Au moins un champ (email ou téléphone) doit être modifié';
+    }
+
+    return {
+      isValid: Object.keys(errors).length === 0,
+      errors
+    };
+  }
+
   validatePasswordBeforeSubmit(passwordData: PasswordData): { isValid: boolean; errors: ValidationErrors } {
     const errors: ValidationErrors = {};
     

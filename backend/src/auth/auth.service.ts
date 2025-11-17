@@ -196,26 +196,27 @@ export class AuthService {
     }
 
     async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken?: string; sessionExpired?: boolean }> {
-        if (!refreshToken) {
-            throw new UnauthorizedException('Refresh token manquant');
-        }
+  if (!refreshToken) {
+    console.warn('❌ Refresh token manquant dans auth.service');
+    throw new UnauthorizedException('Refresh token manquant');
+  }
 
-        try {
-            // Whitelist enforcement
-            let isWhitelisted = await this.refreshTokenService.isValid(refreshToken);
-            if (!isWhitelisted) {
-                throw new UnauthorizedException('Refresh token non autorisé');
-            }
+  console.log('🔄 Traitement refresh token, longueur:', refreshToken.length);
 
-            // Check if already used
-            const wasRevoked = await this.revokedTokenService.isTokenRevoked(refreshToken);
-            if (wasRevoked) {
-                throw new UnauthorizedException('Refresh token déjà utilisé');
-            }
+  try {
+    // Whitelist enforcement
+    let isWhitelisted = await this.refreshTokenService.isValid(refreshToken);
+    console.log('📋 Refresh token whitelisted:', isWhitelisted);
+    
+    if (!isWhitelisted) {
+      console.warn('❌ Refresh token non autorisé');
+      throw new UnauthorizedException('Refresh token non autorisé');
+    }
 
-            const payload = this.jwtService.verify(refreshToken, {
-                secret: process.env.JWT_REFRESH_SECRET,
-            });
+    // Vérification du token JWT
+    const payload = this.jwtService.verify(refreshToken, {
+      secret: process.env.JWT_REFRESH_SECRET,
+    });
 
             if ((payload as any)?.tokenType !== 'refresh') {
                 throw new UnauthorizedException('Type de token invalide');
@@ -279,34 +280,56 @@ export class AuthService {
                 new Date(Date.now() + 15 * 60 * 1000)
             );
 
-            // Revoke old refresh token
             try {
                 const expMs = ((payload as any)?.exp || 0) * 1000;
                 await this.revokedTokenService.revokeToken(refreshToken, new Date(expMs || Date.now() + 7 * 24 * 60 * 60 * 1000));
                 await this.refreshTokenService.deactivateByToken(refreshToken);
-            } catch (error) {
-                this.logger.warn(`Impossible de révoquer l'ancien refresh token: ${error.message}`);
+             } catch (error: any) {
+                console.error('❌ Erreur vérification refresh token:', error.message);
+                
+                if (error.name === 'JsonWebTokenError') {
+                console.warn('❌ JWT invalide:', error.message);
+                throw new UnauthorizedException('Refresh token invalide');
+                }
+                
+                if (error.name === 'TokenExpiredError') {
+                console.warn('❌ JWT expiré');
+                throw new UnauthorizedException('Refresh token expiré');
+                }
+                
+                throw new UnauthorizedException('Refresh token invalide');
             }
 
-            // Whitelist new refresh token
             try {
                 const decodedNewRefresh = this.jwtService.decode(newRefreshToken) as any;
                 const newExp = new Date(((decodedNewRefresh?.exp || 0) * 1000) || (Date.now() + 7 * 24 * 60 * 60 * 1000));
                 await this.refreshTokenService.create(userId, newRefreshToken, newExp);
-            } catch (error) {
-                this.logger.warn(`Impossible d'enregistrer le nouveau refresh token: ${error.message}`);
+            } catch (error: any) {
+                console.error('❌ Erreur vérification refresh token:', error.message);
+                
+                if (error.name === 'JsonWebTokenError') {
+                console.warn('❌ JWT invalide:', error.message);
+                throw new UnauthorizedException('Refresh token invalide');
+                }
+                
+                if (error.name === 'TokenExpiredError') {
+                console.warn('❌ JWT expiré');
+                throw new UnauthorizedException('Refresh token expiré');
+                }
+                
+                throw new UnauthorizedException('Refresh token invalide');
             }
 
             return { 
                 accessToken: newAccessToken,
                 refreshToken: newRefreshToken
             };
-        } catch (error) {
-            this.logger.error(`Erreur de refresh token: ${error.message}`);
+        } catch (error: any) {
+            console.error('❌ Erreur refresh token:', error.message);
             throw new UnauthorizedException('Refresh token invalide');
         }
     }
-
+    
     async validateUser(email: string, password: string): Promise<User | null> {
         try {
             const attempts = this.getLoginAttempts(email);
@@ -510,7 +533,7 @@ export class AuthService {
 
     async getProfile(userId: string): Promise<User> {
     try {
-        console.log('🛠️ getProfile appelé avec userId:', userId);
+        console.log('🛠️ getProfile appelé avec userId.');
         console.log('🛠️ Type de userId:', typeof userId);
         console.log('🛠️ Longueur de userId:', userId?.length);
         
@@ -519,7 +542,7 @@ export class AuthService {
             console.warn('⚠️ userId manquant, tentative de récupération du premier utilisateur');
             const firstUser = await this.usersService.findAll();
             if (firstUser.length > 0) {
-                console.log('✅ Utilisation du premier utilisateur trouvé:', firstUser[0].email);
+                console.log('✅ Utilisation du premier utilisateur trouvé.');
                 return firstUser[0];
             }
             throw new BadRequestException('ID utilisateur manquant et aucun utilisateur trouvé');
@@ -532,7 +555,7 @@ export class AuthService {
             if (userId.includes('@')) {
                 const userByEmail = await this.usersService.findByEmail(userId);
                 if (userByEmail) {
-                    console.log('✅ Utilisateur trouvé par email:', userByEmail.email);
+                    console.log('✅ Utilisateur trouvé par email.');
                     return userByEmail;
                 }
             }
@@ -546,7 +569,7 @@ export class AuthService {
             throw new NotFoundException('Utilisateur non trouvé');
         }
 
-        console.log('✅ Profil récupéré avec succès pour:', user.email);
+        console.log('✅ Profil récupéré avec succès.');
         return user;
     } catch (error) {
         console.error('❌ Erreur critique dans getProfile:', error);

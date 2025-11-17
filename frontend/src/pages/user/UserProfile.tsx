@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
-import { Calendar, FileText, Home, User, Search, Filter, RefreshCw, Plus } from 'lucide-react';
+import { Home, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { userProfileApi, UserProfileData, PasswordData, ValidationErrors } from '../../api/userProfileApi';
 
@@ -21,19 +21,34 @@ export const UserProfile: React.FC = () => {
   });
 
   const [activeTab, setActiveTab] = useState<'profile' | 'password'>('profile');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isProfileUpdating, setIsProfileUpdating] = useState(false);
+  const [isPasswordUpdating, setIsPasswordUpdating] = useState(false);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [isProfileModified, setIsProfileModified] = useState(false);
+
+  // Référence pour stocker les données originales
+  const originalProfileDataRef = useRef<UserProfileData>({ email: '', telephone: '' });
 
   // Charger les données utilisateur
   useEffect(() => {
     if (user) {
-      setProfileData({
+      const newData = {
         email: user.email || '',
         telephone: user.telephone || ''
-      });
+      };
+      
+      // Stocker les données originales
+      originalProfileDataRef.current = newData;
+      
+      setProfileData(newData);
+      setIsProfileModified(false);
     }
   }, [user]);
+
+  // Réinitialiser les erreurs quand on change d'onglet
+  useEffect(() => {
+    setErrors({});
+  }, [activeTab]);
 
   // Gestion des changements profil
   const handleProfileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -46,12 +61,21 @@ export const UserProfile: React.FC = () => {
       [name]: error
     }));
 
-    setProfileData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-
-    setIsProfileModified(true);
+    setProfileData(prev => {
+      const newData = {
+        ...prev,
+        [name]: value
+      };
+      
+      // Vérifier si les données ont changé par rapport aux originales
+      const hasChanged = 
+        newData.email !== originalProfileDataRef.current.email ||
+        newData.telephone !== originalProfileDataRef.current.telephone;
+      
+      setIsProfileModified(hasChanged);
+      
+      return newData;
+    });
   }, []);
 
   // Gestion des changements mot de passe
@@ -73,12 +97,17 @@ export const UserProfile: React.FC = () => {
     setPasswordData(newPasswordData);
   }, [passwordData]);
 
-  // Soumission du profil
+  // Soumission du profil - VERSION CORRIGÉE
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!user || !token) {
       toast.error('Vous devez être connecté pour modifier votre profil');
+      return;
+    }
+
+    // Empêcher les doubles soumissions
+    if (isProfileUpdating) {
       return;
     }
 
@@ -90,48 +119,60 @@ export const UserProfile: React.FC = () => {
       return;
     }
 
-    // Vérifier qu'au moins un champ modifiable est rempli
-    const hasModifiableData = profileData.email?.trim() || profileData.telephone?.trim();
-    if (!hasModifiableData) {
-      toast.error('Au moins un champ (email ou téléphone) doit être rempli');
-      return;
-    }
-
-    setIsLoading(true);
+    setIsProfileUpdating(true);
 
     try {
+      console.log('🔄 Début mise à jour profil...');
+      
+      // ✅ APPEL API D'ABORD sans mise à jour optimiste
       const updatedUser = await userProfileApi.updateProfile(profileData, token);
       
-      // Mettre à jour le contexte d'authentification
-      updateUserProfile({
-        email: updatedUser.email,
-        telephone: updatedUser.telephone
-      });
-
+      console.log('✅ Réponse API reçue:', updatedUser);
+      
+      // ✅ MISE À JOUR DU CONTEXTE seulement après succès API
+      if (updateUserProfile) {
+        updateUserProfile({
+          email: updatedUser.email,
+          telephone: updatedUser.telephone
+        });
+      }
+      
+      // ✅ METTRE À JOUR les données originales
+      originalProfileDataRef.current = {
+        email: updatedUser.email || '',
+        telephone: updatedUser.telephone || ''
+      };
+      
       setIsProfileModified(false);
       setErrors({});
       
       toast.success('Profil mis à jour avec succès');
       
     } catch (error: any) {
-      console.error('❌ Erreur mise à jour profil:', error);
+      console.warn('❌ Erreur mise à jour profil:', error.message);
       
-      // Gestion des erreurs spécifiques du backend
-      if (error.message.includes('email est déjà utilisé') || error.message.includes('Cet email est déjà utilisé')) {
+      // ✅ ROLLBACK automatique vers les données originales
+      setProfileData(originalProfileDataRef.current);
+      
+      const errorMessage = error.message || 'Erreur lors de la mise à jour du profil';
+      
+      if (errorMessage.includes('email est déjà utilisé')) {
         setErrors(prev => ({ ...prev, email: 'Cet email est déjà utilisé' }));
-      } else if (error.message.includes('numéro de téléphone est déjà utilisé') || error.message.includes('Ce numéro de téléphone est déjà utilisé')) {
+      } else if (errorMessage.includes('numéro de téléphone est déjà utilisé')) {
         setErrors(prev => ({ ...prev, telephone: 'Ce numéro de téléphone est déjà utilisé' }));
-      } else if (error.message.includes('Format d\'email invalide')) {
+      } else if (errorMessage.includes('Format d\'email invalide')) {
         setErrors(prev => ({ ...prev, email: 'Format d\'email invalide' }));
-      } else if (error.message.includes('Le téléphone doit contenir au moins 5 caractères')) {
+      } else if (errorMessage.includes('téléphone doit contenir')) {
         setErrors(prev => ({ ...prev, telephone: 'Le téléphone doit contenir au moins 5 caractères' }));
-      } else if (error.message.includes('Au moins un champ (email ou téléphone) doit être fourni')) {
+      } else if (errorMessage.includes('Au moins un champ')) {
         toast.error('Au moins un champ (email ou téléphone) doit être rempli');
+      } else if (errorMessage.includes('Session expirée')) {
+        toast.error('Session expirée - Veuillez vous reconnecter');
+      } else {
+        toast.error('Erreur lors de la mise à jour du profil');
       }
-      
-      toast.error(error.message);
     } finally {
-      setIsLoading(false);
+      setIsProfileUpdating(false);
     }
   };
 
@@ -144,6 +185,11 @@ export const UserProfile: React.FC = () => {
       return;
     }
 
+    // Empêcher les doubles soumissions
+    if (isPasswordUpdating) {
+      return;
+    }
+
     // Validation finale avec la logique backend
     const validation = userProfileApi.validatePasswordBeforeSubmit(passwordData);
     if (!validation.isValid) {
@@ -152,7 +198,7 @@ export const UserProfile: React.FC = () => {
       return;
     }
 
-    setIsLoading(true);
+    setIsPasswordUpdating(true);
 
     try {
       await userProfileApi.updatePassword(passwordData, token);
@@ -169,32 +215,35 @@ export const UserProfile: React.FC = () => {
       toast.success('Mot de passe mis à jour avec succès');
       
     } catch (error: any) {
-      console.error('❌ Erreur mise à jour mot de passe:', error);
+      console.warn('Erreur mise à jour mot de passe:', error.message);
+      
+      const errorMessage = error.message || 'Erreur lors de la mise à jour du mot de passe';
       
       // Gestion des erreurs spécifiques
-      if (error.message.includes('Mot de passe actuel incorrect') || error.message.includes('Le mot de passe actuel est incorrect')) {
+      if (errorMessage.includes('Mot de passe actuel incorrect') || 
+          errorMessage.includes('Le mot de passe actuel est incorrect')) {
         setErrors(prev => ({ ...prev, currentPassword: 'Le mot de passe actuel est incorrect' }));
+      } else if (errorMessage.includes('Fonctionnalité temporairement indisponible')) {
+        toast.error('Fonctionnalité temporairement indisponible');
+      } else if (errorMessage.includes('Erreur de connexion')) {
+        toast.error('Problème de connexion au serveur');
+      } else {
+        toast.error(errorMessage);
       }
-      
-      toast.error(error.message);
     } finally {
-      setIsLoading(false);
+      setIsPasswordUpdating(false);
     }
   };
 
   const handleProfileReset = useCallback(() => {
-    if (user) {
-      setProfileData({
-        email: user.email || '',
-        telephone: user.telephone || ''
-      });
-      setErrors(prev => {
-        const { email, telephone, ...rest } = prev;
-        return rest;
-      });
-      setIsProfileModified(false);
-    }
-  }, [user]);
+    // Réinitialiser vers les données originales
+    setProfileData(originalProfileDataRef.current);
+    setErrors(prev => {
+      const { email, telephone, ...rest } = prev;
+      return rest;
+    });
+    setIsProfileModified(false);
+  }, []);
 
   const handlePasswordReset = useCallback(() => {
     setPasswordData({
@@ -207,6 +256,24 @@ export const UserProfile: React.FC = () => {
       return rest;
     });
   }, []);
+
+  // États de désactivation des boutons
+  const isProfileSubmitDisabled = 
+    isProfileUpdating || 
+    !isProfileModified || 
+    !!errors.email || 
+    !!errors.telephone ||
+    (profileData.email === originalProfileDataRef.current.email && 
+     profileData.telephone === originalProfileDataRef.current.telephone);
+
+  const isPasswordSubmitDisabled = 
+    isPasswordUpdating || 
+    !!errors.currentPassword || 
+    !!errors.newPassword || 
+    !!errors.confirmNewPassword ||
+    !passwordData.currentPassword ||
+    !passwordData.newPassword ||
+    !passwordData.confirmNewPassword;
 
   if (!user) {
     return (
@@ -238,15 +305,15 @@ export const UserProfile: React.FC = () => {
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => window.location.reload()}
-                disabled={isLoading}
+                disabled={isProfileUpdating || isPasswordUpdating}
                 className="p-2 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-50"
               >
-                <RefreshCw className={`w-5 h-5 text-slate-600 ${isLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-5 h-5 text-slate-600 ${isProfileUpdating || isPasswordUpdating ? 'animate-spin' : ''}`} />
               </button>
             </div>
           </div>
 
-          {/* Navigation simplifiée */}
+          {/* Navigation */}
           <div className="mt-3">
             <nav className="flex space-x-1">
               {[
@@ -286,14 +353,14 @@ export const UserProfile: React.FC = () => {
                     {user.firstName} {user.lastName}
                   </h2>
                   <p className="text-blue-100 text-sm opacity-90">
-                    {user.role === 'admin' ? 'Administrateur' : 'Utilisateur'} • 
+                    {user.role === 'admin' || user.isAdmin ? 'Administrateur' : 'Utilisateur'} • 
                     Compte {user.isActive ? 'actif' : 'inactif'}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Indicateur de brouillon pour le profil */}
+            {/* Indicateur de modifications non sauvegardées */}
             {activeTab === 'profile' && isProfileModified && (
               <div className="bg-amber-50 border-b border-amber-200 px-6 py-3">
                 <div className="flex items-center justify-between">
@@ -354,16 +421,14 @@ export const UserProfile: React.FC = () => {
                         autoComplete="email"
                         value={profileData.email}
                         onChange={handleProfileChange}
-                        disabled={isLoading}
-                        aria-describedby={errors.email ? "email-error" : undefined}
-                        aria-invalid={errors.email ? "true" : "false"}
+                        disabled={isProfileUpdating}
                         className={`
                           block w-full px-4 py-3 border rounded-lg shadow-sm placeholder-gray-400
-                          focus:ring-none hover:border-sky-500 focus:outline-none focus:border-blue-500
+                          focus:ring-2 focus:ring-blue-500 focus:border-transparent
                           disabled:bg-gray-50 disabled:text-gray-500
                           transition-colors duration-200
                           ${errors.email 
-                            ? 'border-red-300 focus:border-red-500' 
+                            ? 'border-red-300 focus:ring-red-500' 
                             : 'border-gray-300'
                           }
                         `}
@@ -378,7 +443,7 @@ export const UserProfile: React.FC = () => {
                       )}
                     </div>
                     {errors.email && (
-                      <p id="email-error" className="mt-2 text-sm text-red-600 flex items-center">
+                      <p className="mt-2 text-sm text-red-600 flex items-center">
                         <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                         </svg>
@@ -404,16 +469,14 @@ export const UserProfile: React.FC = () => {
                         autoComplete="tel"
                         value={profileData.telephone}
                         onChange={handleProfileChange}
-                        disabled={isLoading}
-                        aria-describedby={errors.telephone ? "telephone-error" : undefined}
-                        aria-invalid={errors.telephone ? "true" : "false"}
+                        disabled={isProfileUpdating}
                         className={`
                           block w-full px-4 py-3 border rounded-lg shadow-sm placeholder-gray-400
-                          focus:ring-none hover:border-sky-500 focus:outline-none focus:border-blue-500
+                          focus:ring-2 focus:ring-blue-500 focus:border-transparent
                           disabled:bg-gray-50 disabled:text-gray-500
                           transition-colors duration-200
                           ${errors.telephone 
-                            ? 'border-red-300 focus:border-red-500' 
+                            ? 'border-red-300 focus:ring-red-500' 
                             : 'border-gray-300'
                           }
                         `}
@@ -428,7 +491,7 @@ export const UserProfile: React.FC = () => {
                       )}
                     </div>
                     {errors.telephone && (
-                      <p id="telephone-error" className="mt-2 text-sm text-red-600 flex items-center">
+                      <p className="mt-2 text-sm text-red-600 flex items-center">
                         <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                         </svg>
@@ -442,11 +505,11 @@ export const UserProfile: React.FC = () => {
                     <button
                       type="button"
                       onClick={handleProfileReset}
-                      disabled={isLoading || !isProfileModified}
+                      disabled={isProfileUpdating || !isProfileModified}
                       className={`
                         flex-1 px-6 py-3 border border-gray-300 rounded-lg font-medium
                         transition-colors duration-200
-                        ${isLoading || !isProfileModified
+                        ${isProfileUpdating || !isProfileModified
                           ? 'text-gray-400 bg-gray-50 cursor-not-allowed'
                           : 'text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400'
                         }
@@ -457,26 +520,18 @@ export const UserProfile: React.FC = () => {
                     
                     <button
                       type="submit"
-                      disabled={
-                        isLoading || 
-                        !isProfileModified || 
-                        Object.keys(errors).filter(k => k === 'email' || k === 'telephone').length > 0 ||
-                        (!profileData.email?.trim() && !profileData.telephone?.trim())
-                      }
+                      disabled={isProfileSubmitDisabled}
                       className={`
                         flex-1 px-6 py-3 border border-transparent rounded-lg font-medium text-white
                         transition-all duration-200 flex items-center justify-center
                         ${
-                          isLoading || 
-                          !isProfileModified || 
-                          Object.keys(errors).filter(k => k === 'email' || k === 'telephone').length > 0 ||
-                          (!profileData.email?.trim() && !profileData.telephone?.trim())
+                          isProfileSubmitDisabled
                             ? 'bg-blue-400 cursor-not-allowed'
-                            : 'bg-blue-600 hover:bg-blue-700 focus:ring-none hover:border-sky-500 focus:outline-none focus:border-blue-500'
+                            : 'bg-blue-600 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
                         }
                       `}
                     >
-                      {isLoading ? (
+                      {isProfileUpdating ? (
                         <>
                           <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -511,16 +566,14 @@ export const UserProfile: React.FC = () => {
                         autoComplete="current-password"
                         value={passwordData.currentPassword}
                         onChange={handlePasswordChange}
-                        disabled={isLoading}
-                        aria-describedby={errors.currentPassword ? "currentPassword-error" : undefined}
-                        aria-invalid={errors.currentPassword ? "true" : "false"}
+                        disabled={isPasswordUpdating}
                         className={`
                           block w-full px-4 py-3 border rounded-lg shadow-sm placeholder-gray-400
-                          focus:ring-none hover:border-sky-500 focus:outline-none focus:border-blue-500
+                          focus:ring-2 focus:ring-blue-500 focus:border-transparent
                           disabled:bg-gray-50 disabled:text-gray-500
                           transition-colors duration-200
                           ${errors.currentPassword 
-                            ? 'border-red-300 focus:border-red-500' 
+                            ? 'border-red-300 focus:ring-red-500' 
                             : 'border-gray-300'
                           }
                         `}
@@ -535,7 +588,7 @@ export const UserProfile: React.FC = () => {
                       )}
                     </div>
                     {errors.currentPassword && (
-                      <p id="currentPassword-error" className="mt-2 text-sm text-red-600 flex items-center">
+                      <p className="mt-2 text-sm text-red-600 flex items-center">
                         <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                         </svg>
@@ -560,16 +613,14 @@ export const UserProfile: React.FC = () => {
                         autoComplete="new-password"
                         value={passwordData.newPassword}
                         onChange={handlePasswordChange}
-                        disabled={isLoading}
-                        aria-describedby={errors.newPassword ? "newPassword-error" : undefined}
-                        aria-invalid={errors.newPassword ? "true" : "false"}
+                        disabled={isPasswordUpdating}
                         className={`
                           block w-full px-4 py-3 border rounded-lg shadow-sm placeholder-gray-400
-                          focus:ring-none hover:border-sky-500 focus:outline-none focus:border-blue-500
+                          focus:ring-2 focus:ring-blue-500 focus:border-transparent
                           disabled:bg-gray-50 disabled:text-gray-500
                           transition-colors duration-200
                           ${errors.newPassword 
-                            ? 'border-red-300 focus:border-red-500' 
+                            ? 'border-red-300 focus:ring-red-500' 
                             : 'border-gray-300'
                           }
                         `}
@@ -584,7 +635,7 @@ export const UserProfile: React.FC = () => {
                       )}
                     </div>
                     {errors.newPassword && (
-                      <p id="newPassword-error" className="mt-2 text-sm text-red-600 flex items-center">
+                      <p className="mt-2 text-sm text-red-600 flex items-center">
                         <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                         </svg>
@@ -612,16 +663,14 @@ export const UserProfile: React.FC = () => {
                         autoComplete="new-password"
                         value={passwordData.confirmNewPassword}
                         onChange={handlePasswordChange}
-                        disabled={isLoading}
-                        aria-describedby={errors.confirmNewPassword ? "confirmNewPassword-error" : undefined}
-                        aria-invalid={errors.confirmNewPassword ? "true" : "false"}
+                        disabled={isPasswordUpdating}
                         className={`
                           block w-full px-4 py-3 border rounded-lg shadow-sm placeholder-gray-400
-                          focus:ring-none hover:border-sky-500 focus:outline-none focus:border-blue-500
+                          focus:ring-2 focus:ring-blue-500 focus:border-transparent
                           disabled:bg-gray-50 disabled:text-gray-500
                           transition-colors duration-200
                           ${errors.confirmNewPassword 
-                            ? 'border-red-300 focus:border-red-500' 
+                            ? 'border-red-300 focus:ring-red-500' 
                             : 'border-gray-300'
                           }
                         `}
@@ -636,7 +685,7 @@ export const UserProfile: React.FC = () => {
                       )}
                     </div>
                     {errors.confirmNewPassword && (
-                      <p id="confirmNewPassword-error" className="mt-2 text-sm text-red-600 flex items-center">
+                      <p className="mt-2 text-sm text-red-600 flex items-center">
                         <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                         </svg>
@@ -650,11 +699,11 @@ export const UserProfile: React.FC = () => {
                     <button
                       type="button"
                       onClick={handlePasswordReset}
-                      disabled={isLoading || (!passwordData.currentPassword && !passwordData.newPassword && !passwordData.confirmNewPassword)}
+                      disabled={isPasswordUpdating || (!passwordData.currentPassword && !passwordData.newPassword && !passwordData.confirmNewPassword)}
                       className={`
                         flex-1 px-6 py-3 border border-gray-300 rounded-lg font-medium
                         transition-colors duration-200
-                        ${isLoading || (!passwordData.currentPassword && !passwordData.newPassword && !passwordData.confirmNewPassword)
+                        ${isPasswordUpdating || (!passwordData.currentPassword && !passwordData.newPassword && !passwordData.confirmNewPassword)
                           ? 'text-gray-400 bg-gray-50 cursor-not-allowed'
                           : 'text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400'
                         }
@@ -665,17 +714,17 @@ export const UserProfile: React.FC = () => {
                     
                     <button
                       type="submit"
-                      disabled={isLoading || Object.keys(errors).filter(k => k === 'currentPassword' || k === 'newPassword' || k === 'confirmNewPassword').length > 0}
+                      disabled={isPasswordSubmitDisabled}
                       className={`
                         flex-1 px-6 py-3 border border-transparent rounded-lg font-medium text-white
                         transition-all duration-200 flex items-center justify-center
-                        ${isLoading || Object.keys(errors).filter(k => k === 'currentPassword' || k === 'newPassword' || k === 'confirmNewPassword').length > 0
+                        ${isPasswordSubmitDisabled
                           ? 'bg-blue-400 cursor-not-allowed'
-                          : 'bg-blue-600 hover:bg-blue-700 focus:ring-none hover:border-sky-500 focus:outline-none focus:border-blue-500'
+                          : 'bg-blue-600 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
                         }
                       `}
                     >
-                      {isLoading ? (
+                      {isPasswordUpdating ? (
                         <>
                           <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

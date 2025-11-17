@@ -66,11 +66,11 @@ export class MailService {
 
   async sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
     // Logger le token pour le développement
-    this.logger.log(`Token réinitialisation pour ${email}: ${resetUrl}`);
+    this.logger.log(`Token réinitialisation pour ${email}.`);
 
     // Si le service email n'est pas disponible
     if (!this.emailServiceAvailable || !this.transporter) {
-      this.logger.log(`Lien réinitialisation pour: ${email}`);
+      this.logger.log(`Lien réinitialisation pour ${email}.`);
       return;
     }
 
@@ -116,10 +116,10 @@ export class MailService {
 
     try {
       await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Email réinitialisation envoyé à ${email}`);
+      this.logger.log(`Email réinitialisation envoyé.`);
     } catch (error) {
       this.logger.error(`Erreur envoi email à ${email}: ${error.message}`);
-      this.logger.log(`Lien réinitialisation pour ${email} - Service email indisponible`);
+      this.logger.log(`Lien réinitialisation pour ${email} - Service email indisponible.`);
       // Désactiver le service après une erreur d'authentification
       if (error.message.includes('BadCredentials') || error.message.includes('Invalid login')) {
         this.emailServiceAvailable = false;
@@ -167,10 +167,10 @@ export class MailService {
 
     try {
       await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Email bienvenue envoyé à ${email}`);
+      this.logger.log(`Email bienvenue envoyé.`);
     } catch (error) {
       this.logger.error(`Erreur envoi email bienvenue à ${email}`, error.stack);
-      this.logger.log(`Email bienvenue pour ${firstName} (${email})`);
+      this.logger.log(`Email bienvenue pour ${firstName} (${email}) - Service email indisponible.`);
     }
   }
 }

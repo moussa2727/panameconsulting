@@ -23,7 +23,7 @@ export class ContactService {
     // 📨 Créer un nouveau message de contact
     async create(createContactDto: CreateContactDto): Promise<Contact> {
         try {
-            this.logger.log(`Nouveau message de contact reçu de ${createContactDto.email}`);
+            this.logger.log(`Nouveau message de contact .`);
             
             const createdContact = new this.contactModel(createContactDto);
             const savedContact = await createdContact.save();
@@ -157,7 +157,7 @@ export class ContactService {
             // Envoyer la réponse par email
             await this.notificationService.sendContactReply(updatedContact, reply);
 
-            this.logger.log(`Réponse envoyée au contact ${contact.email} par l'admin ${user.email}`);
+            this.logger.log(`Réponse envoyée au contact par l'admin.`);
             return updatedContact;
         } catch (error) {
             this.logger.error(`Erreur lors de l'envoi de la réponse au contact ${id}: ${error.message}`);

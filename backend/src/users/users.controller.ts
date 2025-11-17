@@ -96,62 +96,83 @@ export class UsersController {
   }
 
   // === ENDPOINTS PUBLIC (Pour l'utilisateur connecté) ===
-
- @Patch('profile/me')
-@UseGuards(JwtAuthGuard)
-async updateProfile(
-  @Request() req: RequestWithUser, 
-  @Body() updateUserDto: UpdateUserDto
-) {
-  console.log('📝 Mise à jour profil pour:', req.user.userId);
-  
-  // Validation améliorée
-  if (updateUserDto.email === undefined && updateUserDto.telephone === undefined) {
-    throw new BadRequestException('Au moins un champ (email ou téléphone) doit être fourni');
-  }
-
-  // Validation de l'email si fourni
-  if (updateUserDto.email !== undefined) {
-    if (updateUserDto.email.trim() === '') {
-      throw new BadRequestException('L\'email ne peut pas être vide');
+    @Patch('profile/me')
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(
+    @Request() req: RequestWithUser, 
+    @Body() updateUserDto: UpdateUserDto
+  ) {
+    console.log('📝 Mise à jour profil pour:', req.user.userId);
+    
+    // Validation améliorée
+    if (updateUserDto.email === undefined && updateUserDto.telephone === undefined) {
+      throw new BadRequestException('Au moins un champ (email ou téléphone) doit être fourni');
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(updateUserDto.email)) {
-      throw new BadRequestException('Format d\'email invalide');
+
+    // Validation de l'email si fourni
+    if (updateUserDto.email !== undefined) {
+      if (updateUserDto.email.trim() === '') {
+        throw new BadRequestException('L\'email ne peut pas être vide');
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(updateUserDto.email)) {
+        throw new BadRequestException('Format d\'email invalide');
+      }
     }
-  }
 
-  // Validation du téléphone si fourni
-  if (updateUserDto.telephone !== undefined) {
-    if (updateUserDto.telephone.trim().length < 5) {
-      throw new BadRequestException('Le téléphone doit contenir au moins 5 caractères');
+    // Validation du téléphone si fourni
+    if (updateUserDto.telephone !== undefined) {
+      if (updateUserDto.telephone.trim().length < 5) {
+        throw new BadRequestException('Le téléphone doit contenir au moins 5 caractères');
+      }
     }
+
+    const allowedUpdate: any = {};
+    
+    if (updateUserDto.email !== undefined && updateUserDto.email.trim() !== '') {
+      allowedUpdate.email = updateUserDto.email.trim().toLowerCase();
+    }
+    
+    if (updateUserDto.telephone !== undefined && updateUserDto.telephone.trim() !== '') {
+      allowedUpdate.telephone = updateUserDto.telephone.trim();
+    }
+
+    if (Object.keys(allowedUpdate).length === 0) {
+      throw new BadRequestException('Aucune donnée valide à mettre à jour');
+    }
+
+    console.log('✅ Données autorisées pour mise à jour:', allowedUpdate);
+    
+    const updatedUser = await this.usersService.update(req.user.userId, allowedUpdate);
+
+    return {
+      id: updatedUser._id?.toString(),
+      email: updatedUser.email,
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+      role: updatedUser.role,
+      telephone: updatedUser.telephone,
+      isActive: updatedUser.isActive,
+      isAdmin: updatedUser.role === UserRole.ADMIN
+    };
   }
 
-  const allowedUpdate: any = {};
-  
-  if (updateUserDto.email !== undefined && updateUserDto.email.trim() !== '') {
-    allowedUpdate.email = updateUserDto.email.trim().toLowerCase();
-  }
-  
-  if (updateUserDto.telephone !== undefined && updateUserDto.telephone.trim() !== '') {
-    allowedUpdate.telephone = updateUserDto.telephone.trim();
-  }
 
-  if (Object.keys(allowedUpdate).length === 0) {
-    throw new BadRequestException('Aucune donnée valide à mettre à jour');
-  }
-
-  console.log('✅ Données autorisées pour mise à jour:', allowedUpdate);
-  
-  return this.usersService.update(req.user.userId, allowedUpdate);
-}
-
-
-  @Get('profile/me')
+   @Get('profile/me')
   @UseGuards(JwtAuthGuard)
   async getMyProfile(@Request() req: RequestWithUser) {
-    return this.usersService.findById(req.user.userId);
+    const user = await this.usersService.findById(req.user.userId);
+    
+    return {
+      id: user._id?.toString(),
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      telephone: user.telephone,
+      isActive: user.isActive,
+      isAdmin: user.role === UserRole.ADMIN
+    };
   }
 
 

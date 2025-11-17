@@ -147,7 +147,7 @@ export class ProcedureController {
 
         // ✅ LOG SÉCURISÉ - Sans email
         const maskedEmail = this.maskEmail(req.user.email);
-        this.logger.log(`Liste procédures utilisateur - UserID: ${req.user.id}, Page: ${page}, Limit: ${limit}`);
+        this.logger.log(`Liste procédures utilisateur - Page: ${page}, Limit: ${limit}`);
 
         return this.procedureService.getUserProcedures(req.user.email, page, limit);
     }
@@ -157,7 +157,7 @@ export class ProcedureController {
     @Roles(UserRole.USER, UserRole.ADMIN)
     @ApiOperation({ summary: 'Détails d\'une procédure' })
     async getProcedureDetails(@Param('id') id: string, @Req() req: any) {
-        this.logger.log(`Détails procédure - ID: ${id}, UserID: ${req.user.id}`);
+        this.logger.log(`Détails procédure - ID: ${id}`);
         return this.procedureService.getProcedureDetails(id, req.user);
     }
 
@@ -170,7 +170,7 @@ export class ProcedureController {
         @Req() req: any,
         @Body() cancelDto: CancelProcedureDto
     ) {
-        this.logger.log(`Annulation procédure - ID: ${id}, UserID: ${req.user.id}`);
+        this.logger.log(`Annulation procédure - ID: ${id}`);
         return this.procedureService.cancelProcedure(id, req.user.email, cancelDto.reason);
     }
 

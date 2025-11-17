@@ -174,7 +174,7 @@ async create(createUserDto: RegisterDto): Promise<User> {
   }
 
 async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
-  console.log('🔄 Mise à jour utilisateur:', { id, updateUserDto });
+  console.log('🔄 Mise à jour utilisateur.');
   
   // Validation de l'ID
   if (!id || !Types.ObjectId.isValid(id)) {
