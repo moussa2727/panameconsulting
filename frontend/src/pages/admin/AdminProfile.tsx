@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAuth } from '../../utils/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { Eye, EyeOff, Shield, CheckCircle, XCircle } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 

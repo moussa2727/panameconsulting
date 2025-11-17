@@ -4,7 +4,7 @@ import AOS from 'aos';
 import 'aos/dist/aos.css';
 import { Helmet } from 'react-helmet-async';
 import ErrorBoundary from './components/ErrorBoundary';
-import { useAuth } from './utils/AuthContext';
+import { useAuth } from './context/AuthContext';
 
 // Components communs
 import Header from './components/Header';
@@ -35,7 +35,7 @@ const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const AdminRendezVous = lazy(() => import('./pages/admin/AdminRendez-Vous'));
 
 // Restrictions admin
-import RequireAdmin from './utils/RequireAdmin';
+import RequireAdmin from './context/RequireAdmin';
 
 import MesRendezVous from './pages/user/MesRendezVous';
 import UserProfile from './pages/user/UserProfile';

@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     Body,
     Controller,
     Get,
@@ -26,7 +27,6 @@ import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { CookieConsentDto } from './dto/cookie-consent.dto';
 
 interface CustomRequest extends Request {
     cookies?: {
@@ -82,35 +82,6 @@ export class AuthController {
         });
     }
 
-    @Post('cookie-consent')
-    @ApiOperation({ summary: 'Définir le consentement des cookies' })
-    @ApiResponse({ status: 200, description: 'Préférence de cookie enregistrée' })
-    @ApiResponse({ status: 400, description: 'Données invalides' })
-    async setCookieConsent(
-        @Body() cookieConsentDto: CookieConsentDto,
-        @Res() res: Response
-    ) {
-        const { accepted } = cookieConsentDto;
-        const FOUR_WEEKS_IN_MS = 4 * 7 * 24 * 60 * 60 * 1000; // 4 semaines en millisecondes
-
-        // Configuration des cookies
-        const cookieOptions: any = {
-            httpOnly: false,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            maxAge: FOUR_WEEKS_IN_MS, // 🔥 4 semaines
-            domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
-        };
-
-        // Définir le cookie de consentement
-        res.cookie('cookie_consent', accepted ? 'true' : 'false', cookieOptions);
-
-        return res.json({ 
-            success: true,
-            message: `Consentement ${accepted ? 'accepté' : 'refusé'} enregistré`
-        });
-    }
-
     @Post('refresh')
     @ApiOperation({ summary: 'Rafraîchir le token' })
     @ApiResponse({ status: 200, description: 'Token rafraîchi' })
@@ -129,7 +100,7 @@ export class AuthController {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com'  : undefined
+            domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : process.env.NODE_ENV === 'development' ? '.panameconsulting.com' : '.panameconsulting.vercel.app'
         };
 
         if (result.refreshToken) {
@@ -180,11 +151,31 @@ export class AuthController {
         return this.authService.logoutAll();
     }
 
-    @Get('me')
-    @UseGuards(JwtAuthGuard)
-    @ApiOperation({ summary: 'Récupérer le profil utilisateur' })
-    async getProfile(@Request() req: any) {
-        const user = await this.authService.getProfile(req.user.sub);
+   
+@Get('me')
+@UseGuards(JwtAuthGuard)
+@ApiOperation({ summary: 'Récupérer le profil utilisateur' })
+async getProfile(@Request() req: any) {
+    // ✅ DEBUG COMPLET de req.user
+    console.log('🔍 DEBUG req.user complet:', JSON.stringify(req.user, null, 2));
+    console.log('🔍 DEBUG req.user.sub:', req.user?.sub);
+    console.log('🔍 DEBUG req.user.userId:', req.user?.userId);
+    console.log('🔍 DEBUG req.headers:', req.headers?.authorization);
+    
+    // ✅ Essayer différents chemins pour l'ID utilisateur
+    const userId = req.user?.sub || req.user?.userId || req.user?.id;
+    
+    if (!userId) {
+        console.error('❌ ERREUR: Aucun ID utilisateur trouvé dans req.user');
+        console.error('❌ Structure de req.user:', Object.keys(req.user || {}));
+        throw new BadRequestException('ID utilisateur manquant dans le token');
+    }
+    
+    console.log('✅ ID utilisateur trouvé:', userId);
+    
+    try {
+        const user = await this.authService.getProfile(userId);
+        
         return {
             id: user._id,
             email: user.email,
@@ -195,7 +186,11 @@ export class AuthController {
             telephone: user.telephone,
             isActive: user.isActive
         };
+    } catch (error) {
+        console.error('❌ Erreur dans getProfile:', error);
+        throw error;
     }
+}
 
     @Patch('me')
     @UseGuards(JwtAuthGuard)

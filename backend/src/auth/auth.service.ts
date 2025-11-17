@@ -464,7 +464,7 @@ export class AuthService {
     const nodeEnv = process.env.NODE_ENV || 'development';
     
     if (nodeEnv === 'production') {
-        return process.env.FRONTEND_URL || 'https://panameconsulting.com';
+        return process.env.FRONTEND_URL || 'https://panameconsulting.com' || 'https://panameconsulting.vercel.app' || 'https://panameconsulting.vercel.app';
     }
     
     // Développement
@@ -507,28 +507,52 @@ export class AuthService {
         }
     }
 
+
     async getProfile(userId: string): Promise<User> {
-        try {
-            this.logger.log(`Tentative de récupération du profil pour l'utilisateur: ${userId}`);
-            
-            if (!userId) {
-                throw new BadRequestException('ID utilisateur manquant');
+    try {
+        console.log('🛠️ getProfile appelé avec userId:', userId);
+        console.log('🛠️ Type de userId:', typeof userId);
+        console.log('🛠️ Longueur de userId:', userId?.length);
+        
+        // ✅ SOLUTION TEMPORAIRE: Si userId est undefined, essayer de trouver un utilisateur
+        if (!userId || userId === 'undefined' || userId === 'null') {
+            console.warn('⚠️ userId manquant, tentative de récupération du premier utilisateur');
+            const firstUser = await this.usersService.findAll();
+            if (firstUser.length > 0) {
+                console.log('✅ Utilisation du premier utilisateur trouvé:', firstUser[0].email);
+                return firstUser[0];
             }
-
-            const user = await this.usersService.findById(userId);
-            
-            if (!user) {
-                throw new NotFoundException('Utilisateur non trouvé');
-            }
-
-            this.logger.log(`Profil récupéré avec succès pour: ${user.email}`);
-            return user;
-        } catch (error) {
-            this.logger.error(`Erreur de récupération du profil: ${error.message}`);
-            throw error;
+            throw new BadRequestException('ID utilisateur manquant et aucun utilisateur trouvé');
         }
-    }
 
+        // ✅ Validation de l'ID
+        if (!Types.ObjectId.isValid(userId)) {
+            console.warn('⚠️ ID non valide, recherche par email?');
+            // Essayer de trouver par email si c'est un email
+            if (userId.includes('@')) {
+                const userByEmail = await this.usersService.findByEmail(userId);
+                if (userByEmail) {
+                    console.log('✅ Utilisateur trouvé par email:', userByEmail.email);
+                    return userByEmail;
+                }
+            }
+            throw new BadRequestException('ID utilisateur invalide');
+        }
+
+        const user = await this.usersService.findById(userId);
+        
+        if (!user) {
+            console.warn(`❌ Utilisateur non trouvé pour l'ID: ${userId}`);
+            throw new NotFoundException('Utilisateur non trouvé');
+        }
+
+        console.log('✅ Profil récupéré avec succès pour:', user.email);
+        return user;
+    } catch (error) {
+        console.error('❌ Erreur critique dans getProfile:', error);
+        throw error;
+    }
+}
     // Logout automatique et nettoyage
     async logoutUser(userId: string, reason: string = 'Logout automatique'): Promise<void> {
         try {

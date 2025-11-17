@@ -12,6 +12,7 @@ interface AuthContextType {
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
   refreshToken: () => Promise<boolean>;
+  fetchUserProfile: () => Promise<void>;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -302,30 +303,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [getFromSession, removeFromSession]);
 
   const isValidRedirectPath = useCallback((path: string, user: User): boolean => {
-  if (!path || typeof path !== 'string') return false;
-  
-  const allowedPaths = [
-    '/', '/services', '/contact', '/a-propos', '/rendez-vous',
-    '/mes-rendez-vous', '/mon-profil', '/ma-procedure'
-  ];
-  
-  const adminPaths = [
-    '/gestionnaire/statistiques', '/gestionnaire/utilisateurs',
-    '/gestionnaire/messages', '/gestionnaire/procedures',
-    '/gestionnaire/destinations', '/gestionnaire/rendez-vous',
-    '/gestionnaire/profil'
-  ];
+    if (!path || typeof path !== 'string') return false;
+    
+    const allowedPaths = [
+      '/', '/services', '/contact', '/a-propos', '/rendez-vous',
+      '/mes-rendez-vous', '/mon-profil', '/ma-procedure'
+    ];
+    
+    const adminPaths = [
+      '/gestionnaire/statistiques', '/gestionnaire/utilisateurs',
+      '/gestionnaire/messages', '/gestionnaire/procedures',
+      '/gestionnaire/destinations', '/gestionnaire/rendez-vous',
+      '/gestionnaire/profil'
+    ];
 
-  // 🔥 CORRECTION : Gestion explicite du type boolean pour user.isAdmin
-  const isAllowed = allowedPaths.includes(path) || 
-    ((user.role === 'admin' || user.isAdmin === true) && adminPaths.some(adminPath => path.startsWith(adminPath)));
+    // ✅ Vérification sécurisée du rôle admin
+    const isAdmin = user.role === 'admin' || user.isAdmin === true;
+    const isAdminPath = isAdmin && adminPaths.some(adminPath => path.startsWith(adminPath));
+    const isAllowed = allowedPaths.includes(path) || isAdminPath;
 
-  const isAuthRoute = [
-    '/connexion', '/inscription', '/mot-de-passe-oublie'
-  ].includes(path);
+    const isAuthRoute = [
+      '/connexion', '/inscription', '/mot-de-passe-oublie'
+    ].includes(path);
 
-  return isAllowed && !isAuthRoute;
-}, []);
+    return isAllowed && !isAuthRoute;
+  }, []);
 
   const getRoleBasedRedirect = useCallback((user: User): string => {
     const redirectPath = getRedirectPath();
@@ -487,49 +489,52 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [removeFromSession, getFromSession, saveToSession]);
 
   // === FONCTIONS CORE D'AUTHENTIFICATION ===
-
 const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
 
-    const response = await fetch(`${VITE_API_URL}/api/auth/me`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${userToken}`,
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      signal: controller.signal
-    });
+        const response = await fetch(`${VITE_API_URL}/api/auth/me`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${userToken}`,
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            signal: controller.signal
+        });
 
-    clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Token invalide ou expiré');
-      }
-      throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+        if (!response.ok) {
+            // ✅ Meilleure gestion des erreurs
+            if (response.status === 400) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || 'Données utilisateur invalides');
+            }
+            if (response.status === 401) {
+                throw new Error('Token invalide ou expiré');
+            }
+            throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+        }
+
+        const userData: User = await response.json();
+        
+        // ✅ Normalisation du rôle admin
+        const userWithRole: User = {
+            ...userData,
+            isAdmin: userData.role === 'admin' || userData.isAdmin === true
+        };
+        
+        setUser(userWithRole);
+        
+    } catch (err: any) {
+        console.error('❌ Erreur récupération données utilisateur:', err);
+        
+        // ✅ Relancer l'erreur pour qu'elle soit catchée plus haut
+        throw new Error(err.message || 'Impossible de récupérer les informations utilisateur');
     }
-
-    const userData: User = await response.json();
-    
-    // 🔥 CORRECTION : Gestion explicite du type boolean
-    const userWithRole: User = {
-      ...userData,
-      isAdmin: userData.role === 'admin' || userData.isAdmin === true
-    };
-    
-    setUser(userWithRole);
-      
-  } catch (err: any) {
-    console.error('❌ Erreur récupération données utilisateur:', err);
-    if (err.name !== 'AbortError') {
-      throw new Error('Impossible de récupérer les informations utilisateur');
-    }
-  }
 }, [VITE_API_URL]);
-
   const setupTokenRefresh = useCallback((exp: number): void => {
     if (refreshTimeoutRef.current) {
       window.clearTimeout(refreshTimeoutRef.current);
@@ -734,149 +739,187 @@ const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
 
   // === OPÉRATIONS D'AUTHENTIFICATION ===
 
-  const login = useCallback(async (email: string, password: string): Promise<void> => {
+  // Constantes pour la gestion des nouvelles tentatives
+  const MAX_RETRY_ATTEMPTS = 3;
+  const INITIAL_RETRY_DELAY = 1000; // 1 seconde
+  const MAX_RETRY_DELAY = 30000; // 30 secondes
+
+
+  const login = useCallback(async (email: string, password: string, attempt = 1): Promise<void> => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
+        // ✅ Correction de l'URL - ajouter /api
+        const response = await fetch(`${VITE_API_URL}/api/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email, password }),
+            credentials: 'include'
+        });
 
-      const response = await fetch(`${VITE_API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-        credentials: 'include',
-        signal: controller.signal
-      });
+        // Gestion des erreurs 429 (Trop de requêtes)
+        if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After') || 
+                             Math.min(INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1), MAX_RETRY_DELAY);
+            
+            if (attempt >= MAX_RETRY_ATTEMPTS) {
+                throw new Error('Trop de tentatives de connexion. Veuillez réessayer plus tard.');
+            }
 
-      clearTimeout(timeoutId);
-
-      if (response.status === 429) {
-        const canRetry = await handleRateLimit('login');
-        if (canRetry) {
-          return login(email, password);
-        } else {
-          throw new Error('Trop de tentatives de connexion. Veuillez patienter.');
+            console.log(`⏳ Trop de requêtes. Nouvelle tentative dans ${retryAfter}ms...`);
+            
+            await new Promise(resolve => setTimeout(resolve, parseInt(retryAfter.toString())));
+            return login(email, password, attempt + 1);
         }
-      }
 
-      const data: LoginResponse = await response.json();
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Erreur de connexion' }));
+            throw new Error(errorData.message || `Erreur ${response.status}`);
+        }
 
-      if (!response.ok) {
-        throw new Error(data.message || 'Erreur de connexion');
-      }
+        const data: LoginResponse = await response.json();
 
-      if (!data.accessToken || !data.user || !data.user.id) {
-        throw new Error('Réponse d\'authentification invalide');
-      }
+        if (!data.accessToken || !data.user || !data.user.id) {
+            throw new Error('Réponse d\'authentification invalide');
+        }
 
-      localStorage.setItem('token', data.accessToken);
-      setToken(data.accessToken);
-      
-      const userWithRole: User = {
-        ...data.user,
-        isAdmin: data.user.role === 'admin' || data.user.isAdmin === true
-      };
-      setUser(userWithRole);
+        console.log('✅ Connexion réussie');
+        
+        // ✅ Stocker le token
+        localStorage.setItem('token', data.accessToken);
+        setToken(data.accessToken);
 
-      const decoded = jwtDecode<JwtPayload>(data.accessToken);
-      setupTokenRefresh(decoded.exp);
-      
-      saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
-        sessionStart: Date.now(),
-        sessionId: crypto.randomUUID?.(),
-        userAgent: navigator.userAgent.substring(0, 100),
-        hasActiveSession: true
-      });
+        // ✅ Mettre à jour l'utilisateur
+        const userWithRole: User = {
+            ...data.user,
+            isAdmin: data.user.role === 'admin' || data.user.isAdmin === true
+        };
+        setUser(userWithRole);
 
-      resetRateLimit();
+        // ✅ Configurer le rafraîchissement automatique
+        const decoded = jwtDecode<JwtPayload>(data.accessToken);
+        setupTokenRefresh(decoded.exp);
+        
+        // ✅ Sauvegarder les métadonnées de session
+        saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
+            sessionStart: Date.now(),
+            sessionId: crypto.randomUUID?.(),
+            userAgent: navigator.userAgent.substring(0, 100),
+            hasActiveSession: true,
+            lastLogin: new Date().toISOString()
+        });
 
-      // 🔥 REDIRECTION UNIFORMISÉE SELON LE RÔLE
-      const redirectPath = getRoleBasedRedirect(userWithRole);
-      
-      navigate(redirectPath, { replace: true });
-      
+        resetRateLimit();
+
+        // ✅ Redirection
+        const redirectPath = getRoleBasedRedirect(userWithRole);
+        console.log(`🔄 Redirection vers: ${redirectPath}`);
+        navigate(redirectPath, { replace: true });
+        
     } catch (err: any) {
-      const errorMessage = err.name === 'AbortError' 
-        ? 'Timeout de connexion' 
-        : err.message || 'Erreur de connexion';
-      
-      toast.error(errorMessage);
-      setError(errorMessage);
-      throw err;
+        const errorMessage = err.name === 'AbortError' 
+            ? 'Timeout de connexion' 
+            : err.message || 'Erreur de connexion';
+        
+        toast.error(errorMessage);
+        setError(errorMessage);
+        throw err;
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
-  }, [VITE_API_URL, navigate, setupTokenRefresh, saveToSession, handleRateLimit, resetRateLimit, getRoleBasedRedirect]);
+}, [VITE_API_URL, navigate, setupTokenRefresh, saveToSession, resetRateLimit, getRoleBasedRedirect]);
+
+
 
   const register = useCallback(async (formData: RegisterFormData): Promise<void> => {
     setIsLoading(true);
     setError(null);
 
     try {
-      if (formData.password !== formData.confirmPassword) {
-        throw new Error('Les mots de passe ne correspondent pas');
-      }
-
-      if (formData.password.length < 8) {
-        throw new Error('Le mot de passe doit contenir au moins 8 caractères');
-      }
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
-
-      const response = await fetch(`${VITE_API_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          firstName: formData.firstName.trim(),
-          lastName: formData.lastName.trim(),
-          email: formData.email.toLowerCase().trim(),
-          telephone: formData.phone.trim(),
-          password: formData.password,
-        }),
-        credentials: 'include',
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.status === 429) {
-        const canRetry = await handleRateLimit('register');
-        if (canRetry) {
-          return register(formData);
-        } else {
-          throw new Error('Trop de tentatives d\'inscription. Veuillez patienter.');
+        // Validation des données
+        if (formData.password !== formData.confirmPassword) {
+            throw new Error('Les mots de passe ne correspondent pas');
         }
-      }
 
-      const data = await response.json();
+        if (formData.password.length < 8) {
+            throw new Error('Le mot de passe doit contenir au moins 8 caractères');
+        }
 
-      if (!response.ok) {
-        const errorMsg = data.errors 
-          ? Object.values(data.errors).join(', ') 
-          : data.message || "Erreur lors de l'inscription";
-        throw new Error(errorMsg);
-      }
+        // Validation email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(formData.email)) {
+            throw new Error('Format d\'email invalide');
+        }
 
-      resetRateLimit();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.API_TIMEOUT);
 
-      await login(formData.email, formData.password);
-      
+        // ✅ URL corrigée avec /api
+        const response = await fetch(`${VITE_API_URL}/api/auth/register`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                firstName: formData.firstName.trim(),
+                lastName: formData.lastName.trim(),
+                email: formData.email.toLowerCase().trim(),
+                telephone: formData.phone.trim(),
+                password: formData.password,
+            }),
+            credentials: 'include',
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        // Gestion du rate limiting
+        if (response.status === 429) {
+            const canRetry = await handleRateLimit('register');
+            if (canRetry) {
+                return register(formData);
+            } else {
+                throw new Error('Trop de tentatives d\'inscription. Veuillez patienter.');
+            }
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            const errorMsg = data.errors 
+                ? Object.values(data.errors).join(', ') 
+                : data.message || "Erreur lors de l'inscription";
+            throw new Error(errorMsg);
+        }
+
+        resetRateLimit();
+
+        // ✅ Connexion automatique après inscription
+        console.log('✅ Inscription réussie, tentative de connexion automatique...');
+        
+        try {
+            await login(formData.email, formData.password);
+            toast.success('Inscription réussie ! Bienvenue !');
+        } catch (loginError) {
+            // Si la connexion auto échoue, rediriger vers la page de connexion
+            console.warn('Connexion automatique échouée, redirection vers login:', loginError);
+            toast.success('Inscription réussie ! Veuillez vous connecter.');
+            navigate('/connexion');
+        }
+        
     } catch (err: any) {
-      const errorMessage = err.message || "Erreur lors de l'inscription";
-      toast.error(errorMessage);
-      setError(errorMessage);
-      throw err;
+        const errorMessage = err.message || "Erreur lors de l'inscription";
+        console.error('❌ Erreur inscription:', err);
+        toast.error(errorMessage);
+        setError(errorMessage);
+        throw err;
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
-  }, [VITE_API_URL, login, handleRateLimit, resetRateLimit]);
+}, [VITE_API_URL, login, handleRateLimit, resetRateLimit, navigate]);
 
   const forgotPassword = useCallback(async (email: string): Promise<void> => {
     setIsLoading(true);
@@ -991,105 +1034,172 @@ const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
     }
   }, [VITE_API_URL, navigate, removeFromSession, handleRateLimit, resetRateLimit]);
 
+
   const logout = useCallback(async (redirectPath?: string, silent?: boolean): Promise<void> => {
     const tokenToRevoke = token || localStorage.getItem('token');
     
-    // Nettoyer tous les brouillons à la déconnexion
-    const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
-    Object.keys(metadata).forEach(formId => {
-      removeFromSession(`${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`);
-    });
-    removeFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA);
+    console.log('🔓 Début de la déconnexion...');
 
-    // Supprimer les tokens du stockage local
-    localStorage.removeItem('token');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    
+    // 1. Nettoyer tous les brouillons de formulaire
+    try {
+        const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
+        Object.keys(metadata).forEach(formId => {
+            removeFromSession(`${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`);
+        });
+        removeFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA);
+        console.log('✅ Brouillons nettoyés');
+    } catch (error) {
+        console.warn('⚠️ Erreur nettoyage brouillons:', error);
+    }
+
+    // 2. Supprimer les tokens du localStorage
+    try {
+        localStorage.removeItem('token');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        console.log('✅ Tokens supprimés du localStorage');
+    } catch (error) {
+        console.warn('⚠️ Erreur suppression tokens localStorage:', error);
+    }
+
+    // 3. Nettoyer l'état React
     setToken(null);
     setUser(null);
     setError(null);
+    console.log('✅ État React nettoyé');
 
+    // 4. Réinitialiser le rate limiting
     resetRateLimit();
 
-    // Nettoyer les cookies
-    const cookies = [
-      'access_token', 'refresh_token', 'token', 'auth_token'
-    ];
-    
-    cookies.forEach(cookieName => {
-      document.cookie = `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
-      document.cookie = `${cookieName}=; Path=/; Domain=localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
-    });
+    // 5. Nettoyer les cookies
+    try {
+        const cookies = [
+            'access_token', 'refresh_token', 'token', 'auth_token',
+            'cookie_consent', 'session_id'
+        ];
+        
+        const domain = window.location.hostname;
+        const isLocalhost = domain === 'localhost' || domain === '127.0.0.1';
+        
+        cookies.forEach(cookieName => {
+            // Suppression pour le domaine actuel
+            document.cookie = `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+            
+            // Suppression pour le sous-domaine si en production
+            if (!isLocalhost) {
+                document.cookie = `${cookieName}=; Path=/; Domain=.${domain}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+            }
+            
+            // Suppression spécifique pour localhost
+            if (isLocalhost) {
+                document.cookie = `${cookieName}=; Path=/; Domain=localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+            }
+        });
+        console.log('✅ Cookies nettoyés');
+    } catch (error) {
+        console.warn('⚠️ Erreur nettoyage cookies:', error);
+    }
 
-    // Nettoyer les timeouts
+    // 6. Nettoyer les timeouts et intervalles
     if (refreshTimeoutRef.current) {
-      window.clearTimeout(refreshTimeoutRef.current);
-      refreshTimeoutRef.current = null;
+        window.clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
     }
 
     if (checkIntervalRef.current) {
-      window.clearInterval(checkIntervalRef.current);
-      checkIntervalRef.current = null;
+        window.clearInterval(checkIntervalRef.current);
+        checkIntervalRef.current = null;
     }
 
     if (rateLimitRetryTimeoutRef.current) {
-      window.clearTimeout(rateLimitRetryTimeoutRef.current);
-      rateLimitRetryTimeoutRef.current = null;
+        window.clearTimeout(rateLimitRetryTimeoutRef.current);
+        rateLimitRetryTimeoutRef.current = null;
     }
 
     if (cleanupIntervalRef.current) {
-      window.clearInterval(cleanupIntervalRef.current);
-      cleanupIntervalRef.current = null;
+        window.clearInterval(cleanupIntervalRef.current);
+        cleanupIntervalRef.current = null;
     }
+    console.log('✅ Timeouts nettoyés');
 
-    // Appel API de déconnexion
+    // 7. Appel API de déconnexion (si pas silent et token présent)
     if (!silent && tokenToRevoke) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-        await fetch(`${VITE_API_URL}/api/auth/logout`, {
-          method: 'POST',
-          headers: { 
-            'Authorization': `Bearer ${tokenToRevoke}`,
-            'Content-Type': 'application/json'
-          },
-          credentials: 'include',
-          signal: controller.signal
-        });
+            // ✅ URL corrigée avec /api
+            await fetch(`${VITE_API_URL}/api/auth/logout`, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${tokenToRevoke}`,
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                signal: controller.signal
+            });
 
-        clearTimeout(timeoutId);
-      } catch (error) {
-        console.warn('⚠️ Erreur lors de la déconnexion API:', error);
-      }
+            clearTimeout(timeoutId);
+            console.log('✅ Déconnexion API réussie');
+        } catch (error) {
+            console.warn('⚠️ Erreur lors de la déconnexion API:', error);
+            // Ne pas throw l'erreur pour permettre la déconnexion client même si l'API échoue
+        }
     }
 
-    // Mettre à jour les métadonnées de session
-    saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
-      sessionStart: Date.now(),
-      sessionId: crypto.randomUUID?.(),
-      userAgent: navigator.userAgent.substring(0, 100),
-      hasActiveSession: false,
-      loggedOutAt: new Date().toISOString()
-    });
+    // 8. Mettre à jour les métadonnées de session
+    try {
+        saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
+            sessionStart: Date.now(),
+            sessionId: crypto.randomUUID?.(),
+            userAgent: navigator.userAgent.substring(0, 100),
+            hasActiveSession: false,
+            loggedOutAt: new Date().toISOString()
+        });
+        console.log('✅ Métadonnées de session mises à jour');
+    } catch (error) {
+        console.warn('⚠️ Erreur mise à jour métadonnées:', error);
+    }
 
-    // Nettoyer les données sensibles
-    cleanupExpiredFormDrafts();
+    // 9. Nettoyer les données sensibles supplémentaires
+    try {
+        cleanupExpiredFormDrafts();
+        
+        // Nettoyer les données temporaires
+        removeFromSession(ALLOWED_SESSION_KEYS.REDIRECT_PATH);
+        removeFromSession(ALLOWED_SESSION_KEYS.PASSWORD_RESET_HASH);
+        removeFromSession(ALLOWED_SESSION_KEYS.RATE_LIMIT_INFO);
+        
+        console.log('✅ Données sensibles nettoyées');
+    } catch (error) {
+        console.warn('⚠️ Erreur nettoyage données sensibles:', error);
+    }
+
+    // 10. Redirection
+    const finalRedirectPath = redirectPath || '/connexion';
     
-    // 🔥 REDIRECTION UNIFORMISÉE APRÈS DÉCONNEXION
-    const finalRedirectPath = redirectPath || '/';
+    console.log(`🔄 Redirection après déconnexion vers: ${finalRedirectPath}`);
     
-    navigate(finalRedirectPath, { 
-      replace: true,
-      state: {
-        from: 'logout',
-        timestamp: Date.now()
-      }
-    });
-    
-    window.dispatchEvent(new Event('storage'));
-  }, [VITE_API_URL, token, navigate, saveToSession, cleanupExpiredFormDrafts, removeFromSession, resetRateLimit, getFromSession]);
+    // Petit délai pour s'assurer que tout est nettoyé avant la redirection
+    setTimeout(() => {
+        navigate(finalRedirectPath, { 
+            replace: true,
+            state: {
+                from: 'logout',
+                timestamp: Date.now()
+            }
+        });
+        
+        // Déclencher l'événement de stockage pour notifier les autres tabs
+        window.dispatchEvent(new Event('storage'));
+        
+        if (!silent) {
+            toast.info('Vous avez été déconnecté avec succès');
+        }
+    }, 100);
+
+}, [VITE_API_URL, token, navigate, saveToSession, cleanupExpiredFormDrafts, removeFromSession, resetRateLimit, getFromSession]);
+
 
   // === EFFETS ET INITIALISATION ===
 
@@ -1132,6 +1242,28 @@ const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
       }
     };
   }, [cleanupSensitiveData, saveToSession]);
+  const fetchUserProfile = async () => {
+  try {
+    const response = await fetch(`${VITE_API_URL}/api/auth/me`, {
+      method: 'GET',
+      credentials: 'include', // Important pour les cookies
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getFromSession('access_token')}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+    }
+
+    const userData = await response.json();
+    return userData;
+  } catch (error) {
+    console.error('Erreur lors de la récupération du profil:', error);
+    throw error;
+  }
+};
 
   useEffect(() => {
     let isMounted = true;
@@ -1166,6 +1298,7 @@ const fetchUserData = useCallback(async (userToken: string): Promise<void> => {
     token,
     isAuthenticated: !!user && !!token,
     isLoading,
+    fetchUserProfile,
     error,
     login,
     logout,

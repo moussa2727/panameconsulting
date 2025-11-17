@@ -1,43 +1,60 @@
+// jwt.strategy.ts - VERSION HYPER SÉCURISÉE
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { UsersService } from '../../users/users.service';
-
-interface JwtPayload {
-    sub: string;
-    email: string;
-    role: string;
-    jti: string;
-    tokenType: string;
-}
+import { Types } from 'mongoose';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-    constructor(private usersService: UsersService) {
-        super({
-            jwtFromRequest: ExtractJwt.fromExtractors([
-                (request) => {
-                    const token = request?.cookies?.access_token || 
-                                request?.headers?.authorization?.split(' ')[1];
-                    if (!token) throw new UnauthorizedException('Token manquant');
-                    return token;
-                }
-            ]),
-            secretOrKey: process.env.JWT_SECRET,
-        });
-    }
-
-    async validate(payload: JwtPayload) {
+  constructor(
+    private usersService: UsersService,
+  ) {
+    super({
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (request) => {
+          const authHeader = request.headers.authorization;
+          if (authHeader && authHeader.startsWith('Bearer ')) {
+            return authHeader.substring(7);
+          }
+          return request.cookies?.access_token;
+        },
+      ]),
+      ignoreExpiration: false,
+      secretOrKey: process.env.JWT_SECRET,
+    });
+  }
+    
+    async validate(payload: any) {
+        // ✅ ID masqué partiellement pour plus de sécurité
+        const maskedId = this.maskSensitiveData(payload.sub);
+        console.log(`Validation token - User: ${maskedId}`);
+        
         const user = await this.usersService.findById(payload.sub);
         
-        if (!user) throw new UnauthorizedException('Utilisateur non trouvé');
-        if (!user.isActive) throw new UnauthorizedException('Compte utilisateur inactif');
+        if (!user) {
+            console.log(`User not found - ID: ${maskedId}`);
+            throw new UnauthorizedException('Utilisateur non trouvé');
+        }
+        
+        if (!user.isActive) {
+            console.log(`Inactive account - ID: ${maskedId}`);
+            throw new UnauthorizedException('Compte utilisateur inactif');
+        }
 
+        console.log(`User validated - ID: ${maskedId}, Role: ${user.role}`);
+        
+        // ✅ Return complet mais logs sécurisés
         return {
-            id: user._id,
-            email: user.email,
+            id: (user._id as Types.ObjectId).toString(),
+            email: user.email, // ✅ Nécessaire pour le business logic
             role: user.role,        
             isActive: user.isActive 
         };
+    }
+
+    private maskSensitiveData(data: string): string {
+        if (!data || data.length < 8) return '***';
+        return data.substring(0, 4) + '***' + data.substring(data.length - 4);
     }
 }

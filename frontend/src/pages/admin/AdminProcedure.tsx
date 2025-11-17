@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../utils/AuthContext';
-import RequireAdmin from '../../utils/RequireAdmin';
+import { useAuth } from '../../context/AuthContext';
+import RequireAdmin from '../../context/RequireAdmin';
 import { toast } from 'react-toastify';
 import { jwtDecode } from 'jwt-decode';
 
@@ -16,12 +16,16 @@ interface Procedure {
   prenom: string;
   nom: string;
   email: string;
+  telephone?: string;
   destination: string;
+  niveauEtude?: string;
+  filiere?: string;
   statut: 'En cours' | 'Terminée' | 'Refusée' | 'Annulée';
   steps: Step[];
   rendezVousId?: any;
   createdAt: string;
   isDeleted: boolean;
+  raisonRejet?: string;
 }
 
 interface ProceduresResponse {
@@ -61,16 +65,14 @@ const AdminProcedures = () => {
 
   // Fonction pour vérifier et rafraîchir le token
   const ensureValidToken = async (): Promise<string | null> => {
-    console.log('🔐 Vérification du token...');
-    
-    let currentToken = token;
-    
-    if (!currentToken) {
-      console.log('❌ Aucun token disponible');
-      return null;
-    }
-
     try {
+      let currentToken = localStorage.getItem('token');
+      
+      if (!currentToken) {
+        console.log('❌ Aucun token trouvé');
+        return null;
+      }
+
       const decoded = jwtDecode<JwtPayload>(currentToken);
       const isExpired = decoded.exp * 1000 < Date.now();
       const willExpireSoon = decoded.exp * 1000 < Date.now() + 5 * 60 * 1000; // 5 minutes
@@ -91,14 +93,16 @@ const AdminProcedures = () => {
           console.log('✅ Nouveau token obtenu');
         } else {
           console.log('❌ Échec du rafraîchissement');
-          throw new Error('Impossible de rafraîchir le token');
+          logout();
+          return null;
         }
       }
       
       return currentToken;
     } catch (error) {
       console.error('❌ Erreur vérification token:', error);
-      throw error;
+      logout();
+      return null;
     }
   };
 
@@ -106,36 +110,53 @@ const AdminProcedures = () => {
   const makeAuthenticatedRequest = async (url: string, options: RequestInit = {}) => {
     console.log('🔄 Préparation requête vers:', url);
     
-    const validToken = await ensureValidToken();
-    
-    if (!validToken) {
-      throw new Error('Aucun token valide disponible');
+    try {
+      const validToken = await ensureValidToken();
+      
+      if (!validToken) {
+        console.error('❌ Aucun token valide disponible');
+        logout();
+        throw new Error('Session expirée');
+      }
+
+      console.log('📡 Envoi requête avec token valide et credentials...');
+      
+      const response = await fetch(url, {
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${validToken}`,
+          'Content-Type': 'application/json',
+        },
+        ...options,
+      });
+
+      console.log('📨 Réponse reçue:', response.status, response.statusText);
+
+      if (response.status === 401) {
+        console.log('🔒 Token invalide, tentative de rafraîchissement...');
+        const refreshed = await refreshToken();
+        
+        if (refreshed) {
+          console.log('🔄 Nouveau token obtenu, réessai de la requête...');
+          return makeAuthenticatedRequest(url, options);
+        }
+        
+        console.log('❌ Impossible de rafraîchir le token, déconnexion...');
+        logout();
+        throw new Error('Session expirée - Veuillez vous reconnecter');
+      }
+
+      return response;
+    } catch (error) {
+      console.error('❌ Erreur lors de la requête:', error);
+      if (error instanceof Error && error.message.includes('Session expirée')) {
+        logout();
+      }
+      throw error;
     }
-
-    console.log('📡 Envoi requête avec token valide et credentials...');
-    
-    const response = await fetch(url, {
-      credentials: 'include', // Inclure les cookies
-      headers: {
-        'Authorization': `Bearer ${validToken}`,
-        'Content-Type': 'application/json',
-      },
-      ...options,
-    });
-
-    console.log('📨 Réponse reçue:', response.status, response.statusText);
-
-    if (response.status === 401) {
-      console.log('🔒 Token invalide, déconnexion...');
-      toast.error('Session expirée - Veuillez vous reconnecter');
-      logout();
-      throw new Error('Session expirée');
-    }
-
-    return response;
   };
 
-  // Charger les procédures avec pagination
+  // Charger les procédures avec pagination - CORRECTION : URL backend
   const fetchProcedures = async (page: number = 1, limit: number = 50, retry = false) => {
     if (retry) {
       setRetryCount(prev => prev + 1);
@@ -149,8 +170,8 @@ const AdminProcedures = () => {
       setIsLoading(true);
       console.log('🔄 Chargement des procédures...');
       
-      // URL explicite avec tous les paramètres
-      const url = `${VITE_API_URL}/api/procedures?page=${page}&limit=${limit}`;
+      // CORRECTION : Utilisation de l'endpoint backend correct
+      const url = `${VITE_API_URL}/api/admin/procedures/all?page=${page}&limit=${limit}`;
       console.log('📋 URL complète:', url);
       
       const response = await makeAuthenticatedRequest(url, {
@@ -177,7 +198,6 @@ const AdminProcedures = () => {
         return;
       }
       
-      // Retry automatique après 2 secondes
       if (!retry) {
         console.log('🔄 Tentative de rechargement dans 2 secondes...');
         toast.warning('Problème de connexion, nouvelle tentative...');
@@ -190,42 +210,11 @@ const AdminProcedures = () => {
     }
   };
 
-  // Charger toutes les procédures (sans limite)
-  const fetchAllProcedures = async () => {
-    try {
-      setIsLoading(true);
-      console.log('🔄 Chargement de TOUTES les procédures...');
-      
-      const url = `${VITE_API_URL}/api/procedures?page=1&limit=1000`;
-      console.log('📋 URL complète:', url);
-      
-      const response = await makeAuthenticatedRequest(url, {
-        method: 'GET',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
-      }
-
-      const data: ProceduresResponse = await response.json();
-      console.log(`✅ ${data.data.length} procédures chargées (toutes)`, data);
-      
-      setProcedures(data.data);
-      setTotalProcedures(data.total);
-      setRetryCount(0);
-      
-    } catch (error: any) {
-      console.error('❌ Erreur chargement toutes les procédures:', error);
-      toast.error('Erreur lors du chargement des procédures');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Mettre à jour le statut d'une procédure
+  // Mettre à jour le statut d'une procédure - CORRECTION : URL backend
   const updateProcedureStatus = async (procedureId: string, newStatus: Procedure['statut']) => {
     try {
-      const url = `${VITE_API_URL}/api/procedures/${procedureId}`;
+      // CORRECTION : Utilisation de l'endpoint backend correct pour admin
+      const url = `${VITE_API_URL}/api/admin/procedures/${procedureId}`;
       console.log('📋 URL mise à jour procédure:', url);
       
       const response = await makeAuthenticatedRequest(url, {
@@ -257,10 +246,11 @@ const AdminProcedures = () => {
     }
   };
 
-  // Mettre à jour le statut d'une étape
+  // Mettre à jour le statut d'une étape - CORRECTION : URL backend
   const updateStepStatus = async (procedureId: string, stepName: string, newStatus: Step['statut'], raisonRefus?: string) => {
     try {
-      const url = `${VITE_API_URL}/api/procedures/${procedureId}/steps/${stepName}`;
+      // CORRECTION : Utilisation de l'endpoint backend correct pour admin
+      const url = `${VITE_API_URL}/api/admin/procedures/${procedureId}/steps/${encodeURIComponent(stepName)}`;
       console.log('📋 URL mise à jour étape:', url);
       
       const updateData: any = { statut: newStatus };
@@ -298,12 +288,13 @@ const AdminProcedures = () => {
     }
   };
 
-  // Supprimer une procédure
+  // Supprimer une procédure - CORRECTION : URL backend
   const deleteProcedure = async () => {
     if (!procedureToDelete) return;
 
     try {
-      const url = `${VITE_API_URL}/api/procedures/${procedureToDelete._id}`;
+      // CORRECTION : Utilisation de l'endpoint backend correct pour admin
+      const url = `${VITE_API_URL}/api/admin/procedures/${procedureToDelete._id}`;
       console.log('📋 URL suppression:', url);
       
       const response = await makeAuthenticatedRequest(url, {
@@ -329,6 +320,41 @@ const AdminProcedures = () => {
       console.error('❌ Erreur suppression:', error);
       if (!error.message.includes('Session expirée')) {
         toast.error(error.message || 'Erreur lors de la suppression');
+      }
+    }
+  };
+
+  // Rejeter une procédure - NOUVELLE FONCTION
+  const rejectProcedure = async (procedureId: string, reason: string) => {
+    try {
+      const url = `${VITE_API_URL}/api/admin/procedures/${procedureId}/reject`;
+      console.log('📋 URL rejet procédure:', url);
+      
+      const response = await makeAuthenticatedRequest(url, {
+        method: 'PUT',
+        body: JSON.stringify({ reason }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Erreur lors du rejet');
+      }
+
+      const updatedProcedure = await response.json();
+      
+      // Mettre à jour l'état local
+      setProcedures(prev => prev.map(p => 
+        p._id === procedureId ? updatedProcedure : p
+      ));
+      
+      if (selectedProcedure?._id === procedureId) {
+        setSelectedProcedure(updatedProcedure);
+      }
+
+      toast.success('Procédure rejetée avec succès');
+    } catch (error: any) {
+      console.error('❌ Erreur rejet:', error);
+      if (!error.message.includes('Session expirée')) {
+        toast.error(error.message || 'Erreur lors du rejet');
       }
     }
   };
@@ -384,7 +410,7 @@ const AdminProcedures = () => {
     });
     
     if (token && user) {
-      fetchAllProcedures();
+      fetchProcedures(1, 50);
     } else {
       setIsLoading(false);
       console.log('⚠️ Utilisateur non authentifié, attente...');
@@ -435,19 +461,12 @@ const AdminProcedures = () => {
                 </span>
               )}
               <button 
-                onClick={() => fetchAllProcedures()}
+                onClick={() => fetchProcedures(1, 50)}
                 disabled={isLoading}
                 className="px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 w-fit disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <i className={`fas fa-sync-alt ${isLoading ? 'animate-spin' : ''}`}></i>
                 {isLoading ? 'Chargement...' : 'Actualiser'}
-              </button>
-              <button 
-                onClick={() => fetchProcedures(1, 50)}
-                className="px-4 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 w-fit"
-              >
-                <i className="fas fa-list"></i>
-                Charger 50
               </button>
             </div>
           </div>
@@ -633,6 +652,9 @@ const AdminProcedures = () => {
                         {selectedProcedure.prenom} {selectedProcedure.nom}
                       </h2>
                       <p className="text-slate-600">{selectedProcedure.email}</p>
+                      {selectedProcedure.telephone && (
+                        <p className="text-slate-600 text-sm">Tél: {selectedProcedure.telephone}</p>
+                      )}
                     </div>
                     <button
                       onClick={() => setSelectedProcedure(null)}
@@ -653,6 +675,18 @@ const AdminProcedures = () => {
                         {new Date(selectedProcedure.createdAt).toLocaleDateString('fr-FR')}
                       </p>
                     </div>
+                    {selectedProcedure.niveauEtude && (
+                      <div>
+                        <p className="text-slate-500 mb-1">Niveau d'étude</p>
+                        <p className="font-semibold text-slate-800">{selectedProcedure.niveauEtude}</p>
+                      </div>
+                    )}
+                    {selectedProcedure.filiere && (
+                      <div>
+                        <p className="text-slate-500 mb-1">Filière</p>
+                        <p className="font-semibold text-slate-800">{selectedProcedure.filiere}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -728,11 +762,31 @@ const AdminProcedures = () => {
                       ))}
                     </div>
                   </div>
+
+                  {/* Raison du rejet global */}
+                  {selectedProcedure.raisonRejet && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                      <h3 className="text-sm font-medium text-red-800 mb-1">RAISON DU REJET</h3>
+                      <p className="text-red-700 text-sm">{selectedProcedure.raisonRejet}</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}
                 <div className="p-6 border-t border-slate-200 bg-slate-50/50">
                   <div className="flex flex-wrap gap-3">
+                    <button 
+                      onClick={() => {
+                        const reason = prompt('Veuillez saisir la raison du rejet:');
+                        if (reason) {
+                          rejectProcedure(selectedProcedure._id, reason);
+                        }
+                      }}
+                      className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2"
+                    >
+                      <i className="fas fa-times-circle"></i>
+                      Rejeter la procédure
+                    </button>
                     <button 
                       onClick={() => {
                         setProcedureToDelete(selectedProcedure);
@@ -852,7 +906,7 @@ const AdminProcedures = () => {
         {/* Mobile Floating Action Button */}
         <div className="lg:hidden fixed bottom-6 right-6">
           <button 
-            onClick={() => fetchAllProcedures()}
+            onClick={() => fetchProcedures(1, 50)}
             className="w-14 h-14 bg-blue-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center hover:bg-blue-600"
           >
             <i className="fas fa-sync-alt text-lg"></i>

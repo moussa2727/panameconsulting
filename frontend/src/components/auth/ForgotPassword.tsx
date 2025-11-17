@@ -1,4 +1,4 @@
-import { useAuth } from '../../utils/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import React, { useState } from 'react';
 import { FiAlertCircle, FiArrowLeft, FiMail } from 'react-icons/fi';
 import { Link, useNavigate } from 'react-router-dom';

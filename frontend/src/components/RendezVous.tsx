@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../utils/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 import { 
   Calendar, 
@@ -13,6 +13,10 @@ import {
   XCircle,
   CheckCircle
 } from 'lucide-react';
+import AOS from 'aos';
+
+// Réinitialiser AOS à chaque montage (pour hydratation SSR ou navigation)
+AOS.init({ duration: 800, easing: 'ease-out-cubic', once: true, offset: 50 });
 
 interface AvailableDate {
   date: string;
@@ -74,6 +78,9 @@ const RendezVous: React.FC = () => {
   const filieres = [
     'Informatique', 'Médecine', 'Ingénierie', 'Droit', 'Commerce', 'Autre'
   ];
+
+  // Ref pour forcer le refresh AOS après changement dynamique (ex: step 2 → 3)
+  const stepRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -228,6 +235,8 @@ const RendezVous: React.FC = () => {
   const nextStep = () => {
     if (isStepValid(currentStep)) {
       setCurrentStep(prev => Math.min(prev + 1, 3));
+      // Déclencher refresh AOS après changement de step
+      setTimeout(() => AOS.refreshHard(), 100);
     } else {
       toast.error('Veuillez remplir tous les champs obligatoires');
     }
@@ -235,6 +244,7 @@ const RendezVous: React.FC = () => {
 
   const prevStep = () => {
     setCurrentStep(prev => Math.max(prev - 1, 1));
+    setTimeout(() => AOS.refreshHard(), 100);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -260,7 +270,6 @@ const RendezVous: React.FC = () => {
     setLoading(true);
 
     try {
-      // LOGIQUE STRICTE BACKEND - IDENTIQUE AU SCHEMA MONGOOSE
       const submitData: any = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
@@ -271,7 +280,6 @@ const RendezVous: React.FC = () => {
         time: formData.time
       };
 
-      // DESTINATION - LOGIQUE IDENTIQUE AU BACKEND
       if (formData.destination === 'Autre') {
         if (!formData.destinationAutre || formData.destinationAutre.trim() === '') {
           throw new Error('Veuillez préciser votre destination');
@@ -280,10 +288,8 @@ const RendezVous: React.FC = () => {
         submitData.destinationAutre = formData.destinationAutre.trim();
       } else {
         submitData.destination = formData.destination;
-        // Ne pas envoyer destinationAutre si pas "Autre"
       }
 
-      // FILIERE - LOGIQUE IDENTIQUE AU BACKEND
       if (formData.filiere === 'Autre') {
         if (!formData.filiereAutre || formData.filiereAutre.trim() === '') {
           throw new Error('Veuillez préciser votre filière');
@@ -292,10 +298,8 @@ const RendezVous: React.FC = () => {
         submitData.filiereAutre = formData.filiereAutre.trim();
       } else {
         submitData.filiere = formData.filiere;
-        // Ne pas envoyer filiereAutre si pas "Autre"
       }
 
-      // Validation finale stricte
       if (!submitData.destination || submitData.destination.trim() === '') {
         throw new Error('La destination est obligatoire');
       }
@@ -382,7 +386,11 @@ const RendezVous: React.FC = () => {
   };
 
   const renderStep1 = () => (
-    <div className="space-y-6">
+    <div 
+      ref={stepRef}
+      data-aos="fade-up"
+      className="space-y-6"
+    >
       <div className="text-center">
         <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-3">
           <User className="w-6 h-6 text-sky-600" />
@@ -474,7 +482,12 @@ const RendezVous: React.FC = () => {
   );
 
   const renderStep2 = () => (
-    <div className="space-y-6">
+    <div 
+      ref={stepRef}
+      data-aos="fade-up"
+      data-aos-delay="100"
+      className="space-y-6"
+    >
       <div className="text-center">
         <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-3">
           <MapPin className="w-6 h-6 text-sky-600" />
@@ -503,7 +516,11 @@ const RendezVous: React.FC = () => {
         </div>
 
         {showDestinationOther && (
-          <div className="space-y-2 animate-fade-in">
+          <div 
+            data-aos="fade-in"
+            data-aos-delay="200"
+            className="space-y-2"
+          >
             <label htmlFor="destinationAutre" className="text-sm font-medium text-gray-700">Précisez votre destination *</label>
             <input
               id="destinationAutre"
@@ -558,7 +575,11 @@ const RendezVous: React.FC = () => {
         </div>
 
         {showFiliereOther && (
-          <div className="space-y-2 animate-fade-in">
+          <div 
+            data-aos="fade-in"
+            data-aos-delay="300"
+            className="space-y-2"
+          >
             <label htmlFor="filiereAutre" className="text-sm font-medium text-gray-700">Précisez votre filière *</label>
             <input
               id="filiereAutre"
@@ -580,13 +601,17 @@ const RendezVous: React.FC = () => {
   );
 
   const CompactDatePicker = () => (
-    <div className="space-y-2">
+    <div 
+      data-aos="fade-up"
+      data-aos-delay="0"
+      className="space-y-2"
+    >
       <div className="flex items-center justify-between">
         <label className="text-sm font-medium text-gray-700">Date *</label>
         {loadingDates && (
           <div className="flex items-center gap-1 text-xs text-gray-500">
             <Loader2 className="w-3 h-3 animate-spin" />
-            Chargement...
+            <span>Chargement...</span>
           </div>
         )}
       </div>
@@ -644,13 +669,17 @@ const RendezVous: React.FC = () => {
   );
 
   const CompactTimeSlot = () => (
-    <div className="space-y-2">
+    <div 
+      data-aos="fade-up"
+      data-aos-delay="150"
+      className="space-y-2"
+    >
       <div className="flex items-center justify-between">
         <label className="text-sm font-medium text-gray-700">Heure *</label>
         {loadingSlots && (
           <div className="flex items-center gap-1 text-xs text-gray-500">
             <Loader2 className="w-3 h-3 animate-spin" />
-            Chargement...
+            <span>Chargement...</span>
           </div>
         )}
       </div>
@@ -716,7 +745,12 @@ const RendezVous: React.FC = () => {
   );
 
   const renderStep3 = () => (
-    <div className="space-y-6">
+    <div 
+      ref={stepRef}
+      data-aos="fade-up"
+      data-aos-delay="0"
+      className="space-y-6"
+    >
       <div className="text-center">
         <div className="w-10 h-10 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-2">
           <Calendar className="w-5 h-5 text-sky-600" />
@@ -730,9 +764,12 @@ const RendezVous: React.FC = () => {
         
         {formData.date && <CompactTimeSlot />}
   
-        {/* Récapitulatif compact */}
         {formData.date && formData.time && (
-          <div className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-lg p-3 animate-fade-in">
+          <div 
+            data-aos="zoom-in"
+            data-aos-delay="250"
+            className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-lg p-3"
+          >
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2 text-sky-700">
                 <Calendar className="w-3 h-3 flex-shrink-0" />
@@ -750,7 +787,10 @@ const RendezVous: React.FC = () => {
   );
 
   const ProgressSteps = () => (
-    <div className="flex justify-between items-center mb-6 relative max-w-md mx-auto">
+    <div 
+      data-aos="fade-down"
+      className="flex justify-between items-center mb-6 relative max-w-md mx-auto"
+    >
       {[1, 2, 3].map(step => (
         <div key={step} className="flex flex-col items-center z-10">
           <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
@@ -776,7 +816,7 @@ const RendezVous: React.FC = () => {
           </span>
         </div>
       ))}
-      <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200 -z-10">
+      <div className="absolute top-4 left-1/4 right-1/4 h-0.5 bg-gray-200 -z-10">
         <div 
           className="h-full bg-sky-500 transition-all duration-500 rounded-full"
           style={{ width: `${((currentStep - 1) / 2) * 100}%` }}
@@ -789,7 +829,10 @@ const RendezVous: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 py-6 px-4">
       <div className="max-w-2xl mx-auto">
         {/* En-tête */}
-        <div className="text-center mb-6">
+        <div 
+          data-aos="fade-down"
+          className="text-center mb-6"
+        >
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
             Prendre un Rendez-vous
           </h1>
@@ -799,7 +842,11 @@ const RendezVous: React.FC = () => {
         </div>
 
         {/* Carte principale */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div 
+          data-aos="zoom-in"
+          data-aos-delay="100"
+          className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+        >
           <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-sky-50 to-blue-50">
             <ProgressSteps />
           </div>
@@ -831,7 +878,7 @@ const RendezVous: React.FC = () => {
                     className="px-5 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 disabled:opacity-50 transition-all font-medium flex items-center gap-2 text-sm"
                   >
                     Suivant
-                    <ChevronDown className="w-3 h-3 rotate-270" />
+                    <ChevronDown className="w-3 h-3 -rotate-90" />
                   </button>
                 ) : (
                   <button
@@ -858,24 +905,14 @@ const RendezVous: React.FC = () => {
         </div>
 
         {/* Informations supplémentaires */}
-        <div className="mt-4 text-center text-xs text-gray-500">
+        <div 
+          data-aos="fade-up"
+          data-aos-delay="400"
+          className="mt-4 text-center text-xs text-gray-500"
+        >
           <p>• Confirmation immédiate par email • Horaires disponibles : du lundi au vendredi, 9h-16h30 •</p>
         </div>
       </div>
-
-      {/* Styles d'animation */}
-      <style>{`
-        @keyframes fade-in {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in {
-          animation: fade-in 0.3s ease-out;
-        }
-        .rotate-270 {
-          transform: rotate(-90deg);
-        }
-      `}</style>
     </div>
   );
 };

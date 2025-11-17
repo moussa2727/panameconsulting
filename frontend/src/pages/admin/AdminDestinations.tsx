@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
-import RequireAdmin from '../../utils/RequireAdmin';
+import RequireAdmin from '../../context/RequireAdmin';
 import { toast } from 'react-toastify';
-import { useAuth } from '../../utils/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 

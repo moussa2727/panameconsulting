@@ -1,732 +1,504 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useAuth } from '../../utils/AuthContext';
-import { 
-  Users, 
-  Calendar, 
-  MessageSquare, 
-  FileText, 
-  LogOut, 
-  BarChart3,
-  TrendingUp,
-  Mail,
-  Shield,
-  Settings,
-  RefreshCw,
-  AlertCircle,
-  LucideIcon
-} from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
-import { useNavigate } from 'react-router-dom';
-import { Line, Bar } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-} from 'chart.js';
 
-// Types
-interface UserStats {
+interface DashboardStats {
   totalUsers: number;
   activeUsers: number;
-  adminUsers: number;
+  totalProcedures: number;
+  pendingProcedures: number;
+  totalRendezvous: number;
+  todayRendezvous: number;
+  unreadMessages: number;
+  procedureStats: {
+    byStatus: Array<{ _id: string; count: number }>;
+    byDestination: Array<{ _id: string; count: number }>;
+  };
 }
 
-interface ContactStats {
-  total: number;
-  unread: number;
-  responded: number;
-}
-
-interface RendezvousStats {
-  total: number;
-  today: number;
-  thisMonth: number;
-  confirmed: number;
-  pending: number;
-}
-
-interface ProcedureStats {
-  totalCount: number;
-  inProgressCount: number;
-  completedCount: number;
-  cancelledCount: number;
-}
-
-interface AllStats {
-  users: UserStats;
-  contacts: ContactStats;
-  rendezvous: RendezvousStats;
-  procedures: ProcedureStats;
-}
-
-interface ProcedureDataPoint {
-  date: string;
-  count: number;
-}
-
-interface ApiError {
-  message: string;
-  status?: number;
-}
-
-// Configuration Chart.js
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
-
-const AdminDashboard: React.FC = () => {
-  const { user, token, logout, refreshToken, isAuthenticated } = useAuth();
-  const navigate = useNavigate();
-
-  // États
-  const [stats, setStats] = useState<AllStats>({
-    users: { totalUsers: 0, activeUsers: 0, adminUsers: 0 },
-    contacts: { total: 0, unread: 0, responded: 0 },
-    rendezvous: { total: 0, today: 0, thisMonth: 0, confirmed: 0, pending: 0 },
-    procedures: { totalCount: 0, inProgressCount: 0, completedCount: 0, cancelledCount: 0 }
-  });
-  
-  const [procedureChartData, setProcedureChartData] = useState<ProcedureDataPoint[]>([]);
-  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [logoutAllOpen, setLogoutAllOpen] = useState(false);
-  const [isLoggingOutAll, setIsLoggingOutAll] = useState(false);
+const AdminDashboard = () => {
+  const { user, logout, isAuthenticated } = useAuth();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'overview' | 'procedures' | 'messages'>('overview');
+  const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
   const [error, setError] = useState<string | null>(null);
 
   const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  
+  // Fonction utilitaire pour le délai
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // Vérification de sécurité au montage
-  useEffect(() => {
-    if (!isAuthenticated || !user || user.role !== 'admin') {
-      console.warn(' Accès non autorisé - Redirection vers la page de connexion');
-      logout('/connexion');
-      return;
-    }
-  }, [isAuthenticated, user, logout]);
-
-  // Fonction de fetch sécurisée avec gestion du token
-  const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
-    if (!token) {
-      throw new Error('Token non disponible');
-    }
-
-    let currentToken = token;
-    let retryCount = 0;
-    const maxRetries = 2;
-
-    const makeRequest = async (authToken: string): Promise<Response> => {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
-        credentials: 'include' as RequestCredentials,
-      });
-
-      // Si token expiré, on tente de le rafraîchir
-      if (response.status === 401 && retryCount < maxRetries) {
-        retryCount++;
-        console.log('🔄 Token expiré, tentative de rafraîchissement...');
-        
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            currentToken = newToken;
-            return makeRequest(newToken);
-          }
-        }
-        
-        throw new Error('Échec du rafraîchissement du token');
-      }
-
-      return response;
-    };
-
-    return makeRequest(currentToken);
-  }, [token, refreshToken]);
-
-  // Chargement des statistiques
-  const fetchStats = useCallback(async () => {
-    if (!token || !user || user.role !== 'admin') {
-      return;
-    }
+  // Fonction pour faire des requêtes authentifiées avec gestion du rate limiting
+  const makeAuthenticatedRequest = async (url: string, retryCount = 0, options: RequestInit = {}): Promise<any> => {
+    const MAX_RETRIES = 3;
+    const BASE_DELAY = 1000; // 1 seconde
+    const REQUEST_TIMEOUT = 10000; // 10 secondes
 
     try {
-      setLoading(true);
-      setError(null);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
-      const endpoints = [
-        { url: `${VITE_API_URL}/api/users/stats`, key: 'users' },
-        { url: `${VITE_API_URL}/api/contact/stats`, key: 'contacts' },
-        { url: `${VITE_API_URL}/api/rendezvous/stats/dashboard`, key: 'rendezvous' },
-        { url: `${VITE_API_URL}/api/procedures/dashboard-stats`, key: 'procedures' },
-      ];
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+          },
+          credentials: 'include', // ✅ Cookies HTTP Only envoyés automatiquement
+          signal: controller.signal,
+        });
 
-      const results = await Promise.allSettled(
-        endpoints.map(endpoint => 
-          fetchWithAuth(endpoint.url).then(res => {
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return res.json();
-          })
-        )
-      );
+        clearTimeout(timeoutId);
 
-      const newStats: AllStats = { ...stats };
-      
-      results.forEach((result, index) => {
-        if (result.status === 'fulfilled') {
-          const endpoint = endpoints[index];
-          newStats[endpoint.key as keyof AllStats] = {
-            ...newStats[endpoint.key as keyof AllStats],
-            ...result.value
-          };
-        } else {
-          console.warn(`Échec du chargement des stats ${endpoints[index].key}:`, result.reason);
-        }
-      });
-
-      setStats(newStats);
-
-    } catch (err) {
-      const error = err as ApiError;
-      console.error('❌ Erreur lors du chargement des statistiques:', error);
-      setError(error.message || 'Erreur de chargement des données');
-      
-      if (error.message.includes('token') || error.message.includes('authentification')) {
-        toast.error('Session expirée - Reconnexion nécessaire');
-        logout('/connexion');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [token, user, fetchWithAuth, VITE_API_URL, logout]);
-
-  // Chargement des données du graphique
-  const fetchProcedureChartData = useCallback(async (range: 'week' | 'month' | 'year') => {
-    if (!token) return;
-
-    try {
-      const response = await fetchWithAuth(
-        `${VITE_API_URL}/api/procedures/stats-by-range?range=${range}`
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setProcedureChartData(data);
-      }
-    } catch (error) {
-      console.error('Erreur lors du chargement du graphique:', error);
-    }
-  }, [token, fetchWithAuth, VITE_API_URL]);
-
-  // Rafraîchissement manuel
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([
-      fetchStats(),
-      fetchProcedureChartData(timeRange)
-    ]);
-    setRefreshing(false);
-    toast.success('Données actualisées');
-  };
-
-  // Déconnexion de tous les utilisateurs
-  const handleLogoutAll = async () => {
-    if (!token) return;
-
-    setIsLoggingOutAll(true);
-    try {
-      const response = await fetchWithAuth(`${VITE_API_URL}/api/auth/logout-all`, {
-        method: 'POST'
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de la déconnexion générale');
-      }
-
-      const result = await response.json();
-      
-      toast.success(
-        `Déconnexion générale réussie ! ${result.stats?.usersLoggedOut || 0} utilisateurs déconnectés`,
-        { autoClose: 5000 }
-      );
-      
-      setLogoutAllOpen(false);
-    } catch (error) {
-      console.error('Erreur LogoutAll:', error);
-      toast.error('Erreur lors de la déconnexion générale');
-    } finally {
-      setIsLoggingOutAll(false);
-    }
-  };
-
-  // Navigation
-  const handleNavigation = (path: string) => {
-    navigate(path);
-  };
-
-  // Configuration des graphiques
-  const chartData = useMemo(() => {
-    const labels = procedureChartData.map(d => {
-      const date = new Date(d.date);
-      return timeRange === 'week' 
-        ? date.toLocaleDateString('fr-FR', { weekday: 'short' })
-        : timeRange === 'month'
-        ? date.getDate().toString()
-        : date.toLocaleDateString('fr-FR', { month: 'short' });
-    });
-    
-    const data = procedureChartData.map(d => d.count);
-    
-    return {
-      labels,
-      datasets: [
-        {
-          label: 'Procédures créées',
-          data,
-          fill: true,
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          borderColor: 'rgb(59, 130, 246)',
-          borderWidth: 2,
-          tension: 0.4,
-          pointBackgroundColor: 'rgb(59, 130, 246)',
-          pointBorderColor: '#fff',
-          pointBorderWidth: 2,
-          pointRadius: 4,
-        },
-      ],
-    };
-  }, [procedureChartData, timeRange]);
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-        titleColor: '#f8fafc',
-        bodyColor: '#e2e8f0',
-        borderColor: '#334155',
-        borderWidth: 1,
-        cornerRadius: 8,
-        displayColors: false,
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: 'rgba(148, 163, 184, 0.1)',
-        },
-        ticks: {
-          color: 'rgb(100, 116, 139)',
-        },
-      },
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: 'rgb(100, 116, 139)',
-        },
-      },
-    },
-  };
-
-  // Effets
-  useEffect(() => {
-    if (user?.role === 'admin' && token) {
-      fetchStats();
-      fetchProcedureChartData(timeRange);
-    }
-  }, [user, token, timeRange, fetchStats, fetchProcedureChartData]);
-
-  // Composants UI
-  interface StatCardProps {
-    icon: LucideIcon;
-    title: string;
-    value: number;
-    subtitle?: string;
-    trend?: number;
-    color: 'blue' | 'green' | 'amber' | 'purple' | 'red';
-    loading?: boolean;
-  }
-
-  const StatCard: React.FC<StatCardProps> = ({ 
-    icon: Icon, 
-    title, 
-    value, 
-    subtitle, 
-    trend,
-    color = 'blue',
-    loading = false 
-  }) => {
-    const colorClasses = {
-      blue: 'from-blue-500 to-blue-600 border-blue-200',
-      green: 'from-emerald-500 to-emerald-600 border-emerald-200',
-      amber: 'from-amber-500 to-amber-600 border-amber-200',
-      purple: 'from-purple-500 to-purple-600 border-purple-200',
-      red: 'from-red-500 to-red-600 border-red-200',
-    };
-
-    return (
-      <div className={`bg-gradient-to-br ${colorClasses[color]} rounded-2xl p-6 border shadow-lg backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:scale-[1.02]`}>
-        <div className="flex items-start justify-between text-white">
-          <div className="flex-1">
-            <p className="text-blue-100 text-sm font-medium mb-2">{title}</p>
-            
-            {loading ? (
-              <div className="h-8 bg-white/20 rounded-lg animate-pulse mb-2"></div>
-            ) : (
-              <p className="text-3xl font-bold mb-2">
-                {typeof value === 'number' ? value.toLocaleString('fr-FR') : value}
-              </p>
-            )}
-            
-            {subtitle && !loading && (
-              <p className="text-blue-100/80 text-sm">{subtitle}</p>
-            )}
-            
-            {trend !== undefined && !loading && (
-              <div className={`flex items-center mt-2 text-xs ${
-                trend >= 0 ? 'text-green-200' : 'text-red-200'
-              }`}>
-                <TrendingUp className={`w-3 h-3 mr-1 ${trend < 0 ? 'rotate-180' : ''}`} />
-                {Math.abs(trend)}%
-              </div>
-            )}
-          </div>
+        // Gestion des erreurs 429 (Trop de requêtes)
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After') || 
+            Math.min(BASE_DELAY * Math.pow(2, retryCount), 30000); // Max 30s delay
           
-          <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-            <Icon className="w-6 h-6 text-white" />
-          </div>
-        </div>
-      </div>
-    );
+          if (retryCount >= MAX_RETRIES) {
+            throw new Error('Trop de tentatives de requête. Veuillez réessayer plus tard.');
+          }
+
+          console.log(`⏳ Trop de requêtes. Nouvelle tentative dans ${retryAfter}ms...`);
+          await delay(Number(retryAfter));
+          return makeAuthenticatedRequest(url, retryCount + 1, options);
+        }
+
+        // Gestion des erreurs 401 (Non autorisé)
+        if (response.status === 401) {
+          console.log('🔐 Session expirée - Déconnexion...');
+          logout();
+          throw new Error('Session expirée - Veuillez vous reconnecter');
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(
+            errorData.message || `Erreur ${response.status}: ${response.statusText}`
+          );
+        }
+
+        return await response.json();
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+          throw new Error('La requête a expiré. Veuillez vérifier votre connexion et réessayer.');
+        }
+        throw error;
+      }
+    } catch (error: any) {
+      console.error(`❌ Erreur requête ${url}:`, error);
+      throw error;
+    }
   };
 
-  interface QuickActionProps {
-    icon: LucideIcon;
-    title: string;
-    description: string;
-    onClick: () => void;
-    color: 'blue' | 'green' | 'amber' | 'purple';
-  }
+  // Charger les statistiques du dashboard avec gestion des erreurs améliorée
+  const fetchDashboardStats = async (): Promise<DashboardStats | null> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      // Valeurs par défaut
+      const defaultStats: DashboardStats = {
+        totalUsers: 0,
+        activeUsers: 0,
+        totalProcedures: 0,
+        pendingProcedures: 0,
+        totalRendezvous: 0,
+        todayRendezvous: 0,
+        unreadMessages: 0,
+        procedureStats: {
+          byStatus: [],
+          byDestination: []
+        }
+      };
 
-  const QuickAction: React.FC<QuickActionProps> = ({ 
-    icon: Icon, 
-    title, 
-    description, 
-    onClick, 
-    color = 'blue' 
-  }) => {
-    const colorClasses = {
-      blue: 'border-blue-200 hover:border-blue-300 bg-blue-50',
-      green: 'border-emerald-200 hover:border-emerald-300 bg-emerald-50',
-      amber: 'border-amber-200 hover:border-amber-300 bg-amber-50',
-      purple: 'border-purple-200 hover:border-purple-300 bg-purple-50',
-    };
+      // Vérifier que l'utilisateur est admin
+      if (!user?.isAdmin) {
+        throw new Error('Accès administrateur requis');
+      }
 
-    const iconColors = {
-      blue: 'text-blue-600 bg-blue-100',
-      green: 'text-emerald-600 bg-emerald-100',
-      amber: 'text-amber-600 bg-amber-100',
-      purple: 'text-purple-600 bg-purple-100',
-    };
+      try {
+        // Récupération des données en parallèle quand c'est possible
+        const [usersData, rendezvousData, messagesData] = await Promise.allSettled([
+          makeAuthenticatedRequest(`${VITE_API_URL}/api/users/stats`),
+          makeAuthenticatedRequest(`${VITE_API_URL}/api/rendezvous?limit=1000`),
+          makeAuthenticatedRequest(`${VITE_API_URL}/api/contact/stats`)
+        ]);
 
-    return (
-      <button
-        onClick={onClick}
-        className={`w-full text-left rounded-2xl p-5 border-2 transition-all duration-200 hover:shadow-lg active:scale-95 ${colorClasses[color]}`}
-      >
-        <div className="flex items-start space-x-4">
-          <div className={`p-3 rounded-xl ${iconColors[color]} flex-shrink-0`}>
-            <Icon className="w-6 h-6" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-gray-900 text-lg mb-2 truncate">{title}</h3>
-            <p className="text-gray-600 text-sm leading-relaxed">{description}</p>
-          </div>
-        </div>
-      </button>
-    );
+        // Traitement des réponses
+        const users = usersData.status === 'fulfilled' ? usersData.value : null;
+        const rendezvous = rendezvousData.status === 'fulfilled' ? rendezvousData.value : null;
+        const messages = messagesData.status === 'fulfilled' ? messagesData.value : null;
+
+        // Calcul des rendez-vous du jour
+        const today = new Date().toISOString().split('T')[0];
+        const todayRendezvous = rendezvous?.data?.filter((rdv: any) => 
+          rdv.date === today
+        )?.length || 0;
+
+        // Récupération des données des procédures
+        let proceduresData = { total: 0, data: [] };
+        let procedureStatsData = { byStatus: [], byDestination: [] };
+        
+        try {
+          const [proceduresRes, statsRes] = await Promise.allSettled([
+            makeAuthenticatedRequest(`${VITE_API_URL}/api/admin/procedures/all?limit=1`),
+            makeAuthenticatedRequest(`${VITE_API_URL}/api/admin/procedures/stats`)
+          ]);
+          
+          proceduresData = proceduresRes.status === 'fulfilled' ? proceduresRes.value : proceduresData;
+          procedureStatsData = statsRes.status === 'fulfilled' ? statsRes.value : procedureStatsData;
+        } catch (procedureError) {
+          console.warn('⚠️ Statistiques procédures non disponibles:', procedureError);
+        }
+
+        // Calcul des procédures en attente
+        const pendingProcedures = proceduresData?.data?.filter((proc: any) => 
+          proc.statut === 'En cours'
+        )?.length || 0;
+
+        const statsData: DashboardStats = {
+          totalUsers: users?.totalUsers || 0,
+          activeUsers: users?.activeUsers || 0,
+          totalProcedures: proceduresData?.total || proceduresData?.data?.length || 0,
+          pendingProcedures,
+          totalRendezvous: rendezvous?.total || rendezvous?.data?.length || 0,
+          todayRendezvous,
+          unreadMessages: messages?.unread || 0,
+          procedureStats: procedureStatsData
+        };
+
+        setStats(statsData);
+        return statsData;
+      } catch (dataError) {
+        console.warn('⚠️ Certaines données ne sont pas disponibles:', dataError);
+        setStats(defaultStats);
+        return defaultStats;
+      }
+    } catch (error) {
+      console.error('❌ Erreur chargement dashboard:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+      setError(`Erreur lors du chargement des données: ${errorMessage}`);
+      toast.error('Erreur lors du chargement des données');
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Écran de chargement
-  if (loading && !refreshing) {
+  useEffect(() => {
+    let isMounted = true;
+    const abortController = new AbortController();
+
+    const loadData = async () => {
+      if (!isAuthenticated || !user?.isAdmin) return;
+      
+      try {
+        await fetchDashboardStats();
+      } catch (error) {
+        if (isMounted && !abortController.signal.aborted) {
+          const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+          setError(`Impossible de charger les données: ${errorMessage}`);
+          toast.error('Erreur lors du chargement des données');
+        }
+      }
+    };
+
+    loadData();
+
+    // Nettoyage lors du démontage du composant
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, [isAuthenticated, user]);
+
+  // Fonction pour obtenir la couleur en fonction du statut
+  const getStatusColor = (status: string) => {
+    const colors: { [key: string]: string } = {
+      'En cours': 'bg-blue-500',
+      'Terminée': 'bg-green-500',
+      'En attente': 'bg-yellow-500',
+      'Annulée': 'bg-red-500',
+      'Refusée': 'bg-red-500',
+      'COMPLETED': 'bg-green-500',
+      'IN_PROGRESS': 'bg-blue-500',
+      'PENDING': 'bg-yellow-500',
+      'REJECTED': 'bg-red-500',
+      'CANCELLED': 'bg-red-500'
+    };
+    return colors[status] || 'bg-gray-500';
+  };
+
+  // Formatage des nombres
+  const formatNumber = (num: number) => {
+    return new Intl.NumberFormat('fr-FR').format(num);
+  };
+
+  // Obtenir le nom d'affichage du statut
+  const getStatusDisplayName = (status: string) => {
+    const statusMap: { [key: string]: string } = {
+      'IN_PROGRESS': 'En cours',
+      'COMPLETED': 'Terminée',
+      'PENDING': 'En attente',
+      'REJECTED': 'Refusée',
+      'CANCELLED': 'Annulée'
+    };
+    return statusMap[status] || status;
+  };
+
+  if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 flex items-center justify-center p-4">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 text-lg">Chargement du tableau de bord...</p>
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i className="fas fa-exclamation-triangle text-red-500 text-2xl"></i>
+          </div>
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Accès non autorisé</h2>
+          <p className="text-slate-600">Veuillez vous connecter pour accéder au tableau de bord.</p>
         </div>
       </div>
     );
   }
 
-  // Vérification des permissions
-  if (!user || user.role !== 'admin') {
+  if (!user.isAdmin) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
-        <div className="text-center max-w-md">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Accès restreint</h2>
-          <p className="text-gray-600 mb-6">
-            Vous n'avez pas les autorisations nécessaires pour accéder à cette page.
-          </p>
-          <button
-            onClick={() => navigate('/')}
-            className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors font-medium"
-          >
-            Retour à l'accueil
-          </button>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i className="fas fa-ban text-red-500 text-2xl"></i>
+          </div>
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Accès refusé</h2>
+          <p className="text-slate-600">Vous n'avez pas les permissions nécessaires pour accéder à cette page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-slate-600">Chargement du tableau de bord...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-lg border-b border-gray-200 sticky top-0 z-40">
-        <div className="px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-xl">
-                <Shield className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Tableau de bord</h1>
-                <p className="text-gray-600 text-sm">Administration de la plateforme</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-3">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* En-tête du dashboard */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-800 mb-2">Tableau de Bord Administrateur</h1>
+          <p className="text-slate-600">
+            Bienvenue, {user.firstName} {user.lastName}
+          </p>
+        </div>
+
+        {/* Navigation par onglets */}
+        <nav className="mb-8" aria-label="Navigation du tableau de bord">
+          <div className="flex space-x-1 bg-white/50 rounded-2xl p-1 border border-slate-200/60 w-fit">
+            {[
+              { id: 'overview', label: 'Vue d\'ensemble', icon: 'chart-pie' },
+              { id: 'procedures', label: 'Procédures', icon: 'tasks' },
+              { id: 'messages', label: 'Messages', icon: 'envelope' }
+            ].map((tab) => (
               <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  activeTab === tab.id
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+                aria-current={activeTab === tab.id ? 'page' : undefined}
               >
-                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                <span className="font-medium">Actualiser</span>
+                <i className={`fas fa-${tab.icon}`}></i>
+                <span className="hidden sm:inline">{tab.label}</span>
               </button>
-              
+            ))}
+          </div>
+        </nav>
+
+        {/* Affichage des erreurs */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <i className="fas fa-exclamation-circle text-red-500"></i>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
               <button
-                onClick={() => setLogoutAllOpen(true)}
-                className="flex items-center space-x-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors border border-red-200"
+                onClick={() => setError(null)}
+                className="ml-auto text-red-500 hover:text-red-700"
               >
-                <LogOut className="w-4 h-4" />
-                <span className="font-medium">Déconnecter tous</span>
+                <i className="fas fa-times"></i>
               </button>
             </div>
           </div>
-        </div>
-      </header>
+        )}
 
-      {/* Main Content */}
-      <main className="p-4 sm:p-6 lg:p-8">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6 mb-6 lg:mb-8">
-          <StatCard 
-            icon={Users}
-            title="Utilisateurs"
-            value={stats.users.totalUsers}
-            subtitle={`${stats.users.activeUsers} actifs`}
-            trend={5}
-            color="blue"
-            loading={loading}
-          />
-          <StatCard 
-            icon={Calendar}
-            title="Rendez-vous"
-            value={stats.rendezvous.total}
-            subtitle={`${stats.rendezvous.today} aujourd'hui`}
-            trend={12}
-            color="green"
-            loading={loading}
-          />
-          <StatCard 
-            icon={MessageSquare}
-            title="Messages"
-            value={stats.contacts.total}
-            subtitle={`${stats.contacts.unread} non lus`}
-            trend={-2}
-            color="amber"
-            loading={loading}
-          />
-          <StatCard 
-            icon={FileText}
-            title="Procédures"
-            value={stats.procedures.totalCount}
-            subtitle={`${stats.procedures.inProgressCount} en cours`}
-            trend={8}
-            color="purple"
-            loading={loading}
-          />
-        </div>
-
-        {/* Quick Actions & Chart Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8 mb-6 lg:mb-8">
-          {/* Quick Actions */}
-          <div className="xl:col-span-1">
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <Settings className="w-5 h-5 text-blue-600 mr-2" />
-                Actions rapides
-              </h2>
-              
-              <div className="space-y-3">
-                <QuickAction
-                  icon={Users}
-                  title="Gérer les utilisateurs"
-                  description="Voir et modifier les comptes utilisateurs"
-                  onClick={() => handleNavigation('/admin/utilisateurs')}
-                  color="blue"
-                />
-                <QuickAction
-                  icon={Calendar}
-                  title="Rendez-vous"
-                  description="Gérer les rendez-vous programmés"
-                  onClick={() => handleNavigation('/admin/rendezvous')}
-                  color="green"
-                />
-                <QuickAction
-                  icon={Mail}
-                  title="Messages"
-                  description="Répondre aux messages de contact"
-                  onClick={() => handleNavigation('/admin/messages')}
-                  color="amber"
-                />
-                <QuickAction
-                  icon={TrendingUp}
-                  title="Procédures"
-                  description="Suivi des procédures en cours"
-                  onClick={() => handleNavigation('/admin/procedures')}
-                  color="purple"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Chart */}
-          <div className="xl:col-span-2">
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
-                <h2 className="text-lg font-semibold text-gray-900 flex items-center mb-3 sm:mb-0">
-                  <BarChart3 className="w-5 h-5 text-blue-600 mr-2" />
-                  Évolution des procédures
-                </h2>
-                
-                <div className="flex space-x-2">
-                  {(['week', 'month', 'year'] as const).map((range) => (
-                    <button
-                      key={range}
-                      onClick={() => setTimeRange(range)}
-                      className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                        timeRange === range 
-                          ? 'bg-blue-600 text-white' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {range === 'week' ? 'Semaine' : range === 'month' ? 'Mois' : 'Année'}
-                    </button>
-                  ))}
+        {/* Contenu du tableau de bord */}
+        {activeTab === 'overview' && stats && (
+          <div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {/* Carte Utilisateurs */}
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200/60 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <i className="fas fa-users text-blue-600 text-xl"></i>
+                  </div>
+                  <span className="text-sm font-medium text-slate-500">Utilisateurs</span>
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-800 mb-1">{formatNumber(stats.totalUsers)}</h3>
+                  <p className="text-sm text-slate-500">
+                    <span className="text-green-500 font-medium">+{stats.activeUsers} actifs</span> ce mois-ci
+                  </p>
                 </div>
               </div>
-              
-              <div className="h-64 lg:h-80">
-                {procedureChartData.length > 0 ? (
-                  <Line data={chartData} options={chartOptions} />
-                ) : (
-                  <div className="h-full flex items-center justify-center text-gray-500">
-                    {loading ? 'Chargement des données...' : 'Aucune donnée disponible'}
+
+              {/* Carte Procédures */}
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200/60 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                    <i className="fas fa-tasks text-green-600 text-xl"></i>
                   </div>
-                )}
+                  <span className="text-sm font-medium text-slate-500">Procédures</span>
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-800 mb-1">{formatNumber(stats.totalProcedures)}</h3>
+                  <p className="text-sm text-slate-500">
+                    <span className="text-yellow-500 font-medium">{stats.pendingProcedures} en cours</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Carte Rendez-vous */}
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200/60 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                    <i className="fas fa-calendar-alt text-purple-600 text-xl"></i>
+                  </div>
+                  <span className="text-sm font-medium text-slate-500">Rendez-vous</span>
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-800 mb-1">{formatNumber(stats.totalRendezvous)}</h3>
+                  <p className="text-sm text-slate-500">
+                    <span className="text-blue-500 font-medium">{stats.todayRendezvous} aujourd'hui</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Carte Messages */}
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200/60 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                    <i className="fas fa-envelope text-amber-600 text-xl"></i>
+                  </div>
+                  <span className="text-sm font-medium text-slate-500">Messages</span>
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-800 mb-1">
+                    {stats.unreadMessages > 0 ? (
+                      <span className="text-amber-600">{formatNumber(stats.unreadMessages)} non lus</span>
+                    ) : (
+                      '0 non lus'
+                    )}
+                  </h3>
+                  <p className="text-sm text-slate-500">
+                    <span className="font-medium">Messages non lus</span>
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Error Display */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6">
-            <div className="flex items-center space-x-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-              <div>
-                <p className="text-red-800 font-medium">Erreur de chargement</p>
-                <p className="text-red-600 text-sm">{error}</p>
+            {/* Graphiques et statistiques détaillées */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* Graphique des procédures par statut */}
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200/60">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">Statut des procédures</h3>
+                <div className="space-y-4">
+                  {stats.procedureStats.byStatus.length > 0 ? (
+                    stats.procedureStats.byStatus.map((item: any) => (
+                      <div key={item._id} className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="font-medium text-slate-700">
+                            {getStatusDisplayName(item._id)}
+                          </span>
+                          <span className="text-slate-500">{item.count}</span>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-2.5">
+                          <div
+                            className={`h-2.5 rounded-full ${getStatusColor(item._id)}`}
+                            style={{ width: `${(item.count / Math.max(1, stats.totalProcedures)) * 100}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-slate-500 text-sm">Aucune donnée disponible</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Graphique des procédures par destination */}
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200/60">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">Procédures par destination</h3>
+                <div className="space-y-4">
+                  {stats.procedureStats.byDestination.length > 0 ? (
+                    stats.procedureStats.byDestination.map((item: any) => (
+                      <div key={item._id} className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="font-medium text-slate-700 truncate max-w-[200px]">
+                            {item._id || 'Non spécifié'}
+                          </span>
+                          <span className="text-slate-500">{item.count}</span>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-2.5">
+                          <div
+                            className="h-2.5 rounded-full bg-blue-500"
+                            style={{ width: `${(item.count / Math.max(1, stats.totalProcedures)) * 100}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-slate-500 text-sm">Aucune donnée disponible</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         )}
-      </main>
 
-      {/* Logout All Modal */}
-      {logoutAllOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div 
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => !isLoggingOutAll && setLogoutAllOpen(false)}
-          />
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 relative">
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="p-2 bg-red-100 rounded-full">
-                <LogOut className="w-6 h-6 text-red-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">
-                Déconnexion générale
-              </h3>
-            </div>
-            
-            <p className="text-gray-600 mb-6">
-              Cette action déconnectera immédiatement tous les utilisateurs. Êtes-vous sûr de vouloir continuer ?
-            </p>
-            
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setLogoutAllOpen(false)}
-                disabled={isLoggingOutAll}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleLogoutAll}
-                disabled={isLoggingOutAll}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center"
-              >
-                {isLoggingOutAll ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
-                ) : (
-                  'Confirmer'
-                )}
-              </button>
+        {/* Section Procédures */}
+        {activeTab === 'procedures' && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200/60">
+            <h2 className="text-xl font-semibold text-slate-800 mb-6">Gestion des procédures</h2>
+            <div className="overflow-x-auto">
+              <p className="text-slate-600">Fonctionnalité en cours de développement...</p>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Section Messages */}
+        {activeTab === 'messages' && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200/60">
+            <h2 className="text-xl font-semibold text-slate-800 mb-6">Messages non lus</h2>
+            <div className="overflow-x-auto">
+              <p className="text-slate-600">Fonctionnalité en cours de développement...</p>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 };

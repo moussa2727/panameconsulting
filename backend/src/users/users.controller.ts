@@ -23,14 +23,14 @@ import { Validate } from 'class-validator';
 
 
 interface RequestWithUser extends Request {
-  user: {
-    userId: string;
-    email: string;
-    role: string;
-    telephone: string;
-  };
+    user: {
+        userId: string;    // ✅ Doit correspondre à ce que renvoie JwtStrategy
+        sub?: string;      // ✅ Optionnel pour compatibilité
+        email: string;
+        role: string;
+        telephone?: string;
+    };
 }
-
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }

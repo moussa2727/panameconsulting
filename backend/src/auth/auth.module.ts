@@ -18,11 +18,12 @@ import { RevokedTokenService } from './revoked-token.service';
 import { SessionService } from './session.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
+import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
 
 @Module({
     imports: [
         UsersModule,
-        PassportModule,
+        PassportModule.register({ defaultStrategy: 'jwt' }),
         MailModule,
         ScheduleModule.forRoot(),
         MongooseModule.forFeature([
@@ -34,7 +35,7 @@ import { LocalStrategy } from './strategies/local.strategy';
         JwtModule.registerAsync({
             imports: [ConfigModule],
             useFactory: async (configService: ConfigService) => ({
-                secret: configService.get('JWT_SECRET'),
+                secret: configService.get<string>('JWT_SECRET'),
                 signOptions: {
                     expiresIn: configService.get('JWT_EXPIRES_IN', '15m'),
                     issuer: configService.get('APP_NAME', 'api-panameconsulting'),
@@ -48,6 +49,7 @@ import { LocalStrategy } from './strategies/local.strategy';
     controllers: [AuthController],
     providers: [
         AuthService,
+        JwtStrategy,
         SessionService,
         RefreshTokenService,
         RevokedTokenService,

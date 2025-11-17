@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 import { BrowserRouter } from 'react-router-dom';
-import { AuthProvider } from './utils/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import App from './App';
 import './index.css';
 
