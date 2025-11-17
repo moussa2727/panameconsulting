@@ -237,156 +237,150 @@ const RendezVous: React.FC = () => {
     setCurrentStep(prev => Math.max(prev - 1, 1));
   };
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  if (!isAuthenticated) {
-    toast.error('Veuillez vous connecter pour prendre un rendez-vous');
-    navigate('/connexion');
-    return;
-  }
-
-  if (!token) {
-    toast.error('Session invalide. Veuillez vous reconnecter.');
-    logout();
-    return;
-  }
-
-  if (!validatePhone(formData.telephone)) {
-    toast.error('Veuillez entrer un numéro de téléphone valide (au moins 10 chiffres)');
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    // Préparation des données pour l'envoi - LOGIQUE STRICTE BACKEND
-    const submitData: any = {
-      firstName: formData.firstName.trim(),
-      lastName: formData.lastName.trim(),
-      email: formData.email.trim(),
-      telephone: formData.telephone.trim(),
-      niveauEtude: formData.niveauEtude,
-      date: formData.date,
-      time: formData.time
-    };
-
-    // LOGIQUE STRICTE POUR LES CHAMPS "AUTRE" - IDENTIQUE AU BACKEND
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     
-    // Destination
-    if (formData.destination === 'Autre') {
-      if (!formData.destinationAutre || formData.destinationAutre.trim() === '') {
-        throw new Error('Veuillez préciser votre destination');
-      }
-      // STRICT: destination = valeur personnalisée, destinationAutre = aussi la valeur
-      submitData.destination = formData.destinationAutre.trim();
-      submitData.destinationAutre = formData.destinationAutre.trim();
-    } else {
-      // STRICT: destination = valeur normale, pas de destinationAutre
-      submitData.destination = formData.destination;
-      // Ne pas envoyer destinationAutre si pas "Autre"
+    if (!isAuthenticated) {
+      toast.error('Veuillez vous connecter pour prendre un rendez-vous');
+      navigate('/connexion');
+      return;
     }
 
-    // Filière
-    if (formData.filiere === 'Autre') {
-      if (!formData.filiereAutre || formData.filiereAutre.trim() === '') {
-        throw new Error('Veuillez préciser votre filière');
-      }
-      // STRICT: filiere = valeur personnalisée, filiereAutre = aussi la valeur
-      submitData.filiere = formData.filiereAutre.trim();
-      submitData.filiereAutre = formData.filiereAutre.trim();
-    } else {
-      // STRICT: filiere = valeur normale, pas de filiereAutre
-      submitData.filiere = formData.filiere;
-      // Ne pas envoyer filiereAutre si pas "Autre"
+    if (!token) {
+      toast.error('Session invalide. Veuillez vous reconnecter.');
+      logout();
+      return;
     }
 
-    // Validation finale stricte
-    if (!submitData.destination || submitData.destination.trim() === '') {
-      throw new Error('La destination est obligatoire');
+    if (!validatePhone(formData.telephone)) {
+      toast.error('Veuillez entrer un numéro de téléphone valide (au moins 10 chiffres)');
+      return;
     }
 
-    if (!submitData.filiere || submitData.filiere.trim() === '') {
-      throw new Error('La filière est obligatoire');
-    }
+    setLoading(true);
 
-    const makeRequest = async (currentToken: string): Promise<Response> => {
-      return fetch(`${API_URL}/api/rendezvous`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${currentToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(submitData),
-      });
-    };
+    try {
+      // LOGIQUE STRICTE BACKEND - IDENTIQUE AU SCHEMA MONGOOSE
+      const submitData: any = {
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim(),
+        telephone: formData.telephone.trim(),
+        niveauEtude: formData.niveauEtude,
+        date: formData.date,
+        time: formData.time
+      };
 
-    let response = await makeRequest(token);
-
-    if (response.status === 401) {
-      const refreshed = await refreshToken();
-      if (refreshed) {
-        const newToken = localStorage.getItem('token');
-        if (newToken) {
-          response = await makeRequest(newToken);
-        } else {
-          throw new Error('Token non disponible après rafraîchissement');
+      // DESTINATION - LOGIQUE IDENTIQUE AU BACKEND
+      if (formData.destination === 'Autre') {
+        if (!formData.destinationAutre || formData.destinationAutre.trim() === '') {
+          throw new Error('Veuillez préciser votre destination');
         }
+        submitData.destination = formData.destinationAutre.trim();
+        submitData.destinationAutre = formData.destinationAutre.trim();
       } else {
-        throw new Error('Session expirée. Veuillez vous reconnecter.');
+        submitData.destination = formData.destination;
+        // Ne pas envoyer destinationAutre si pas "Autre"
       }
-    }
 
-    if (!response.ok) {
-      let errorMessage = 'Erreur lors de la création du rendez-vous';
-      
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.message || errorMessage;
-        
-        if (errorData.errors) {
-          const validationErrors = Object.values(errorData.errors).join(', ');
-          errorMessage = `Erreur de validation: ${validationErrors}`;
+      // FILIERE - LOGIQUE IDENTIQUE AU BACKEND
+      if (formData.filiere === 'Autre') {
+        if (!formData.filiereAutre || formData.filiereAutre.trim() === '') {
+          throw new Error('Veuillez préciser votre filière');
         }
-      } catch {
-        errorMessage = `Erreur serveur: ${response.status} ${response.statusText}`;
+        submitData.filiere = formData.filiereAutre.trim();
+        submitData.filiereAutre = formData.filiereAutre.trim();
+      } else {
+        submitData.filiere = formData.filiere;
+        // Ne pas envoyer filiereAutre si pas "Autre"
       }
+
+      // Validation finale stricte
+      if (!submitData.destination || submitData.destination.trim() === '') {
+        throw new Error('La destination est obligatoire');
+      }
+
+      if (!submitData.filiere || submitData.filiere.trim() === '') {
+        throw new Error('La filière est obligatoire');
+      }
+
+      const makeRequest = async (currentToken: string): Promise<Response> => {
+        return fetch(`${API_URL}/api/rendezvous`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${currentToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(submitData),
+        });
+      };
+
+      let response = await makeRequest(token);
+
+      if (response.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const newToken = localStorage.getItem('token');
+          if (newToken) {
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error('Token non disponible après rafraîchissement');
+          }
+        } else {
+          throw new Error('Session expirée. Veuillez vous reconnecter.');
+        }
+      }
+
+      if (!response.ok) {
+        let errorMessage = 'Erreur lors de la création du rendez-vous';
+        
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+          
+          if (errorData.errors) {
+            const validationErrors = Object.values(errorData.errors).join(', ');
+            errorMessage = `Erreur de validation: ${validationErrors}`;
+          }
+        } catch {
+          errorMessage = `Erreur serveur: ${response.status} ${response.statusText}`;
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
       
-      throw new Error(errorMessage);
-    }
+      toast.success('Rendez-vous créé avec succès !');
+      
+      setTimeout(() => {
+        navigate('/user-rendez-vous');
+      }, 1500);
 
-    const result = await response.json();
-    
-    toast.success('Rendez-vous créé avec succès !');
-    
-    setTimeout(() => {
-      navigate('/user-rendez-vous');
-    }, 1500);
-
-  } catch (error: any) {
-    console.error('❌ Erreur création rendez-vous:', error);
-    
-    if (error.message.includes('Session expirée') || error.message.includes('Token invalide')) {
-      toast.error('Session expirée. Redirection...');
-      setTimeout(() => logout(), 1500);
-    } else if (error.message.includes('déjà un rendez-vous en cours')) {
-      toast.error('Vous avez déjà un rendez-vous en cours. Annulez-le avant d\'en prendre un nouveau.');
-    } else if (error.message.includes('créneau horaire') || error.message.includes('disponible')) {
-      toast.error('Ce créneau n\'est plus disponible. Veuillez choisir un autre horaire.');
-      if (formData.date) {
-        fetchAvailableSlots(formData.date);
+    } catch (error: any) {
+      console.error('❌ Erreur création rendez-vous:', error);
+      
+      if (error.message.includes('Session expirée') || error.message.includes('Token invalide')) {
+        toast.error('Session expirée. Redirection...');
+        setTimeout(() => logout(), 1500);
+      } else if (error.message.includes('déjà un rendez-vous en cours')) {
+        toast.error('Vous avez déjà un rendez-vous en cours. Annulez-le avant d\'en prendre un nouveau.');
+      } else if (error.message.includes('créneau horaire') || error.message.includes('disponible')) {
+        toast.error('Ce créneau n\'est plus disponible. Veuillez choisir un autre horaire.');
+        if (formData.date) {
+          fetchAvailableSlots(formData.date);
+        }
+      } else if (error.message.includes('500') || error.message.includes('Internal Server Error')) {
+        toast.error('Erreur serveur. Veuillez réessayer dans quelques instants.');
+        console.error('Détails erreur 500:', error);
+      } else {
+        toast.error(error.message || 'Erreur lors de la création du rendez-vous');
       }
-    } else if (error.message.includes('500') || error.message.includes('Internal Server Error')) {
-      toast.error('Erreur serveur. Veuillez réessayer dans quelques instants.');
-      console.error('Détails erreur 500:', error);
-    } else {
-      toast.error(error.message || 'Erreur lors de la création du rendez-vous');
+    } finally {
+      setLoading(false);
     }
-  } finally {
-    setLoading(false);
-  }
-};
-  
+  };
+
   const renderStep1 = () => (
     <div className="space-y-6">
       <div className="text-center">
@@ -585,6 +579,142 @@ const handleSubmit = async (e: React.FormEvent) => {
     </div>
   );
 
+  const CompactDatePicker = () => (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium text-gray-700">Date *</label>
+        {loadingDates && (
+          <div className="flex items-center gap-1 text-xs text-gray-500">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Chargement...
+          </div>
+        )}
+      </div>
+      
+      {loadingDates ? (
+        <div className="flex justify-center py-4">
+          <div className="flex items-center gap-2 text-gray-500">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Chargement des dates...</span>
+          </div>
+        </div>
+      ) : availableDates.length === 0 ? (
+        <div className="text-center py-4 text-gray-500 bg-gray-50 rounded-lg text-xs">
+          <Calendar className="w-5 h-5 mx-auto mb-1 opacity-50" />
+          <p>Aucune date disponible</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1">
+          {availableDates.map(({ date }) => {
+            const isSelected = formData.date === date;
+            const isToday = date === new Date().toISOString().split('T')[0];
+            const dateObj = new Date(date);
+            const day = dateObj.getDate();
+            const month = dateObj.toLocaleDateString('fr-FR', { month: 'short' });
+            const weekday = dateObj.toLocaleDateString('fr-FR', { weekday: 'short' });
+            
+            return (
+              <button
+                key={date}
+                type="button"
+                onClick={() => {
+                  setFormData(prev => ({ ...prev, date, time: '' }));
+                }}
+                className={`p-2 text-center rounded-lg border transition-all min-h-[50px] flex flex-col items-center justify-center relative ${
+                  isSelected
+                    ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sm'
+                    : 'border-gray-200 hover:border-sky-300 hover:bg-sky-25 text-gray-700'
+                }`}
+              >
+                <div className="text-[10px] text-gray-500 font-medium uppercase">{weekday}</div>
+                <div className="text-base font-bold text-current">{day}</div>
+                <div className="text-[10px] text-gray-600 uppercase">{month}</div>
+                {isToday && (
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-sky-500 rounded-full"></div>
+                )}
+                {isSelected && (
+                  <CheckCircle2 className="w-3 h-3 text-sky-500 absolute -top-1 -right-1" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const CompactTimeSlot = () => (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium text-gray-700">Heure *</label>
+        {loadingSlots && (
+          <div className="flex items-center gap-1 text-xs text-gray-500">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Chargement...
+          </div>
+        )}
+      </div>
+      
+      {loadingSlots ? (
+        <div className="flex justify-center py-4">
+          <div className="flex items-center gap-2 text-gray-500">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Chargement des créneaux...</span>
+          </div>
+        </div>
+      ) : availableSlots.length === 0 ? (
+        <div className="text-center py-4 text-gray-500 bg-gray-50 rounded-lg text-xs">
+          <Clock className="w-5 h-5 mx-auto mb-1 opacity-50" />
+          <p>Aucun créneau disponible</p>
+          <p className="text-[10px] mt-1">Choisissez une autre date</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-32 overflow-y-auto p-1">
+          {availableSlots.map(slot => {
+            const isSelected = formData.time === slot;
+            const isTimeDisabled = isTimePassed(slot, formData.date);
+            const isSoon = (() => {
+              if (formData.date !== new Date().toISOString().split('T')[0]) return false;
+              const [hours, minutes] = slot.split(':').map(Number);
+              const slotTime = new Date();
+              slotTime.setHours(hours, minutes, 0, 0);
+              const now = new Date();
+              const diffMs = slotTime.getTime() - now.getTime();
+              return diffMs < 2 * 60 * 60 * 1000;
+            })();
+
+            return (
+              <button
+                key={slot}
+                type="button"
+                onClick={() => !isTimeDisabled && setFormData(prev => ({ ...prev, time: slot }))}
+                disabled={isTimeDisabled}
+                className={`p-2 text-center rounded-lg border transition-all text-xs font-medium relative ${
+                  isSelected
+                    ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sm'
+                    : isTimeDisabled
+                    ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
+                    : 'border-gray-200 hover:border-sky-300 hover:bg-sky-25 text-gray-700'
+                } ${isSoon ? 'ring-1 ring-orange-300' : ''}`}
+              >
+                {slot.replace(':', 'h')}
+                {isTimeDisabled && (
+                  <span className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-red-400 rounded-full"></span>
+                )}
+                {isSoon && !isTimeDisabled && (
+                  <span className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-orange-400 rounded-full"></span>
+                )}
+                {isSelected && !isTimeDisabled && (
+                  <CheckCircle2 className="w-2.5 h-2.5 absolute -top-1 -right-1 text-sky-500" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   const renderStep3 = () => (
     <div className="space-y-6">
       <div className="text-center">
@@ -596,141 +726,9 @@ const handleSubmit = async (e: React.FormEvent) => {
       </div>
   
       <div className="space-y-4">
-        {/* Sélection de date */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700">Date *</label>
-            {loadingDates && (
-              <div className="flex items-center gap-1 text-xs text-gray-500">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Chargement...
-              </div>
-            )}
-          </div>
-          
-          {loadingDates ? (
-            <div className="flex justify-center py-4">
-              <div className="flex items-center gap-2 text-gray-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-sm">Chargement des dates...</span>
-              </div>
-            </div>
-          ) : availableDates.length === 0 ? (
-            <div className="text-center py-4 text-gray-500 bg-gray-50 rounded-lg text-xs">
-              <Calendar className="w-5 h-5 mx-auto mb-1 opacity-50" />
-              <p>Aucune date disponible</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1">
-              {availableDates.map(({ date }) => {
-                const isSelected = formData.date === date;
-                const isToday = date === new Date().toISOString().split('T')[0];
-                const dateObj = new Date(date);
-                const day = dateObj.getDate();
-                const month = dateObj.toLocaleDateString('fr-FR', { month: 'short' });
-                const weekday = dateObj.toLocaleDateString('fr-FR', { weekday: 'short' });
-                
-                return (
-                  <button
-                    key={date}
-                    type="button"
-                    onClick={() => {
-                      setFormData(prev => ({ ...prev, date, time: '' }));
-                    }}
-                    className={`p-2 text-center rounded-lg border transition-all min-h-[50px] flex flex-col items-center justify-center relative ${
-                      isSelected
-                        ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sm'
-                        : 'border-gray-200 hover:border-sky-300 hover:bg-sky-25 text-gray-700'
-                    }`}
-                  >
-                    <div className="text-[10px] text-gray-500 font-medium uppercase">{weekday}</div>
-                    <div className="text-base font-bold text-current">{day}</div>
-                    <div className="text-[10px] text-gray-600 uppercase">{month}</div>
-                    {isToday && (
-                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-sky-500 rounded-full"></div>
-                    )}
-                    {isSelected && (
-                      <CheckCircle2 className="w-3 h-3 text-sky-500 absolute -top-1 -right-1" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-  
-        {/* Sélection d'horaire */}
-        {formData.date && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">Heure *</label>
-              {loadingSlots && (
-                <div className="flex items-center gap-1 text-xs text-gray-500">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Chargement...
-                </div>
-              )}
-            </div>
-            
-            {loadingSlots ? (
-              <div className="flex justify-center py-4">
-                <div className="flex items-center gap-2 text-gray-500">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Chargement des créneaux...</span>
-                </div>
-              </div>
-            ) : availableSlots.length === 0 ? (
-              <div className="text-center py-4 text-gray-500 bg-gray-50 rounded-lg text-xs">
-                <Clock className="w-5 h-5 mx-auto mb-1 opacity-50" />
-                <p>Aucun créneau disponible</p>
-                <p className="text-[10px] mt-1">Choisissez une autre date</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-32 overflow-y-auto p-1">
-                {availableSlots.map(slot => {
-                  const isSelected = formData.time === slot;
-                  const isTimeDisabled = isTimePassed(slot, formData.date);
-                  const isSoon = (() => {
-                    if (formData.date !== new Date().toISOString().split('T')[0]) return false;
-                    const [hours, minutes] = slot.split(':').map(Number);
-                    const slotTime = new Date();
-                    slotTime.setHours(hours, minutes, 0, 0);
-                    const now = new Date();
-                    const diffMs = slotTime.getTime() - now.getTime();
-                    return diffMs < 2 * 60 * 60 * 1000;
-                  })();
-  
-                  return (
-                    <button
-                      key={slot}
-                      type="button"
-                      onClick={() => !isTimeDisabled && setFormData(prev => ({ ...prev, time: slot }))}
-                      disabled={isTimeDisabled}
-                      className={`p-2 text-center rounded-lg border transition-all text-xs font-medium relative ${
-                        isSelected
-                          ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sm'
-                          : isTimeDisabled
-                          ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
-                          : 'border-gray-200 hover:border-sky-300 hover:bg-sky-25 text-gray-700'
-                      } ${isSoon ? 'ring-1 ring-orange-300' : ''}`}
-                    >
-                      {slot.replace(':', 'h')}
-                      {isTimeDisabled && (
-                        <span className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-red-400 rounded-full"></span>
-                      )}
-                      {isSoon && !isTimeDisabled && (
-                        <span className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-orange-400 rounded-full"></span>
-                      )}
-                      {isSelected && !isTimeDisabled && (
-                        <CheckCircle2 className="w-2.5 h-2.5 absolute -top-1 -right-1 text-sky-500" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        <CompactDatePicker />
+        
+        {formData.date && <CompactTimeSlot />}
   
         {/* Récapitulatif compact */}
         {formData.date && formData.time && (
@@ -750,7 +748,6 @@ const handleSubmit = async (e: React.FormEvent) => {
       </div>
     </div>
   );
-  
 
   const ProgressSteps = () => (
     <div className="flex justify-between items-center mb-6 relative max-w-md mx-auto">

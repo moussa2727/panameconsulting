@@ -15,6 +15,7 @@ interface Rendezvous {
   avisAdmin?: string;
   typeConsultation?: string;
   notes?: string;
+  createdAt: string;
 }
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';

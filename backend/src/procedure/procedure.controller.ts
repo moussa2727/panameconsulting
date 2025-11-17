@@ -23,184 +23,132 @@ import { UpdateProcedureDto } from './dto/update-procedure.dto';
 import { UpdateStepDto } from './dto/update-step.dto';
 import { UserRole } from '../schemas/user.schema';
 
-@ApiTags('Procedures')
-@Controller('procedures')
+@ApiTags('')
+@Controller('')
+@UseGuards(JwtAuthGuard)
 export class ProcedureController {
     constructor(private readonly procedureService: ProcedureService) {}
 
+    // ==================== ADMIN ONLY ====================
+    
     @Post()
-    @UseGuards(JwtAuthGuard, RolesGuard)
+    @UseGuards(RolesGuard)
     @Roles(UserRole.ADMIN)
-    @ApiOperation({ summary: 'Créer une nouvelle procédure' })
-    @ApiResponse({ status: 201, description: 'Procédure créée avec succès' })
-    async create(@Body() createDto: CreateProcedureDto) {
-        return this.procedureService.create(createDto);
+    @ApiOperation({ summary: 'Créer une procédure depuis un rendez-vous éligible' })
+    async createFromRendezvous(@Body() createDto: CreateProcedureDto) {
+        return this.procedureService.createFromRendezvous(createDto);
     }
 
-    // procedure.controller.ts - Méthode findAll corrigée
-@Get()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
-@ApiOperation({ summary: 'Récupérer toutes les procédures (admin)' })
-@ApiQuery({ name: 'page', required: false, type: Number })
-@ApiQuery({ name: 'limit', required: false, type: Number })
-@ApiQuery({ name: 'email', required: false, type: String })
-async findAll(
-    @Req() req: any,
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
-    @Query('email') email?: string
-) {
-    console.log('📥 Controller findAll appelé avec:', { page, limit, email });
-    console.log('👤 Utilisateur authentifié:', {
-        id: req.user?.id,
-        email: req.user?.email,
-        role: req.user?.role,
-        isAdmin: req.user?.role === UserRole.ADMIN
-    });
-    
-    // Vérification détaillée de l'authentification
-    if (!req.user) {
-        console.log('❌ Aucun utilisateur dans la requête');
-        throw new UnauthorizedException('Utilisateur non authentifié');
-    }
-    
-    if (req.user.role !== UserRole.ADMIN) {
-        console.log('❌ Rôle insuffisant:', req.user.role);
-        throw new ForbiddenException('Accès réservé aux administrateurs');
-    }
-    
-    if (page < 1) throw new BadRequestException('Le numéro de page doit être supérieur à 0');
-    if (limit < 1 || limit > 1000) throw new BadRequestException('La limite doit être entre 1 et 1000');
-    
-    return this.procedureService.findAll(page, limit, email);
-}
-
-    @Get('user')
-    @UseGuards(JwtAuthGuard)
-    @ApiOperation({ summary: 'Récupérer les procédures de l\'utilisateur connecté' })
+    @Get('admin/procedures/all')
+    @UseGuards(RolesGuard)
+    @Roles(UserRole.ADMIN)
+    @ApiOperation({ summary: 'Lister toutes les procédures (Admin)' })
     @ApiQuery({ name: 'page', required: false, type: Number })
     @ApiQuery({ name: 'limit', required: false, type: Number })
-    async getUserProcedures(
+    @ApiQuery({ name: 'email', required: false, type: String })
+    async getAllProcedures(
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10,
+        @Query('email') email?: string
+    ) {
+        if (page < 1) throw new BadRequestException('Le numéro de page doit être supérieur à 0');
+        if (limit < 1 || limit > 100) throw new BadRequestException('La limite doit être entre 1 et 100');
+        
+        return this.procedureService.getAllProcedures(page, limit, email);
+    }
+    
+    @Put('admin/procedures/:id/reject')
+    @UseGuards(RolesGuard)
+    @Roles(UserRole.ADMIN)
+    @ApiOperation({ summary: 'Rejeter une procédure (Admin)' })
+    async rejectProcedure(
+        @Param('id') id: string,
+        @Body('reason') reason: string
+    ) {
+        return this.procedureService.rejectProcedure(id, reason);
+    }
+
+    @Put('admin/procedures/:id')
+    @UseGuards(RolesGuard)
+    @Roles(UserRole.ADMIN)
+    @ApiOperation({ summary: 'Modifier une procédure (Admin)' })
+    async updateProcedure(
+        @Param('id') id: string,
+        @Body() updateDto: UpdateProcedureDto
+    ) {
+        return this.procedureService.updateProcedure(id, updateDto);
+    }
+
+    @Put('admin/procedures/:id/steps/:stepName')
+    @UseGuards(RolesGuard)
+    @Roles(UserRole.ADMIN)
+    @ApiOperation({ summary: 'Modifier une étape de procédure (Admin)' })
+    async updateProcedureStep(
+        @Param('id') id: string,
+        @Param('stepName') stepName: string,
+        @Body() updateDto: UpdateStepDto
+    ) {
+        return this.procedureService.updateStep(id, stepName, updateDto);
+    }
+
+    @Delete('admin/procedures/:id')
+    @UseGuards(RolesGuard)
+    @Roles(UserRole.ADMIN)
+    @ApiOperation({ summary: 'Supprimer une procédure (Soft Delete)' })
+    async deleteProcedure(
+        @Param('id') id: string,
+        @Body('reason') reason?: string
+    ) {
+        return this.procedureService.softDelete(id, reason);
+    }
+
+    @Put('admin/procedures/:id/restore')
+    @UseGuards(RolesGuard)
+    @Roles(UserRole.ADMIN)
+    @ApiOperation({ summary: 'Restaurer une procédure supprimée' })
+    async restoreProcedure(@Param('id') id: string) {
+        return this.procedureService.restoreProcedure(id);
+    }
+
+    @Get('admin/procedures/stats')
+    @UseGuards(RolesGuard)
+    @Roles(UserRole.ADMIN)
+    @ApiOperation({ summary: 'Statistiques générales des procédures' })
+    async getProceduresOverview() {
+        return this.procedureService.getProceduresOverview();
+    }
+
+    // ==================== USER & ADMIN ====================
+
+    @Get('procedures')
+    @ApiOperation({ summary: 'Mes procédures' })
+    @ApiQuery({ name: 'page', required: false, type: Number })
+    @ApiQuery({ name: 'limit', required: false, type: Number })
+    async getMyProcedures(
         @Req() req: any,
         @Query('page') page: number = 1,
         @Query('limit') limit: number = 10
     ) {
-        if (!req.user || !req.user.email) {
-            console.log('❌ getUserProcedures: Utilisateur non authentifié');
-            throw new UnauthorizedException('Token invalide ou expiré');
+        if (!req.user?.email) {
+            throw new UnauthorizedException('Utilisateur non authentifié');
         }
-        
-        console.log('📥 getUserProcedures appelé pour:', req.user.email);
-        
         return this.procedureService.getUserProcedures(req.user.email, page, limit);
     }
 
-    @Get('stats')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN)
-    @ApiOperation({ summary: 'Récupérer les statistiques des procédures' })
-    async getStats(@Req() req: any) {
-        // Vérification du rôle
-        if (req.user.role !== UserRole.ADMIN) {
-            throw new ForbiddenException('Accès réservé aux administrateurs');
-        }
-        return this.procedureService.getStats();
+    @Get('procedures/:id')
+    @ApiOperation({ summary: 'Détails d\'une procédure' })
+    async getProcedureDetails(@Param('id') id: string, @Req() req: any) {
+        return this.procedureService.getProcedureDetails(id, req.user);
     }
 
-    @Get('dashboard-stats')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN)
-    @ApiOperation({ summary: 'Récupérer les statistiques du dashboard' })
-    async getDashboardStats(@Req() req: any) {
-        // Vérification du rôle
-        if (req.user.role !== UserRole.ADMIN) {
-            throw new ForbiddenException('Accès réservé aux administrateurs');
-        }
-        return this.procedureService.getDashboardStats();
-    }
-
-    @Get(':id')
-    @UseGuards(JwtAuthGuard)
-    @ApiOperation({ summary: 'Récupérer une procédure par ID' })
-    async findOne(@Param('id') id: string, @Req() req: any) {
-        const procedure = await this.procedureService.findOne(id);
-        
-        if (procedure.email !== req.user.email && req.user.role !== UserRole.ADMIN) {
-            throw new ForbiddenException('Accès non autorisé');
-        }
-
-        return procedure;
-    }
-
-    @Put(':id')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN)
-    @ApiOperation({ summary: 'Mettre à jour une procédure' })
-    async update(@Param('id') id: string, @Body() updateDto: UpdateProcedureDto, @Req() req: any) {
-        // Vérification du rôle
-        if (req.user.role !== UserRole.ADMIN) {
-            throw new ForbiddenException('Accès réservé aux administrateurs');
-        }
-        return this.procedureService.update(id, updateDto);
-    }
-
-    @Put(':id/steps/:stepName')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN)
-    @ApiOperation({ summary: 'Mettre à jour une étape de procédure' })
-    async updateStep(
-        @Param('id') id: string,
-        @Param('stepName') stepName: string,
-        @Body() updateDto: UpdateStepDto,
-        @Req() req: any
-    ) {
-        // Vérification du rôle
-        if (req.user.role !== UserRole.ADMIN) {
-            throw new ForbiddenException('Accès réservé aux administrateurs');
-        }
-        return this.procedureService.updateStep(id, stepName, updateDto);
-    }
-
-    @Put(':id/cancel')
-    @UseGuards(JwtAuthGuard)
-    @ApiOperation({ summary: 'Annuler sa propre procédure' })
-    @ApiResponse({ status: 200, description: 'Procédure annulée avec succès' })
-    @ApiResponse({ status: 403, description: 'Non autorisé à annuler cette procédure' })
-    @ApiResponse({ status: 404, description: 'Procédure non trouvée' })
-    async cancelOwn(
+    @Put('procedures/:id/cancel')
+    @ApiOperation({ summary: 'Annuler ma procédure' })
+    async cancelMyProcedure(
         @Param('id') id: string,
         @Req() req: any,
         @Body() cancelDto: CancelProcedureDto
     ) {
-        return this.procedureService.cancelByUser(id, req.user.email, cancelDto.reason);
+        return this.procedureService.cancelProcedure(id, req.user.email, cancelDto.reason);
     }
 
-    @Delete(':id')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN)
-    @ApiOperation({ summary: 'Supprimer une procédure (soft delete)' })
-    async remove(
-        @Param('id') id: string,
-        @Body('reason') reason?: string,
-        @Req() req?: any
-    ) {
-        // Vérification du rôle
-        if (req.user.role !== UserRole.ADMIN) {
-            throw new ForbiddenException('Accès réservé aux administrateurs');
-        }
-        return this.procedureService.softRemove(id, reason);
-    }
-
-    @Put(':id/restore')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN)
-    @ApiOperation({ summary: 'Restaurer une procédure supprimée' })
-    async restore(@Param('id') id: string, @Req() req: any) {
-        // Vérification du rôle
-        if (req.user.role !== UserRole.ADMIN) {
-            throw new ForbiddenException('Accès réservé aux administrateurs');
-        }
-        return this.procedureService.restoreProcedure(id);
-    }
 }

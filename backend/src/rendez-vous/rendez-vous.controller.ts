@@ -51,15 +51,7 @@ export class RendezvousController {
         @Query('limit') limit: number = 10,
         @Query('status') status?: string
     ) {
-        if (status) {
-            return this.rendezvousService.findByEmailAndStatus(email, status, page, limit);
-        }
-        return this.rendezvousService.findByEmail(email, page, limit);
-    }
-
-    @Get('slots')
-    getOccupiedSlots(@Query('date') date: string) {
-        return this.rendezvousService.getOccupiedSlots(date);
+        return this.rendezvousService.findByUser(email, page, limit, status);
     }
 
     @Get('available-slots')
@@ -106,9 +98,8 @@ export class RendezvousController {
     }
 
     @Put(':id/confirm')
-@UseGuards(JwtAuthGuard)
-async confirmRendezvous(@Param('id') id: string, @Req() req: any) {
-  return this.rendezvousService.confirmByUser(id, req.user);
-}
-
+    @UseGuards(JwtAuthGuard)
+    async confirmRendezvous(@Param('id') id: string, @Req() req: any) {
+        return this.rendezvousService.confirmByUser(id, req.user);
+    }
 }

@@ -1,4 +1,3 @@
-// UserProcedure.tsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../utils/AuthContext';
 import { toast } from 'react-toastify';
@@ -45,10 +44,8 @@ const UserProcedure: React.FC = () => {
   const { token, refreshToken, logout, isAuthenticated } = useAuth();
   const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-  // Fonction pour faire les appels API avec gestion d'authentification
   const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<any> => {
     try {
-      // Récupérer le token actuel depuis le localStorage
       let currentToken = localStorage.getItem('token') || token;
       
       if (!currentToken) {
@@ -73,14 +70,12 @@ const UserProcedure: React.FC = () => {
         const refreshed = await refreshToken();
         
         if (refreshed) {
-          // Récupérer le nouveau token depuis le localStorage
           currentToken = localStorage.getItem('token');
           
           if (!currentToken) {
             throw new Error('Échec du rafraîchissement du token');
           }
 
-          // Refaire la requête avec le nouveau token
           requestOptions.headers = {
             ...requestOptions.headers,
             'Authorization': `Bearer ${currentToken}`,
@@ -88,7 +83,6 @@ const UserProcedure: React.FC = () => {
           
           response = await fetch(`${VITE_API_URL}${url}`, requestOptions);
           
-          // Si encore 401 après rafraîchissement, déconnecter
           if (response.status === 401) {
             throw new Error('Session expirée, veuillez vous reconnecter');
           }
@@ -116,7 +110,6 @@ const UserProcedure: React.FC = () => {
       
       console.log('🔍 Récupération des procédures...', { isAuthenticated, hasToken: !!token });
       
-      // Vérifier que l'utilisateur est authentifié
       if (!isAuthenticated) {
         throw new Error('Vous devez être connecté pour voir vos procédures');
       }
@@ -139,7 +132,6 @@ const UserProcedure: React.FC = () => {
       if (err.message.includes('Session expirée') || err.message.includes('401')) {
         errorMessage = 'Votre session a expiré, veuillez vous reconnecter';
         toast.error(errorMessage);
-        // Le logout se fera automatiquement via le AuthContext
       } else if (err.message.includes('token')) {
         errorMessage = 'Problème d\'authentification, veuillez vous reconnecter';
         toast.error(errorMessage);
@@ -163,7 +155,6 @@ const UserProcedure: React.FC = () => {
       });
       
       toast.success('Procédure annulée avec succès');
-      // Recharger la liste
       await fetchProcedures(page);
       
     } catch (err: any) {
@@ -192,7 +183,6 @@ const UserProcedure: React.FC = () => {
   }, [isAuthenticated]);
 
   const handleCancel = (procedure: Procedure) => {
-    // Vérifier que la procédure peut être annulée
     if (procedure.statut === 'Terminée' || procedure.statut === 'Annulée') {
       toast.warning('Cette procédure ne peut pas être annulée');
       return;
@@ -214,7 +204,6 @@ const UserProcedure: React.FC = () => {
     }
   };
 
-  // Affichage du chargement
   if (loading) {
     return (
       <div className="flex justify-center items-center p-8">
@@ -224,7 +213,6 @@ const UserProcedure: React.FC = () => {
     );
   }
 
-  // Affichage des erreurs
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-6">
@@ -396,4 +384,4 @@ const UserProcedure: React.FC = () => {
     </div>
   );
 };
-export default UserProcedure; 
+export default UserProcedure;
