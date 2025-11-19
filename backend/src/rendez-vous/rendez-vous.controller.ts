@@ -49,7 +49,8 @@ export class RendezvousController {
         @Query('email') email: string,
         @Query('page') page: number = 1,
         @Query('limit') limit: number = 10,
-        @Query('status') status?: string
+        @Query('status') status?: string  
+
     ) {
         return this.rendezvousService.findByUser(email, page, limit, status);
     }

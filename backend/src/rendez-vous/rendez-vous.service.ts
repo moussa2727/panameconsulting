@@ -121,24 +121,25 @@ export class RendezvousService {
         page: number = 1, 
         limit: number = 10, 
         status?: string
-    ): Promise<{ data: Rendezvous[]; total: number; }> {
+      ): Promise<{ data: Rendezvous[]; total: number; }> {
         const skip = (page - 1) * limit;
         
         const filters: any = { email };
         if (status) filters.status = status;
-
+      
         const [data, total] = await Promise.all([
-            this.rendezvousModel.find(filters)
-                .skip(skip)
-                .limit(limit)
-                .sort({ date: -1, time: 1 })
-                .exec(),
-            this.rendezvousModel.countDocuments(filters)
+          this.rendezvousModel.find(filters)
+            .skip(skip)
+            .limit(limit)
+            .sort({ date: -1, time: 1 })
+            .exec(),
+          this.rendezvousModel.countDocuments(filters)
         ]);
         
         return { data, total };
-    }
+      }
 
+      
     async findOne(id: string): Promise<Rendezvous | null> {
         return this.rendezvousModel.findById(id).exec();
     }

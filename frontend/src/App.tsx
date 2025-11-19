@@ -17,7 +17,7 @@ import Contact from './pages/Contact';
 import Propos from './pages/Propos';
 import Services from './pages/Services';
 import NotFound from './pages/Notfound';
-import RendezVous from './pages/user/Rendez-Vous';
+import RendezVous from './pages/user/rendezvous/Rendez-Vous';
 
 // Pages de connexion, inscription, mot de passe oublié
 import Connexion from './pages/Connexion';
@@ -37,7 +37,7 @@ const AdminRendezVous = lazy(() => import('./pages/admin/AdminRendez-Vous'));
 // Restrictions admin
 import RequireAdmin from './context/RequireAdmin';
 
-import MesRendezVous from './pages/user/MesRendezVous';
+import MesRendezVous from './pages/user/rendezvous/MesRendezVous';
 import UserProfile from './pages/user/UserProfile';
 import UserProcedure from './pages/user/UserProcedure';
 

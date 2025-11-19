@@ -8,7 +8,7 @@ import {
   ProcedureStatus,
   StepStatus,
   StepName
-} from '../../api/ProcedureService';
+} from '../../api/user/procedures/ProcedureService';
 import { 
   Home, 
   User, 

@@ -23,52 +23,54 @@ export class UsersService {
     @InjectModel(User.name) private userModel: Model<User>,
   ) { }
 
-  private normalizeTelephone(input?: string): string | undefined {
-  if (!input) return undefined;
-  
-  const trimmed = input.trim();
-  if (trimmed === '') return undefined;
-  
-  // Garder le + si présent, sinon ajouter +33 pour la France par défaut
-  const hasPlus = trimmed.startsWith('+');
-  let digits = trimmed.replace(/[^\d]/g, '');
-  
-  // Si pas de + et commence par 0, convertir en +33
-  if (!hasPlus && digits.startsWith('0')) {
-    digits = '33' + digits.substring(1);
-  }
-  
-  return hasPlus ? `+${digits}` : `+${digits}`;
-}
+    private normalizeTelephone(input?: string): string | undefined {
+      if (!input) return undefined;
+      
+      const trimmed = input.trim();
+      if (trimmed === '') return undefined;
+      
+      // Garder le + si présent, sinon ajouter +33 pour la France par défaut
+      const hasPlus = trimmed.startsWith('+');
+      let digits = trimmed.replace(/[^\d]/g, '');
+      
+      // Si pas de + et commence par 0, convertir en +33
+      if (!hasPlus && digits.startsWith('0')) {
+        digits = '33' + digits.substring(1);
+      }
+      
+      return hasPlus ? `+${digits}` : `+${digits}`;
+    }
 
-private validateUpdateData(updateData: any): void {
-  const allowedFields = ['email', 'telephone'];
-  const providedFields = Object.keys(updateData);
-  
-  // Vérifier que seuls les champs autorisés sont présents
-  const unauthorizedFields = providedFields.filter(field => !allowedFields.includes(field));
-  if (unauthorizedFields.length > 0) {
-    throw new BadRequestException(`Champs non autorisés: ${unauthorizedFields.join(', ')}`);
-  }
-  
-  // Vérifier qu'au moins un champ a une valeur valide
-  const hasValidData = Object.values(updateData).some(value => 
-    value !== undefined && value !== null && value !== ''
-  );
-  
-  if (!hasValidData) {
-    throw new BadRequestException('Aucune donnée valide à mettre à jour');
-  }
-}
+    private validateUpdateData(updateData: any): void {
+      const allowedFields = ['email', 'telephone'];
+      const providedFields = Object.keys(updateData);
+      
+      // Vérifier que seuls les champs autorisés sont présents
+      const unauthorizedFields = providedFields.filter(field => !allowedFields.includes(field));
+      if (unauthorizedFields.length > 0) {
+        throw new BadRequestException(`Champs non autorisés: ${unauthorizedFields.join(', ')}`);
+      }
+      
+      // Vérifier qu'au moins un champ a une valeur valide
+      const hasValidData = Object.values(updateData).some(value => 
+        value !== undefined && value !== null && value !== ''
+      );
+      
+      if (!hasValidData) {
+        throw new BadRequestException('Aucune donnée valide à mettre à jour');
+      }
+    }
 
 
     async findOne(id: string): Promise<User | null> {
       return this.userModel.findById(id).exec();
     }
 
+
     async findAll(): Promise<User[]> {
       return this.userModel.find().exec();
     }
+
 
     async findById(id: string): Promise<User> {
       const user = await this.userModel.findById(id).exec();
@@ -78,7 +80,9 @@ private validateUpdateData(updateData: any): void {
       return user;
     }
 
-    async checkUserAccess(userId: string): Promise<boolean> {
+
+
+  async checkUserAccess(userId: string): Promise<boolean> {
     const user = await this.userModel.findById(userId);
     if (!user) return false;
     if (user.role === UserRole.ADMIN) return true;
@@ -89,12 +93,15 @@ private validateUpdateData(updateData: any): void {
     return true;
   }
 
+
   async isMaintenanceMode(): Promise<boolean> {
-  return process.env.MAINTENANCE_MODE === 'true';
-}
+    return process.env.MAINTENANCE_MODE === 'true';
+  }
+
   async setMaintenanceMode(enabled: boolean): Promise<void> {
     process.env.MAINTENANCE_MODE = enabled ? 'true' : 'false';
   }
+
 
   async logoutAll(): Promise<{ message: string, loggedOutCount: number }> {
     const activeUsers = await this.userModel.find({
@@ -117,6 +124,7 @@ private validateUpdateData(updateData: any): void {
     };
   }
 
+
   async findByIdOrThrow(id: string): Promise<User> {
     const user = await this.findById(id);
     if (!user) {
@@ -125,17 +133,23 @@ private validateUpdateData(updateData: any): void {
     return user;
   }
 
+
   async findByEmail(email: string): Promise<User | null> {
     return this.userModel.findOne({ email }).exec();
   }
 
+
   async findByRole(role: UserRole): Promise<User | null> { // Utiliser UserRole
     return this.userModel.findOne({ role }).exec();
   }
+
+
   async exists(userId: string): Promise<boolean> {
     const user = await this.userModel.findById(userId).exec();
     return !!user;
   }
+
+
 
   async validateUser(email: string, password: string): Promise<User | null> {
     const user = await this.findByEmail(email);
@@ -144,6 +158,8 @@ private validateUpdateData(updateData: any): void {
     }
     return null;
   }
+
+
 
 async create(createUserDto: RegisterDto): Promise<User> {
     const existingUser = await this.findByEmail(createUserDto.email);
@@ -172,6 +188,8 @@ async create(createUserDto: RegisterDto): Promise<User> {
     
     return createdUser.save();
   }
+
+
 
 async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
   console.log('🔄 Mise à jour utilisateur.');
@@ -216,6 +234,8 @@ async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
   }
 }
 
+
+
 private filterAndValidateUpdateData(updateUserDto: UpdateUserDto): any {
   const allowedFields = ['email', 'telephone'];
   const filteredUpdate: any = {};
@@ -247,6 +267,8 @@ private filterAndValidateUpdateData(updateUserDto: UpdateUserDto): any {
   return filteredUpdate;
 }
 
+
+
 private validateEmail(email: string): void {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
@@ -254,11 +276,15 @@ private validateEmail(email: string): void {
   }
 }
 
+
+
 private validateTelephone(telephone: string | undefined): void {
   if (telephone && telephone.length < 5) {
     throw new BadRequestException('Le téléphone doit contenir au moins 5 caractères');
   }
 }
+
+
 
 private async verifyUserExists(userId: string): Promise<void> {
   const existingUser = await this.userModel.findById(userId).exec();
@@ -266,6 +292,8 @@ private async verifyUserExists(userId: string): Promise<void> {
     throw new NotFoundException('Utilisateur non trouvé');
   }
 }
+
+
 
 private async checkForConflicts(userId: string, updateData: any): Promise<void> {
   if (updateData.email) {
@@ -290,6 +318,8 @@ private async checkForConflicts(userId: string, updateData: any): Promise<void> 
     }
   }
 }
+
+
 
 private handleUpdateError(error: any): never {
   console.error('❌ Erreur mise à jour utilisateur:', error);
@@ -322,6 +352,9 @@ private handleUpdateError(error: any): never {
   this.logger.error(`Erreur inattendue: ${error.message}`, error.stack);
   throw new BadRequestException('Erreur lors de la mise à jour du profil');
 }
+
+
+
   async updatePassword(userId: string, updatePasswordDto: UpdatePasswordDto): Promise<void> {
     const user = await this.userModel.findById(userId);
     if (!user) {
@@ -341,6 +374,8 @@ private handleUpdateError(error: any): never {
     await user.save();
   }
 
+
+
   async resetPassword(userId: string, newPassword: string): Promise<void> {
     const user = await this.userModel.findById(userId);
     if (!user) {
@@ -355,12 +390,16 @@ private handleUpdateError(error: any): never {
     await user.save();
   }
 
+
+
   async delete(id: string): Promise<void> {
     const result = await this.userModel.findByIdAndDelete(id).exec();
     if (!result) {
       throw new NotFoundException('Utilisateur non trouvé');
     }
   }
+
+
 
   async toggleStatus(id: string): Promise<User> {
     const user = await this.findById(id);
@@ -379,6 +418,8 @@ private handleUpdateError(error: any): never {
     return updatedUser;
   }
 
+
+
  async checkDatabaseConnection(): Promise<boolean> {
   try {
     if (!this.userModel.db || !this.userModel.db.db) {
@@ -391,6 +432,8 @@ private handleUpdateError(error: any): never {
     return false;
   }
 }
+
+
 
   async getStats() {
     const [totalUsers, activeUsers, adminUsers] = await Promise.all([
@@ -408,11 +451,15 @@ private handleUpdateError(error: any): never {
     };
   }
 
+
+
   async getMaintenanceStatus() {
   return {
     isActive: await this.isMaintenanceMode(),
     logoutUntil: null // Retirer la date fixe
   };
+
+  
 }
 
 

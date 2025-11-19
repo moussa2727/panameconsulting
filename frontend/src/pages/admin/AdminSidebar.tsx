@@ -185,7 +185,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
         {/* Sidebar */}
         <div 
           className={`bg-white h-screen fixed left-0 top-0 z-40 shadow-xl border-r border-slate-200/60 flex flex-col transition-all duration-300 ${
-            isCollapsed ? 'w-16 md:w-20' : 'w-64'
+            isCollapsed ? 'w-0 opacity-0' : 'w-64 opacity-100'
           }`}
         >
           {/* En-tête avec bouton de réduction */}
@@ -300,9 +300,20 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
           </div>
         </div>
 
+        {/* Bouton flottant pour réouvrir la sidebar quand elle est rétractée */}
+        {isCollapsed && (
+          <button
+            onClick={toggleSidebar}
+            className='fixed left-4 top-4 z-50 p-3 bg-gradient-to-r from-blue-600 to-sky-500 text-white rounded-full shadow-lg hover:from-blue-700 hover:to-sky-600 transition-all duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent'
+            aria-label='Ouvrir le menu'
+          >
+            <ChevronRight className='w-5 h-5' />
+          </button>
+        )}
+
         {/* Contenu principal avec marge adaptative */}
         <div className={`flex-1 transition-all duration-300 ${
-          isCollapsed ? 'ml-16 md:ml-20' : 'ml-64'
+          isCollapsed ? 'ml-0' : 'ml-64'
         }`}>
           <div className='p-4 md:p-6 lg:p-8'>
             {children}

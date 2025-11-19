@@ -27,7 +27,12 @@ export class Rendezvous {
     })
     email: string;
 
-    @Prop({ required: true, trim: true })
+    @Prop({ 
+        required: true, 
+        trim: true,
+        minlength: 5,
+        maxlength: 20
+    })
     telephone: string;
 
     @Prop({
@@ -68,13 +73,38 @@ export class Rendezvous {
 
     @Prop({
         required: true,
-        match: /^\d{4}-\d{2}-\d{2}$/
+        match: /^\d{4}-\d{2}-\d{2}$/,
+        validate: {
+            validator: function(date: string) {
+                const selectedDate = new Date(date);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                return selectedDate >= today;
+            },
+            message: 'La date doit être aujourd\'hui ou ultérieure'
+        }
     })
     date: string;
 
     @Prop({
         required: true,
-        match: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/
+        match: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/,
+        validate: {
+            validator: function(time: string) {
+                const [hours, minutes] = time.split(':').map(Number);
+                const timeInHours = hours + minutes / 60;
+                
+                // Vérification des horaires de travail (9h-16h30)
+                if (timeInHours < 9 || timeInHours > 16.5) {
+                    return false;
+                }
+
+                // Vérification des créneaux de 30 minutes
+                const totalMinutes = (hours - 9) * 60 + minutes;
+                return totalMinutes % 30 === 0;
+            },
+            message: 'Créneau horaire invalide (09:00-16:30, par pas de 30min)'
+        }
     })
     time: string;
 
@@ -93,6 +123,23 @@ export class Rendezvous {
 
     @Prop({ type: Types.ObjectId, ref: 'User' })
     userId?: Types.ObjectId;
+    
+    // Champs pour le soft delete
+    @Prop({ type: Date })
+    cancelledAt?: Date;
+    
+    @Prop({ 
+        enum: ['user', 'admin'],
+        required: false
+    })
+    cancelledBy?: string;
+    
+    @Prop({ 
+        type: String,
+        maxlength: 500,
+        required: false
+    })
+    cancellationReason?: string;
     
     _id: any;
 }
@@ -173,3 +220,10 @@ RendezvousSchema.pre('save', function (next: () => void) {
 
     next();
 });
+
+// Index pour les recherches courantes
+RendezvousSchema.index({ email: 1 });
+RendezvousSchema.index({ date: 1, time: 1 });
+RendezvousSchema.index({ status: 1 });
+RendezvousSchema.index({ createdAt: 1 });
+RendezvousSchema.index({ destination: 1 });

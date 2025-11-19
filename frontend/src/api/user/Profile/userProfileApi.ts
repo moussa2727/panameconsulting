@@ -180,7 +180,7 @@ async updateProfile(profileData: UserProfileData, token: string): Promise<any> {
         body: JSON.stringify({
           currentPassword: passwordData.currentPassword,
           newPassword: passwordData.newPassword,
-          confirmNewPassword: passwordData.confirmNewPassword // ✅ Ajouter la confirmation
+          confirmNewPassword: passwordData.confirmNewPassword 
         })
       });
 

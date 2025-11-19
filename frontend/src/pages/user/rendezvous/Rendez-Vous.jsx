@@ -1,6 +1,6 @@
 import React from 'react';
 import { Helmet } from 'react-helmet-async';
-import RendezVous from '../../components/RendezVous';
+import RendezVous from '../../../components/RendezVous';
 
 const RendezVousPage = () => {
 

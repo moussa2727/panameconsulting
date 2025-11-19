@@ -4,7 +4,8 @@ import {
     IsOptional, 
     IsString,
     Matches,
-    MaxLength
+    MaxLength,
+    MinLength
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -27,10 +28,21 @@ export class CreateRendezvousDto {
     @IsEmail({}, { message: 'Format d\'email invalide' })
     email: string;
 
-    @ApiProperty({ example: '+33123456789', description: 'Téléphone du client' })
     @IsNotEmpty({ message: 'Le téléphone est obligatoire' })
     @IsString({ message: 'Le téléphone doit être une chaîne de caractères' })
+    @MinLength(5, { message: 'Le téléphone doit contenir au moins 5 caractères' })
     telephone: string;
+
+    // Validation renforcée pour les champs "Autre"
+    @IsOptional()
+    @IsString()
+    @MaxLength(100)
+    destinationAutre?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(100)
+    filiereAutre?: string;
 
     @ApiProperty({ 
         example: 'France',
@@ -41,14 +53,7 @@ export class CreateRendezvousDto {
     @MaxLength(100, { message: 'La destination ne peut pas dépasser 100 caractères' })
     destination: string;
 
-    @ApiProperty({ 
-        required: false,
-        description: 'Autre destination (si "Autre" est sélectionné)' 
-    })
-    @IsOptional()
-    @IsString({ message: 'La destination doit être une chaîne de caractères' })
-    @MaxLength(100, { message: 'La destination ne peut pas dépasser 100 caractères' })
-    destinationAutre?: string;
+   
 
     @ApiProperty({ 
         enum: ['Bac', 'Bac+1', 'Bac+2', 'Licence', 'Master I', 'Master II', 'Doctorat'],
@@ -68,14 +73,7 @@ export class CreateRendezvousDto {
     @MaxLength(100, { message: 'La filière ne peut pas dépasser 100 caractères' })
     filiere: string;
 
-    @ApiProperty({ 
-        required: false,
-        description: 'Autre filière (si "Autre" est sélectionné)' 
-    })
-    @IsOptional()
-    @IsString({ message: 'La filière doit être une chaîne de caractères' })
-    @MaxLength(100, { message: 'La filière ne peut pas dépasser 100 caractères' })
-    filiereAutre?: string;
+    
 
     @ApiProperty({ 
         example: '2024-12-25', 
