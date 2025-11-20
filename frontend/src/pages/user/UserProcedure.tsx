@@ -1060,13 +1060,13 @@ const UserProcedure = () => {
             
             <div className="mb-4">
               <label htmlFor="cancelReason" className="block text-sm font-medium text-slate-700 mb-2">
-                Raison de l'annulation (optionnel)
+                Raison de l'annulation 
               </label>
               <textarea
                 id="cancelReason"
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
-                placeholder="Pourquoi souhaitez-vous annuler cette procédure ?"
+                placeholder="Veuillez Nous Dire Pourquoi Vosu souhaitez annuler cette procédure ?"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none text-sm"
                 rows={3}
               />

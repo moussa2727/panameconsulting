@@ -43,44 +43,44 @@ export class AuthController {
         private usersService: UsersService
     ) { }
 
-    @Post('login')
-    @UseGuards(ThrottleGuard, LocalAuthGuard)
-    @ApiOperation({ summary: 'Connexion utilisateur' })
-    @ApiResponse({ status: 200, description: 'Connexion réussie' })
-    @ApiResponse({ status: 401, description: 'Identifiants invalides' })
-    async login(
-        @Body() loginDto: LoginDto,
-        @Request() req: { user: any },
-        @Res() res: Response
-    ) {
-        const result = await this.authService.login(req.user);
-        
-        // Configuration des cookies avec bon typage
-        const cookieOptions: any = {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
-                
-        };
+   // Dans auth.controller.ts - UTILISATION CORRECTE
+@Post('login')
+@UseGuards(ThrottleGuard, LocalAuthGuard) // ✅ Utilisation correcte du guard
+@ApiOperation({ summary: 'Connexion utilisateur' })
+@ApiResponse({ status: 200, description: 'Connexion réussie' })
+@ApiResponse({ status: 401, description: 'Identifiants invalides' })
+async login(
+    @Body() loginDto: LoginDto,
+    @Request() req: { user: any }, // ✅ req.user est rempli par LocalAuthGuard
+    @Res() res: Response
+) {
+    const result = await this.authService.login(req.user);
+    
+    // Configuration des cookies
+    const cookieOptions: any = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
+    };
 
-        res.cookie('refresh_token', result.refreshToken, {
-            ...cookieOptions,
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
-        });
+    res.cookie('refresh_token', result.refreshToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
+    });
 
-        res.cookie('access_token', result.accessToken, {
-            ...cookieOptions,
-            httpOnly: false,
-            maxAge: 15 * 60 * 1000 // 15 minutes
-        });
+    res.cookie('access_token', result.accessToken, {
+        ...cookieOptions,
+        httpOnly: false,
+        maxAge: 15 * 60 * 1000 // 15 minutes
+    });
 
-        return res.json({
-            accessToken: result.accessToken,
-            user: result.user,
-            message: 'Connexion réussie'
-        });
-    }
+    return res.json({
+        accessToken: result.accessToken,
+        user: result.user,
+        message: 'Connexion réussie'
+    });
+}
 
    @Post('refresh')
 @ApiOperation({ summary: 'Rafraîchir le token' })

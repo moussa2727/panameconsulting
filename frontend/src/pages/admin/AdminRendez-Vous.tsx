@@ -1003,14 +1003,14 @@ const AdminRendezVous = () => {
           {/* Barre de recherche et filtres */}
           <div className="p-4 border-b border-slate-200 bg-slate-50/50">
             <div className="flex items-center justify-between mb-4">
-              <h1 className="text-xl font-bold text-slate-800">Gestion des rendez-vous</h1>
+              <h1 className="text-xl font-bold text-slate-800">Gestion rendez-vous</h1>
               <button
-                onClick={() => setShowCreateModal(true)}
-                className="px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 focus:ring-none focus:outline-none"
-              >
-                <Plus className="w-4 h-4" />
-                Nouveau RDV
-              </button>
+  onClick={() => setShowCreateModal(true)}
+  className="px-2.5 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-all duration-200 font-medium text-xs shadow-sm hover:shadow-md flex items-center gap-1 focus:ring-none focus:outline-none"
+>
+  <Plus className="w-3 h-3" />
+  Nouveau RDV
+</button>
             </div>
 
             <div className="relative mb-4">

@@ -1,40 +1,50 @@
-import { ExecutionContext, Injectable, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+// local-auth.guard.ts - VERSION CORRIGÉE
+import { ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 
 @Injectable()
 export class LocalAuthGuard extends AuthGuard('local') {
- 
-   // * Fonctionnement :
-   // * 1. Le guard intercepte la requête
-   // * 2. Passe les credentials (email, password) à la stratégie LocalStrategy
-   // * 3. La stratégie valide les credentials via le AuthService
-   // * 4. Si valide, ajoute l'utilisateur à la requête (req.user)
-   // * 5. Si invalide, renvoie une erreur 401 Unauthorized
-   
-
-   @UseGuards(LocalAuthGuard)
-   @Post('login')
-   async login(@Req() req: any) {
-      return req.user; // Utilisateur authentifié
-   }
+  
+  /**
+   * Fonctionnement :
+   * 1. Le guard intercepte la requête
+   * 2. Passe les credentials (email, password) à la stratégie LocalStrategy
+   * 3. La stratégie valide les credentials via le AuthService
+   * 4. Si valide, ajoute l'utilisateur à la requête (req.user)
+   * 5. Si invalide, renvoie une erreur 401 Unauthorized
+   */
+  
   constructor() {
     super();
   }
 
   /**
-   * Vous pouvez surcharger ces méthodes si besoin :
+   * Surcharge de handleRequest pour personnaliser les messages d'erreur
    */
-  
-  handleRequest(err: any, user: any, info: any, context: any, status: any) {
+  handleRequest(err: any, user: any, info: any, context: ExecutionContext, status?: any) {
     // Personnalisez la réponse en cas d'erreur
     if (err || !user) {
-      throw err || new UnauthorizedException('Identifiants invalides');
+      console.error('❌ Erreur authentification locale:', err?.message || info?.message);
+      throw err || new UnauthorizedException('Email ou mot de passe incorrect');
     }
     return user;
   }
 
-//   canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
-//     // Ajoutez ici une logique supplémentaire avant l'authentification
-//     return super.canActivate(context);
-//   }
+  /**
+   * Optionnel : Surcharge de canActivate pour ajouter une logique supplémentaire
+   */
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    try {
+      // Logique supplémentaire avant l'authentification (optionnelle)
+      const request = context.switchToHttp().getRequest();
+      console.log('🔐 Tentative de connexion pour:', request.body?.email);
+      
+      // Appel de la méthode parent
+      const result = await super.canActivate(context) as boolean;
+      return result;
+    } catch (error) {
+      console.error('❌ Erreur activation guard local:', error);
+      throw error;
+    }
+  }
 }

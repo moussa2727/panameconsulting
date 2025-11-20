@@ -1,3 +1,4 @@
+// procedure.schema.ts - VERSION COMPLÈTE AVEC dateCompletion
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Model, Types } from 'mongoose';
 
@@ -9,10 +10,11 @@ export enum StepStatus {
   CANCELLED = 'Annulé'  
 }
 
+// ✅ CORRIGÉ: Noms AVEC espaces
 export enum StepName {
-  DEMANDE_ADMISSION = 'DEMANDE_ADMISSION',
-  DEMANDE_VISA = 'DEMANDE_VISA',
-  PREPARATIF_VOYAGE = 'PREPARATIF_VOYAGE',
+  DEMANDE_ADMISSION = 'DEMANDE ADMISSION',
+  DEMANDE_VISA = 'DEMANDE VISA',
+  PREPARATIF_VOYAGE = 'PREPARATIF VOYAGE',
 }
 
 export enum ProcedureStatus {
@@ -24,23 +26,23 @@ export enum ProcedureStatus {
 
 @Schema({ _id: false })
 export class Step {
-  @Prop({ type: String, enum: StepName, required: true })
-  nom: StepName;
+    @Prop({ type: String, enum: StepName, required: true })
+    nom: StepName;
 
-  @Prop({ type: String, enum: StepStatus, default: StepStatus.PENDING })
-  statut: StepStatus;
+    @Prop({ type: String, enum: StepStatus, default: StepStatus.PENDING, required: true })
+    statut: StepStatus;
 
-  @Prop({ type: String, required: false })
-  raisonRefus?: string;
+    @Prop({ type: String, required: false })
+    raisonRefus?: string;
 
-  @Prop({ type: Date, default: Date.now })
-  dateMaj: Date;
+    @Prop({ type: Date, default: Date.now })
+    dateMaj: Date;
 
-  @Prop({ type: Date, default: Date.now })
-  dateCreation: Date;
+    @Prop({ type: Date, default: Date.now })
+    dateCreation: Date;
 
-  @Prop({ type: Date, required: false })
-  dateCompletion?: Date;
+    @Prop({ type: Date, required: false })
+    dateCompletion?: Date;
 }
 
 export const StepSchema = SchemaFactory.createForClass(Step);
@@ -102,6 +104,14 @@ export class Procedure extends Document {
   @Prop({ type: String })
   raisonRejet?: string;
 
+  // ✅ AJOUT: Propriété dateCompletion manquante
+  @Prop({ type: Date })
+  dateCompletion?: Date;
+
+  // ✅ AJOUT: Propriété dateDerniereModification manquante
+  @Prop({ type: Date, default: Date.now })
+  dateDerniereModification?: Date;
+
   // Déclarer les méthodes comme optionnelles dans la classe
   updateGlobalStatus?: () => void;
   addStep?: (stepName: StepName) => void;
@@ -132,7 +142,7 @@ ProcedureSchema.methods.updateGlobalStatus = function() {
     procedure.statut = ProcedureStatus.CANCELLED;
   } else if (allCompleted) {
     procedure.statut = ProcedureStatus.COMPLETED;
-    procedure.dateCompletion = new Date();
+    procedure.dateCompletion = new Date(); // ✅ MAINTENANT VALIDE
   } else {
     procedure.statut = ProcedureStatus.IN_PROGRESS;
   }
@@ -186,7 +196,7 @@ ProcedureSchema.statics.findByUserEmail = function(email: string) {
 
 ProcedureSchema.pre('save', function(next) {
   const procedure = this as any;
-  procedure.dateDerniereModification = new Date();
+  procedure.dateDerniereModification = new Date(); // ✅ MAINTENANT VALIDE
   
   if (procedure.isModified('steps')) {
     procedure.updateGlobalStatus();

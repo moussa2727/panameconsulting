@@ -1,10 +1,11 @@
-import { IsEnum, IsOptional, IsString, MinLength, MaxLength, IsDate } from 'class-validator';
+// update-step.dto.ts - VERSION ROBUSTE
+import { IsEnum, IsOptional, IsString, MinLength, MaxLength, IsDateString, ValidateIf } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { StepStatus, StepName } from '../../schemas/procedure.schema';
 
 export class UpdateStepDto {
     @ApiProperty({ 
-        example: 'DEMANDE_VISA', 
+        example: 'DEMANDE ADMISSION',
         description: 'Nom de l\'étape',
         enum: StepName,
         required: false
@@ -28,7 +29,7 @@ export class UpdateStepDto {
         description: 'Raison du refus (si applicable)',
         required: false
     })
-    @IsOptional()
+    @ValidateIf((dto) => dto.statut === StepStatus.REJECTED)
     @IsString({ message: 'La raison doit être une chaîne de caractères' })
     @MinLength(5, { message: 'La raison doit contenir au moins 5 caractères' })
     @MaxLength(500, { message: 'La raison ne doit pas dépasser 500 caractères' })
@@ -40,6 +41,6 @@ export class UpdateStepDto {
         required: false
     })
     @IsOptional()
-    @IsDate({ message: 'dateMaj doit être une date valide' })
-    dateMaj?: Date;
+    @IsDateString({}, { message: 'dateMaj doit être une date ISO valide' })
+    dateMaj?: string;
 }

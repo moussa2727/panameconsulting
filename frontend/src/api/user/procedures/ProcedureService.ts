@@ -1,4 +1,4 @@
-// procedure.service.ts (hooks corrigés)
+// procedure.service.ts (hooks corrigés - sans logs utilisateur)
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'react-toastify';
@@ -88,7 +88,6 @@ class ProcedureApiService {
   
   /**
    * ✅ Récupérer les procédures de l'utilisateur connecté
-   * Endpoint: GET /api/procedures/user?page=1&limit=10
    */
   static async fetchUserProcedures(
     page: number = 1,
@@ -105,7 +104,7 @@ class ProcedureApiService {
           headers: {
             'Content-Type': 'application/json',
           },
-          credentials: 'include', // ✅ Les cookies sont envoyés automatiquement
+          credentials: 'include',
           signal: controller.signal
         }
       );
@@ -140,7 +139,6 @@ class ProcedureApiService {
 
   /**
    * ✅ Récupérer les détails d'une procédure spécifique
-   * Endpoint: GET /api/procedures/:id
    */
   static async fetchProcedureDetails(
     procedureId: string
@@ -160,7 +158,7 @@ class ProcedureApiService {
           headers: {
             'Content-Type': 'application/json',
           },
-          credentials: 'include', // ✅ Cookies automatiques
+          credentials: 'include',
           signal: controller.signal
         }
       );
@@ -195,7 +193,6 @@ class ProcedureApiService {
 
   /**
    * ✅ Annuler une procédure
-   * Endpoint: PUT /api/procedures/:id/cancel
    */
   static async cancelProcedure(
     procedureId: string,
@@ -216,7 +213,7 @@ class ProcedureApiService {
           headers: {
             'Content-Type': 'application/json',
           },
-          credentials: 'include', // ✅ Cookies automatiques
+          credentials: 'include',
           body: JSON.stringify({ reason } as CancelProcedureDto),
           signal: controller.signal
         }
@@ -256,7 +253,6 @@ class ProcedureApiService {
 
   /**
    * ✅ Récupérer toutes les procédures (Admin seulement)
-   * Endpoint: GET /api/admin/procedures/all
    */
   static async fetchAllProcedures(
     page: number = 1,
@@ -277,7 +273,7 @@ class ProcedureApiService {
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include', // ✅ Cookies automatiques
+        credentials: 'include',
         signal: controller.signal
       });
 
@@ -308,7 +304,6 @@ class ProcedureApiService {
 
   /**
    * ✅ Rejeter une procédure (Admin seulement)
-   * Endpoint: PUT /api/admin/procedures/:id/reject
    */
   static async rejectProcedure(
     procedureId: string,
@@ -329,7 +324,7 @@ class ProcedureApiService {
           headers: {
             'Content-Type': 'application/json',
           },
-          credentials: 'include', // ✅ Cookies automatiques
+          credentials: 'include',
           body: JSON.stringify({ reason }),
           signal: controller.signal
         }
@@ -509,7 +504,7 @@ export const useAdminProcedures = (page: number = 1, limit: number = 10, email?:
       const data = await ProcedureApiService.fetchAllProcedures(page, limit, email);
       setProcedures(data);
     } catch (err: any) {
-      const errorMessage = err.message || 'Erreur lors du chargement des procédures admin';
+      const errorMessage = err.message || 'Erreur lors du chargement des procédures';
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {

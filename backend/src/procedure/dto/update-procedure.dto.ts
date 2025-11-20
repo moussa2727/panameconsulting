@@ -1,3 +1,4 @@
+// update-procedure.dto.ts - AJOUT DE dateCompletion
 import { PartialType } from '@nestjs/swagger';
 import { CreateProcedureDto } from './create-procedure.dto';
 import { IsOptional, IsEnum, IsBoolean, IsDate, IsArray, ValidateNested, IsString, MaxLength, MinLength } from 'class-validator';
@@ -65,4 +66,14 @@ export class UpdateProcedureDto extends PartialType(CreateProcedureDto) {
     @MinLength(5, { message: 'La raison doit contenir au moins 5 caractères' })
     @MaxLength(500, { message: 'La raison ne doit pas dépasser 500 caractères' })
     raisonRejet?: string;
+
+    // ✅ AJOUT: Propriété dateCompletion
+    @ApiProperty({ 
+        example: '2024-01-20T15:45:00.000Z', 
+        description: 'Date de completion de la procédure',
+        required: false
+    })
+    @IsOptional()
+    @IsDate({ message: 'dateCompletion doit être une date valide' })
+    dateCompletion?: Date;
 }

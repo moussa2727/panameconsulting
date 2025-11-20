@@ -1,9 +1,31 @@
-// AdminProcedureApi.ts
+// AdminProcedureApi.ts - VERSION FINALE CORRIGÉE
 import { useAuth } from '../../context/AuthContext';
 
+// ✅ Enums avec espaces comme dans la base de données
+export enum StepStatus {
+  PENDING = 'En attente',
+  IN_PROGRESS = 'En cours',
+  COMPLETED = 'Terminé',
+  REJECTED = 'Rejeté',
+  CANCELLED = 'Annulé'
+}
+
+export enum ProcedureStatus {
+  IN_PROGRESS = 'En cours',
+  COMPLETED = 'Terminée',
+  REJECTED = 'Refusée',
+  CANCELLED = 'Annulée'
+}
+
+export enum StepName {
+  DEMANDE_ADMISSION = 'DEMANDE ADMISSION', // ✅ AVEC espaces
+  DEMANDE_VISA = 'DEMANDE VISA',           // ✅ AVEC espaces
+  PREPARATIF_VOYAGE = 'PREPARATIF VOYAGE'  // ✅ AVEC espaces
+}
+
 export interface Step {
-  nom: string;
-  statut: 'En attente' | 'En cours' | 'Terminé' | 'Rejeté' | 'Annulé';
+  nom: StepName;
+  statut: StepStatus;
   raisonRefus?: string;
   dateMaj: string;
 }
@@ -17,7 +39,7 @@ export interface Procedure {
   destination: string;
   niveauEtude?: string;
   filiere?: string;
-  statut: 'En cours' | 'Terminée' | 'Refusée' | 'Annulée';
+  statut: ProcedureStatus;
   steps: Step[];
   rendezVousId?: any;
   createdAt: string;
@@ -38,43 +60,64 @@ class AdminProcedureApiService {
 
   constructor(private getToken: () => string | null, private refreshToken: () => Promise<boolean>) {}
 
+ 
   private async makeAuthenticatedRequest(url: string, options: RequestInit = {}) {
-    let token = this.getToken();
-    
-    if (!token) {
-      throw new Error('Aucun token disponible');
-    }
+  let token = this.getToken();
+  
+  if (!token) {
+    throw new Error('Aucun token disponible');
+  }
 
+  const baseOptions: RequestInit = {
+    credentials: 'include' as RequestCredentials,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  };
+
+  try {
     const response = await fetch(url, {
-      credentials: 'include',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+      ...baseOptions,
       ...options,
     });
 
+    // ✅ Gestion améliorée des erreurs 400
+    if (response.status === 400) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Requête invalide - Vérifiez les données envoyées');
+    }
+
     if (response.status === 401) {
-      // Token expiré, tentative de rafraîchissement
       const refreshed = await this.refreshToken();
       if (refreshed) {
         token = this.getToken();
-        // Réessayer la requête avec le nouveau token
-        return fetch(url, {
-          credentials: 'include',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+        const retryResponse = await fetch(url, {
+          ...baseOptions,
           ...options,
+          headers: {
+            ...baseOptions.headers,
+            'Authorization': `Bearer ${token}`,
+          },
         });
+        return retryResponse;
       } else {
         throw new Error('Session expirée - Veuillez vous reconnecter');
       }
     }
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Erreur ${response.status} - ${options.method} ${url}`);
+      throw new Error(`Erreur ${response.status}: ${errorText}`);
+    }
+
     return response;
+  } catch (error: any) {
+    console.error('❌ Erreur réseau:', error.message);
+    throw error;
   }
+}
 
   async fetchProcedures(page: number = 1, limit: number = 50): Promise<ProceduresResponse> {
     try {
@@ -83,18 +126,14 @@ class AdminProcedureApiService {
         method: 'GET',
       });
 
-      if (!response.ok) {
-        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
-      }
-
       return await response.json();
     } catch (error: any) {
-      console.error('❌ Erreur chargement procédures:', error);
+      console.error('❌ Erreur chargement procédures');
       throw error;
     }
   }
 
-  async updateProcedureStatus(procedureId: string, newStatus: Procedure['statut']): Promise<Procedure> {
+  async updateProcedureStatus(procedureId: string, newStatus: ProcedureStatus): Promise<Procedure> {
     try {
       const url = `${this.VITE_API_URL}/api/admin/procedures/${procedureId}`;
       const response = await this.makeAuthenticatedRequest(url, {
@@ -102,60 +141,70 @@ class AdminProcedureApiService {
         body: JSON.stringify({ statut: newStatus }),
       });
 
-      if (!response.ok) {
-        throw new Error('Erreur lors de la mise à jour');
-      }
-
       return await response.json();
     } catch (error: any) {
-      console.error('❌ Erreur mise à jour procédure:', error);
+      console.error('❌ Erreur mise à jour procédure');
       throw error;
     }
   }
 
-  async updateStepStatus(
-    procedureId: string, 
-    stepName: string, 
-    newStatus: Step['statut'], 
-    raisonRefus?: string
-  ): Promise<Procedure> {
-    try {
-      const url = `${this.VITE_API_URL}/api/admin/procedures/${procedureId}/steps/${encodeURIComponent(stepName)}`;
-      
-      const updateData: any = { statut: newStatus };
-      if (raisonRefus) {
-        updateData.raisonRefus = raisonRefus;
-      }
-
-      const response = await this.makeAuthenticatedRequest(url, {
-        method: 'PUT',
-        body: JSON.stringify(updateData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de la mise à jour de l\'étape');
-      }
-
-      return await response.json();
-    } catch (error: any) {
-      console.error('❌ Erreur mise à jour étape:', error);
-      throw error;
+// CORRECTION DE LA MÉTHODE updateStepStatus
+async updateStepStatus(
+  procedureId: string, 
+  stepName: StepName, 
+  newStatus: StepStatus, 
+  raisonRefus?: string
+): Promise<Procedure> {
+  try {
+    // ✅ ENCODAGE CORRECT
+    const encodedStepName = encodeURIComponent(stepName);
+    const url = `${this.VITE_API_URL}/api/admin/procedures/${procedureId}/steps/${encodedStepName}`;
+    
+    // ✅ CONSTRUCTION DES DONNÉES
+    const updateData: any = { 
+      statut: newStatus
+    };
+    
+    if (raisonRefus) {
+      updateData.raisonRefus = raisonRefus;
     }
-  }
 
+    console.log('📤 Mise à jour étape - URL:', url);
+    console.log('📤 Données envoyées:', JSON.stringify(updateData, null, 2));
+    console.log('📤 Étape originale:', stepName);
+    console.log('📤 Étape encodée:', encodedStepName);
+
+    const response = await this.makeAuthenticatedRequest(url, {
+      method: 'PUT',
+      body: JSON.stringify(updateData),
+    });
+
+    const data = await response.json();
+    console.log('✅ Étape mise à jour avec succès:', data);
+    return data;
+  } catch (error: any) {
+    console.error('❌ Erreur détaillée mise à jour étape:', {
+      procedureId,
+      stepName,
+      newStatus,
+      raisonRefus,
+      error: error.message
+    });
+    throw error;
+  }
+}
   async deleteProcedure(procedureId: string, reason?: string): Promise<void> {
     try {
       const url = `${this.VITE_API_URL}/api/admin/procedures/${procedureId}`;
-      const response = await this.makeAuthenticatedRequest(url, {
+      
+      console.log('🗑️  Suppression procédure');
+      
+      await this.makeAuthenticatedRequest(url, {
         method: 'DELETE',
         body: JSON.stringify({ reason: reason || 'Supprimé par l\'administrateur' }),
       });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de la suppression');
-      }
     } catch (error: any) {
-      console.error('❌ Erreur suppression:', error);
+      console.error('❌ Erreur suppression');
       throw error;
     }
   }
@@ -163,18 +212,17 @@ class AdminProcedureApiService {
   async rejectProcedure(procedureId: string, reason: string): Promise<Procedure> {
     try {
       const url = `${this.VITE_API_URL}/api/admin/procedures/${procedureId}/reject`;
+      
+      console.log('❌ Rejet procédure');
+      
       const response = await this.makeAuthenticatedRequest(url, {
         method: 'PUT',
         body: JSON.stringify({ reason }),
       });
 
-      if (!response.ok) {
-        throw new Error('Erreur lors du rejet');
-      }
-
       return await response.json();
     } catch (error: any) {
-      console.error('❌ Erreur rejet:', error);
+      console.error('❌ Erreur rejet');
       throw error;
     }
   }

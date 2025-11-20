@@ -1,52 +1,26 @@
+// AdminProcedure.tsx - VERSION FINALE CORRIGÉE
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import RequireAdmin from '../../context/RequireAdmin';
 import { toast } from 'react-toastify';
-import { jwtDecode } from 'jwt-decode';
-
-interface Step {
-  nom: string;
-  statut: 'En attente' | 'En cours' | 'Terminé' | 'Rejeté' | 'Annulé';
-  raisonRefus?: string;
-  dateMaj: string;
-}
-
-interface Procedure {
-  _id: string;
-  prenom: string;
-  nom: string;
-  email: string;
-  telephone?: string;
-  destination: string;
-  niveauEtude?: string;
-  filiere?: string;
-  statut: 'En cours' | 'Terminée' | 'Refusée' | 'Annulée';
-  steps: Step[];
-  rendezVousId?: any;
-  createdAt: string;
-  isDeleted: boolean;
-  raisonRejet?: string;
-}
-
-interface ProceduresResponse {
-  data: Procedure[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
-
-interface JwtPayload {
-  sub: string;
-  email: string;
-  role: string;
-  exp: number;
-  iat: number;
-  tokenType?: string;
-}
+import { 
+  useAdminProcedureApi, 
+  Procedure, 
+  Step, 
+  StepStatus, 
+  ProcedureStatus,
+  StepName 
+} from '../../api/admin/AdminProcedureApi';
 
 const AdminProcedures = () => {
-  const { token, logout, refreshToken, user } = useAuth();
+  const { user, logout } = useAuth();
+  const {
+    fetchProcedures,
+    updateProcedureStatus,
+    updateStepStatus,
+    deleteProcedure: deleteProcedureApi,
+  } = useAdminProcedureApi();
+
   const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,219 +29,142 @@ const AdminProcedures = () => {
   const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [procedureToDelete, setProcedureToDelete] = useState<Procedure | null>(null);
-  const [currentStepUpdate, setCurrentStepUpdate] = useState<{procedureId: string, stepName: string, currentStatus: string} | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalProcedures, setTotalProcedures] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
-  const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
-  // Fonction pour vérifier et rafraîchir le token
-  const ensureValidToken = async (): Promise<string | null> => {
-    try {
-      let currentToken = localStorage.getItem('token');
-      
-      if (!currentToken) {
-        console.log('❌ Aucun token trouvé');
-        return null;
-      }
-
-      const decoded = jwtDecode<JwtPayload>(currentToken);
-      const isExpired = decoded.exp * 1000 < Date.now();
-      const willExpireSoon = decoded.exp * 1000 < Date.now() + 5 * 60 * 1000; // 5 minutes
-      
-      console.log('📊 État du token:', {
-        exp: new Date(decoded.exp * 1000).toLocaleTimeString(),
-        now: new Date().toLocaleTimeString(),
-        isExpired,
-        willExpireSoon
-      });
-
-      if (isExpired || willExpireSoon) {
-        console.log('🔄 Token expiré ou bientôt expiré, rafraîchissement...');
-        const refreshed = await refreshToken();
-        
-        if (refreshed) {
-          currentToken = localStorage.getItem('token');
-          console.log('✅ Nouveau token obtenu');
-        } else {
-          console.log('❌ Échec du rafraîchissement');
-          logout();
-          return null;
-        }
-      }
-      
-      return currentToken;
-    } catch (error) {
-      console.error('❌ Erreur vérification token:', error);
-      logout();
-      return null;
-    }
-  };
-
-  // Fonction pour faire les requêtes avec gestion du token et credentials
-  const makeAuthenticatedRequest = async (url: string, options: RequestInit = {}) => {
-    console.log('🔄 Préparation requête vers:', url);
-    
-    try {
-      const validToken = await ensureValidToken();
-      
-      if (!validToken) {
-        console.error('❌ Aucun token valide disponible');
-        logout();
-        throw new Error('Session expirée');
-      }
-
-      console.log('📡 Envoi requête avec token valide et credentials...');
-      
-      const response = await fetch(url, {
-        credentials: 'include',
-        headers: {
-          'Authorization': `Bearer ${validToken}`,
-          'Content-Type': 'application/json',
-        },
-        ...options,
-      });
-
-      console.log('📨 Réponse reçue:', response.status, response.statusText);
-
-      if (response.status === 401) {
-        console.log('🔒 Token invalide, tentative de rafraîchissement...');
-        const refreshed = await refreshToken();
-        
-        if (refreshed) {
-          console.log('🔄 Nouveau token obtenu, réessai de la requête...');
-          return makeAuthenticatedRequest(url, options);
-        }
-        
-        console.log('❌ Impossible de rafraîchir le token, déconnexion...');
-        logout();
-        throw new Error('Session expirée - Veuillez vous reconnecter');
-      }
-
-      return response;
-    } catch (error) {
-      console.error('❌ Erreur lors de la requête:', error);
-      if (error instanceof Error && error.message.includes('Session expirée')) {
-        logout();
-      }
-      throw error;
-    }
-  };
-
-  // Charger les procédures avec pagination - CORRECTION : URL backend
-  const fetchProcedures = async (page: number = 1, limit: number = 50, retry = false) => {
-    if (retry) {
-      setRetryCount(prev => prev + 1);
-      if (retryCount >= 2) {
-        toast.error('Impossible de charger les données');
-        return;
-      }
-    }
-
+  // Charger les procédures
+  const loadProcedures = async (page: number = 1, limit: number = 50) => {
     try {
       setIsLoading(true);
-      console.log('🔄 Chargement des procédures...');
+      setIsRefreshing(true);
+      const response = await fetchProcedures(page, limit);
       
-      // CORRECTION : Utilisation de l'endpoint backend correct
-      const url = `${VITE_API_URL}/api/admin/procedures/all?page=${page}&limit=${limit}`;
-      console.log('📋 URL complète:', url);
-      
-      const response = await makeAuthenticatedRequest(url, {
-        method: 'GET',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
-      }
-
-      const data: ProceduresResponse = await response.json();
-      console.log(`✅ ${data.data.length} procédures chargées sur ${data.total} total`, data);
-      
-      setProcedures(data.data);
-      setCurrentPage(data.page);
-      setTotalPages(data.totalPages);
-      setTotalProcedures(data.total);
-      setRetryCount(0);
+      setProcedures(response.data);
+      setCurrentPage(response.page);
+      setTotalPages(response.totalPages);
+      setTotalProcedures(response.total);
       
     } catch (error: any) {
-      console.error('❌ Erreur chargement procédures:', error);
+      console.error('❌ Erreur chargement procédures');
       
       if (error.message.includes('Session expirée')) {
+        logout();
         return;
       }
       
-      if (!retry) {
-        console.log('🔄 Tentative de rechargement dans 2 secondes...');
-        toast.warning('Problème de connexion, nouvelle tentative...');
-        setTimeout(() => fetchProcedures(page, limit, true), 2000);
-      } else {
-        toast.error('Erreur lors du chargement des procédures');
-      }
+      toast.error('Erreur lors du chargement des procédures');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
-  // Mettre à jour le statut d'une procédure - CORRECTION : URL backend
-  const updateProcedureStatus = async (procedureId: string, newStatus: Procedure['statut']) => {
-    try {
-      // CORRECTION : Utilisation de l'endpoint backend correct pour admin
-      const url = `${VITE_API_URL}/api/admin/procedures/${procedureId}`;
-      console.log('📋 URL mise à jour procédure:', url);
-      
-      const response = await makeAuthenticatedRequest(url, {
-        method: 'PUT',
-        body: JSON.stringify({ statut: newStatus }),
-      });
+  // ✅ VALIDATION: Vérifier si une étape peut être modifiée
+  const canUpdateStep = (procedure: Procedure, stepName: StepName, newStatus: StepStatus): { canUpdate: boolean; reason?: string } => {
+    const stepIndex = procedure.steps.findIndex(step => step.nom === stepName);
+    const demandeAdmission = procedure.steps.find(step => step.nom === StepName.DEMANDE_ADMISSION);
+    
+    // ✅ BLOCAGE: Demande Visa ne peut pas être modifiée si Admission n'est pas terminée
+    if (stepName === StepName.DEMANDE_VISA) {
+      if (!demandeAdmission || demandeAdmission.statut !== StepStatus.COMPLETED) {
+        return { 
+          canUpdate: false, 
+          reason: 'La demande d\'admission doit être terminée avant de modifier la demande de visa' 
+        };
+      }
+    }
+    
+    // ✅ BLOCAGE: Préparatif Voyage ne peut pas être modifiée si Visa n'est pas terminée
+    if (stepName === StepName.PREPARATIF_VOYAGE) {
+      const demandeVisa = procedure.steps.find(step => step.nom === StepName.DEMANDE_VISA);
+      if (!demandeVisa || demandeVisa.statut !== StepStatus.COMPLETED) {
+        return { 
+          canUpdate: false, 
+          reason: 'La demande de visa doit être terminée avant de modifier les préparatifs de voyage' 
+        };
+      }
+    }
 
-      if (!response.ok) {
-        throw new Error('Erreur lors de la mise à jour');
+    return { canUpdate: true };
+  };
+
+  // ✅ Gestion cohérente des statuts avec validation
+  const handleUpdateProcedureStatus = async (procedureId: string, newStatus: ProcedureStatus) => {
+    try {
+      const procedure = procedures.find(p => p._id === procedureId);
+      if (!procedure) return;
+
+      let updatedProcedure: Procedure;
+
+      if (newStatus === ProcedureStatus.CANCELLED) {
+        // Annulation : toutes les étapes non-terminées deviennent "Annulé"
+        for (const step of procedure.steps) {
+          if (step.statut !== StepStatus.COMPLETED && step.statut !== StepStatus.CANCELLED) {
+            await updateStepStatus(procedureId, step.nom, StepStatus.CANCELLED);
+          }
+        }
+        updatedProcedure = await updateProcedureStatus(procedureId, newStatus);
+      } else if (newStatus === ProcedureStatus.REJECTED) {
+        // Refus : toutes les étapes non-terminées deviennent "Rejeté"
+        for (const step of procedure.steps) {
+          if (step.statut !== StepStatus.COMPLETED && step.statut !== StepStatus.REJECTED) {
+            await updateStepStatus(procedureId, step.nom, StepStatus.REJECTED, rejectReason || 'Procédure refusée');
+          }
+        }
+        updatedProcedure = await updateProcedureStatus(procedureId, newStatus);
+      } else {
+        // Autres statuts : mise à jour simple
+        updatedProcedure = await updateProcedureStatus(procedureId, newStatus);
       }
 
-      const updatedProcedure = await response.json();
-      
       // Mettre à jour l'état local
       setProcedures(prev => prev.map(p => 
-        p._id === procedureId ? { ...p, statut: updatedProcedure.statut } : p
+        p._id === procedureId ? updatedProcedure : p
       ));
       
       if (selectedProcedure?._id === procedureId) {
-        setSelectedProcedure(prev => prev ? { ...prev, statut: updatedProcedure.statut } : null);
+        setSelectedProcedure(updatedProcedure);
       }
 
-      toast.success('Statut mis à jour avec succès');
+      toast.success('Statut de la procédure mis à jour avec succès');
     } catch (error: any) {
-      console.error('❌ Erreur mise à jour:', error);
-      if (!error.message.includes('Session expirée')) {
-        toast.error(error.message || 'Erreur lors de la mise à jour');
-      }
+      console.error('❌ Erreur mise à jour procédure');
+      toast.error(error.message || 'Erreur lors de la mise à jour du statut de la procédure');
     }
   };
 
-  // Mettre à jour le statut d'une étape - CORRECTION : URL backend
-  const updateStepStatus = async (procedureId: string, stepName: string, newStatus: Step['statut'], raisonRefus?: string) => {
+  // ✅ Mise à jour d'étape avec validation stricte
+  const handleUpdateStepStatus = async (
+    procedureId: string, 
+    stepName: StepName, 
+    newStatus: StepStatus,
+    raisonRefus?: string
+  ) => {
     try {
-      // CORRECTION : Utilisation de l'endpoint backend correct pour admin
-      const url = `${VITE_API_URL}/api/admin/procedures/${procedureId}/steps/${encodeURIComponent(stepName)}`;
-      console.log('📋 URL mise à jour étape:', url);
-      
-      const updateData: any = { statut: newStatus };
-      if (raisonRefus) {
-        updateData.raisonRefus = raisonRefus;
+      const procedure = procedures.find(p => p._id === procedureId);
+      if (!procedure) return;
+
+      // ✅ VALIDATION: Vérifier les règles métier
+      const validation = canUpdateStep(procedure, stepName, newStatus);
+      if (!validation.canUpdate) {
+        toast.error(validation.reason);
+        return;
       }
 
-      const response = await makeAuthenticatedRequest(url, {
-        method: 'PUT',
-        body: JSON.stringify(updateData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de la mise à jour de l\'étape');
+      // Validation pour le rejet
+      if (newStatus === StepStatus.REJECTED && !raisonRefus) {
+        // Pour le rejet, ouvrir le modal pour la raison
+        setShowRejectModal(true);
+        setProcedureToDelete(procedure);
+        return;
       }
 
-      const updatedProcedure = await response.json();
+      const updatedProcedure = await updateStepStatus(procedureId, stepName, newStatus, raisonRefus);
       
       // Mettre à jour l'état local
       setProcedures(prev => prev.map(p => 
@@ -278,35 +175,55 @@ const AdminProcedures = () => {
         setSelectedProcedure(updatedProcedure);
       }
 
-      setCurrentStepUpdate(null);
       toast.success('Étape mise à jour avec succès');
     } catch (error: any) {
-      console.error('❌ Erreur mise à jour étape:', error);
-      if (!error.message.includes('Session expirée')) {
-        toast.error(error.message || 'Erreur lors de la mise à jour de l\'étape');
-      }
+      console.error('❌ Erreur mise à jour étape');
+      toast.error(error.message || 'Erreur lors de la mise à jour de l\'étape');
     }
   };
 
-  // Supprimer une procédure - CORRECTION : URL backend
-  const deleteProcedure = async () => {
+  // Confirmer le rejet avec raison
+  const handleConfirmReject = async () => {
+    if (!procedureToDelete || !rejectReason.trim()) {
+      toast.error('Veuillez saisir une raison pour le rejet');
+      return;
+    }
+
+    try {
+      // Trouver l'étape à rejeter (première étape en attente ou en cours)
+      const stepToReject = procedureToDelete.steps.find(step => 
+        step.statut === StepStatus.PENDING || step.statut === StepStatus.IN_PROGRESS
+      );
+
+      if (stepToReject) {
+        await handleUpdateStepStatus(
+          procedureToDelete._id, 
+          stepToReject.nom, 
+          StepStatus.REJECTED, 
+          rejectReason
+        );
+      } else {
+        // Si aucune étape en cours, rejeter la procédure complète
+        await handleUpdateProcedureStatus(procedureToDelete._id, ProcedureStatus.REJECTED);
+      }
+
+      setShowRejectModal(false);
+      setRejectReason('');
+      setProcedureToDelete(null);
+      toast.success('Étape rejetée avec succès');
+    } catch (error: any) {
+      console.error('❌ Erreur rejet étape');
+      toast.error(error.message || 'Erreur lors du rejet de l\'étape');
+    }
+  };
+
+  // Supprimer une procédure
+  const handleDeleteProcedure = async () => {
     if (!procedureToDelete) return;
 
     try {
-      // CORRECTION : Utilisation de l'endpoint backend correct pour admin
-      const url = `${VITE_API_URL}/api/admin/procedures/${procedureToDelete._id}`;
-      console.log('📋 URL suppression:', url);
+      await deleteProcedureApi(procedureToDelete._id);
       
-      const response = await makeAuthenticatedRequest(url, {
-        method: 'DELETE',
-        body: JSON.stringify({ reason: 'Supprimé par l\'administrateur' }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de la suppression');
-      }
-
-      // Mettre à jour l'état local
       setProcedures(prev => prev.filter(p => p._id !== procedureToDelete._id));
       
       if (selectedProcedure?._id === procedureToDelete._id) {
@@ -317,45 +234,8 @@ const AdminProcedures = () => {
       setProcedureToDelete(null);
       toast.success('Procédure supprimée avec succès');
     } catch (error: any) {
-      console.error('❌ Erreur suppression:', error);
-      if (!error.message.includes('Session expirée')) {
-        toast.error(error.message || 'Erreur lors de la suppression');
-      }
-    }
-  };
-
-  // Rejeter une procédure - NOUVELLE FONCTION
-  const rejectProcedure = async (procedureId: string, reason: string) => {
-    try {
-      const url = `${VITE_API_URL}/api/admin/procedures/${procedureId}/reject`;
-      console.log('📋 URL rejet procédure:', url);
-      
-      const response = await makeAuthenticatedRequest(url, {
-        method: 'PUT',
-        body: JSON.stringify({ reason }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors du rejet');
-      }
-
-      const updatedProcedure = await response.json();
-      
-      // Mettre à jour l'état local
-      setProcedures(prev => prev.map(p => 
-        p._id === procedureId ? updatedProcedure : p
-      ));
-      
-      if (selectedProcedure?._id === procedureId) {
-        setSelectedProcedure(updatedProcedure);
-      }
-
-      toast.success('Procédure rejetée avec succès');
-    } catch (error: any) {
-      console.error('❌ Erreur rejet:', error);
-      if (!error.message.includes('Session expirée')) {
-        toast.error(error.message || 'Erreur lors du rejet');
-      }
+      console.error('❌ Erreur suppression');
+      toast.error(error.message || 'Erreur lors de la suppression');
     }
   };
 
@@ -375,334 +255,378 @@ const AdminProcedures = () => {
     return matchesSearch && matchesStatutProc && matchesStatutEtape;
   });
 
-  // Fonctions utilitaires pour les couleurs
+  // ✅ Couleurs alignées avec les enums backend
   const getStatutColor = (statut: string) => {
     switch (statut) {
-      case 'En cours': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Terminée': return 'bg-green-100 text-green-800 border-green-200';
-      case 'En attente': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'Annulée': return 'bg-red-100 text-red-800 border-red-200';
-      case 'Refusée': return 'bg-red-100 text-red-800 border-red-200';
-      case 'Terminé': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'Rejeté': return 'bg-red-100 text-red-800 border-red-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+      case StepStatus.IN_PROGRESS:
+      case ProcedureStatus.IN_PROGRESS:
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case StepStatus.COMPLETED:
+      case ProcedureStatus.COMPLETED:
+        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case StepStatus.PENDING:
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      case StepStatus.CANCELLED:
+      case ProcedureStatus.CANCELLED:
+        return 'bg-slate-100 text-slate-800 border-slate-200';
+      case StepStatus.REJECTED:
+      case ProcedureStatus.REJECTED:
+        return 'bg-red-100 text-red-800 border-red-200';
+      default:
+        return 'bg-slate-100 text-slate-800 border-slate-200';
     }
   };
 
-  const getStepDisplayName = (stepName: string) => {
+  // ✅ Noms complets des étapes avec espaces
+  const getStepDisplayName = (stepName: StepName) => {
     const stepNames: { [key: string]: string } = {
-      'DEMANDE_ADMISSION': 'Demande d\'admission',
-      'DEMANDE_VISA': 'Demande de visa',
-      'PREPARATIF_VOYAGE': 'Préparatif de voyage'
+      [StepName.DEMANDE_ADMISSION]: 'Demande d\'admission',
+      [StepName.DEMANDE_VISA]: 'Demande de visa',
+      [StepName.PREPARATIF_VOYAGE]: 'Préparatifs de voyage'
     };
     return stepNames[stepName] || stepName;
   };
 
-  const statutsProcedure = ['tous', 'En cours', 'Terminée', 'Refusée', 'Annulée'];
-  const statutsEtape = ['toutes', 'En attente', 'En cours', 'Terminé', 'Rejeté', 'Annulé'];
+  // ✅ Utilisation des valeurs d'enum
+  const statutsProcedure = ['tous', ...Object.values(ProcedureStatus)];
+  const statutsEtape = ['toutes', ...Object.values(StepStatus)];
 
-  // Vérifier l'authentification au chargement
+  // Chargement initial
   useEffect(() => {
-    console.log('🔐 État auth au chargement:', { 
-      hasToken: !!token, 
-      user: user,
-      isAuthenticated: !!user && !!token 
-    });
-    
-    if (token && user) {
-      fetchProcedures(1, 50);
-    } else {
-      setIsLoading(false);
-      console.log('⚠️ Utilisateur non authentifié, attente...');
+    if (user) {
+      loadProcedures(1, 50);
     }
-  }, [token, user]);
+  }, [user]);
 
-  // Afficher un état de débogage
-  if (!user && !isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-2xl shadow-lg text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <i className="fas fa-exclamation-triangle text-red-500 text-2xl"></i>
-          </div>
-          <h2 className="text-xl font-bold text-slate-800 mb-2">Problème d'authentification</h2>
-          <p className="text-slate-600 mb-4">Veuillez vous reconnecter</p>
-          <button 
-            onClick={() => window.location.href = '/connexion'}
-            className="px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors"
-          >
-            Se connecter
-          </button>
+  // Composant de carte de procédure pour la vue grid
+  const ProcedureCard = ({ procedure }: { procedure: Procedure }) => (
+    <div 
+      className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-all duration-300 cursor-pointer"
+      onClick={() => setSelectedProcedure(procedure)}
+    >
+      <div className="flex justify-between items-start mb-3">
+        <div className="flex-1">
+          <h3 className="font-bold text-slate-800 text-sm truncate">
+            {procedure.prenom} {procedure.nom}
+          </h3>
+          <p className="text-slate-600 text-xs truncate">{procedure.email}</p>
+        </div>
+        <span className={`px-2 py-1 rounded-lg text-xs font-semibold border ${getStatutColor(procedure.statut)}`}>
+          {procedure.statut}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-slate-700 font-semibold bg-slate-100 px-2 py-1 rounded">
+            {procedure.destination}
+          </span>
+          <span className="text-slate-400">
+            {new Date(procedure.createdAt).toLocaleDateString('fr-FR')}
+          </span>
+        </div>
+        
+        <div className="flex flex-wrap gap-1">
+          {procedure.steps.map((step) => (
+            <div key={step.nom} className="flex items-center gap-1">
+              <span className="text-slate-500 text-xs">
+                {getStepDisplayName(step.nom)}
+              </span>
+              <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${getStatutColor(step.statut)}`}>
+                {step.statut}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <RequireAdmin>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-4 md:p-6">
-        {/* Header avec état de connexion */}
-        <div className="mb-6 md:mb-8">
+      <div className="min-h-screen bg-slate-50 p-4 md:p-6">
+        {/* Header principal */}
+        <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+            <div className="flex-1">
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-800 mb-2">
                 Gestion des Procédures
               </h1>
-              <p className="text-slate-600 mt-1">
+              <p className="text-slate-600 text-sm">
                 {user ? `Connecté en tant que ${user.email}` : 'Chargement...'}
-                {totalProcedures > 0 && ` • ${totalProcedures} procédures au total`}
               </p>
             </div>
             
-            <div className="flex gap-3 items-center">
-              {retryCount > 0 && (
-                <span className="text-orange-600 text-sm">
-                  Tentative {retryCount}/2
-                </span>
-              )}
+            <div className="flex items-center gap-3">
+              {/* Toggle View Mode */}
+              <div className="flex bg-white rounded-lg border border-slate-200 p-1">
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-2 rounded-md transition-all ${
+                    viewMode === 'list' 
+                      ? 'bg-blue-500 text-white' 
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <i className="fas fa-list"></i>
+                </button>
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-2 rounded-md transition-all ${
+                    viewMode === 'grid' 
+                      ? 'bg-blue-500 text-white' 
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <i className="fas fa-th"></i>
+                </button>
+              </div>
+
               <button 
-                onClick={() => fetchProcedures(1, 50)}
+                onClick={() => loadProcedures(1, 50)}
                 disabled={isLoading}
-                className="px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 w-fit disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-300 font-medium flex items-center gap-2 disabled:opacity-50"
               >
-                <i className={`fas fa-sync-alt ${isLoading ? 'animate-spin' : ''}`}></i>
-                {isLoading ? 'Chargement...' : 'Actualiser'}
+                <i className={`fas fa-sync-alt ${isRefreshing ? 'animate-spin' : ''}`}></i>
+                <span className="hidden sm:inline">Actualiser</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Indicateur de chargement */}
-        {isLoading && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
-              <span className="text-blue-700 font-medium">Chargement des procédures...</span>
-            </div>
-          </div>
-        )}
-
-        {/* Statistiques rapides */}
+        {/* Cartes de statistiques */}
         {!isLoading && procedures.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div className="bg-white p-4 rounded-xl border border-slate-200">
               <div className="text-2xl font-bold text-slate-800">{totalProcedures}</div>
-              <div className="text-slate-600 text-sm">Total</div>
+              <div className="text-slate-500 text-sm">Total</div>
             </div>
-            <div className="bg-white p-4 rounded-xl border border-slate-200">
+            <div className="bg-white p-4 rounded-xl border border-blue-200">
               <div className="text-2xl font-bold text-blue-600">
-                {procedures.filter(p => p.statut === 'En cours').length}
+                {procedures.filter(p => p.statut === ProcedureStatus.IN_PROGRESS).length}
               </div>
-              <div className="text-slate-600 text-sm">En cours</div>
+              <div className="text-blue-500 text-sm">En cours</div>
             </div>
-            <div className="bg-white p-4 rounded-xl border border-slate-200">
-              <div className="text-2xl font-bold text-green-600">
-                {procedures.filter(p => p.statut === 'Terminée').length}
+            <div className="bg-white p-4 rounded-xl border border-emerald-200">
+              <div className="text-2xl font-bold text-emerald-600">
+                {procedures.filter(p => p.statut === ProcedureStatus.COMPLETED).length}
               </div>
-              <div className="text-slate-600 text-sm">Terminées</div>
+              <div className="text-emerald-500 text-sm">Terminées</div>
             </div>
-            <div className="bg-white p-4 rounded-xl border border-slate-200">
+            <div className="bg-white p-4 rounded-xl border border-red-200">
               <div className="text-2xl font-bold text-red-600">
-                {procedures.filter(p => p.statut === 'Annulée' || p.statut === 'Refusée').length}
+                {procedures.filter(p => p.statut === ProcedureStatus.CANCELLED || p.statut === ProcedureStatus.REJECTED).length}
               </div>
-              <div className="text-slate-600 text-sm">Annulées/Refusées</div>
+              <div className="text-red-500 text-sm">Annulées/Refusées</div>
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-7xl mx-auto">
-          {/* Liste des procédures */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-            {/* Barre de recherche et filtres */}
-            <div className="p-4 border-b border-slate-200 bg-slate-50/50">
-              <div className="relative mb-4">
-                <input 
-                  type="text" 
-                  placeholder="Rechercher une procédure..." 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white border border-slate-300 rounded-xl focus:ring-0 focus:outline-none focus:border-blue-500 transition-all duration-200"
-                />
-                <i className="fas fa-search absolute left-3 top-3.5 text-slate-400"></i>
-              </div>
-
-              {/* Filtres */}
-              <div className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  <span className="text-sm text-slate-600 font-medium whitespace-nowrap">Statut procédure:</span>
-                  {statutsProcedure.map(statut => (
-                    <button
-                      key={statut}
-                      onClick={() => setSelectedStatutProcedure(statut)}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 ${
-                        selectedStatutProcedure === statut
-                          ? 'bg-blue-500 text-white shadow-sm'
-                          : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      {statut === 'tous' ? 'Tous' : statut}
-                    </button>
-                  ))}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {/* Panneau de liste des procédures */}
+          <div className={`${selectedProcedure ? 'xl:col-span-2' : 'xl:col-span-3'}`}>
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              {/* Barre de recherche et filtres */}
+              <div className="p-4 border-b border-slate-200">
+                <div className="relative mb-4">
+                  <input 
+                    type="text" 
+                    placeholder="Rechercher une procédure..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  />
+                  <i className="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"></i>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <span className="text-sm text-slate-600 font-medium whitespace-nowrap">Statut étape:</span>
-                  {statutsEtape.map(statut => (
-                    <button
-                      key={statut}
-                      onClick={() => setSelectedStatutEtape(statut)}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 ${
-                        selectedStatutEtape === statut
-                          ? 'bg-blue-500 text-white shadow-sm'
-                          : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      {statut === 'toutes' ? 'Toutes' : statut}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Résultats du filtrage */}
-              <div className="mt-3 text-sm text-slate-600">
-                {filteredProcedures.length} procédure(s) trouvée(s)
-                {(searchTerm || selectedStatutProcedure !== 'tous' || selectedStatutEtape !== 'toutes') && 
-                 ` (sur ${procedures.length} au total)`}
-              </div>
-            </div>
-
-            {/* Liste des procédures */}
-            <div className="max-h-[600px] overflow-y-auto">
-              {isLoading ? (
-                <div className="p-8 text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
-                  <p className="text-slate-500 mt-2">Chargement des procédures...</p>
-                </div>
-              ) : filteredProcedures.length > 0 ? (
-                filteredProcedures.map(proc => (
-                  <div
-                    key={proc._id}
-                    className={`border-b border-slate-100 last:border-b-0 transition-all duration-200 cursor-pointer hover:bg-slate-50/70 ${
-                      selectedProcedure?._id === proc._id ? 'bg-blue-50/50 border-l-4 border-l-blue-500' : ''
-                    }`}
-                    onClick={() => setSelectedProcedure(proc)}
-                  >
-                    <div className="p-4">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-slate-800 truncate">
-                            {proc.prenom} {proc.nom}
-                          </h3>
-                          <p className="text-slate-600 text-sm truncate">{proc.email}</p>
-                        </div>
-                        <span className="text-sm text-slate-500 whitespace-nowrap">
-                          {new Date(proc.createdAt).toLocaleDateString('fr-FR')}
-                        </span>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-slate-700 text-sm font-medium bg-slate-100 px-2 py-1 rounded">
-                            {proc.destination}
-                          </span>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatutColor(proc.statut)}`}>
-                            {proc.statut}
-                          </span>
-                        </div>
-                        
-                        <div className="text-sm text-slate-600">
-                          <span className="font-medium">Étapes:</span>{' '}
-                          {proc.steps.map((step, index) => (
-                            <span key={step.nom} className="mr-2">
-                              {getStepDisplayName(step.nom)}: 
-                              <span className={`ml-1 px-1 rounded text-xs ${getStatutColor(step.statut).split(' ')[1]}`}>
-                                {step.statut}
-                              </span>
-                              {index < proc.steps.length - 1 && ' •'}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                {/* Filtres */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-sm font-semibold text-slate-600 mb-2 block">Statut procédure</label>
+                    <div className="flex flex-wrap gap-2">
+                      {statutsProcedure.map(statut => (
+                        <button
+                          key={statut}
+                          onClick={() => setSelectedStatutProcedure(statut)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            selectedStatutProcedure === statut
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {statut === 'tous' ? 'Toutes' : statut}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="p-8 text-center text-slate-500">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
-                    <i className="fas fa-folder-open text-slate-400 text-xl"></i>
+
+                  <div>
+                    <label className="text-sm font-semibold text-slate-600 mb-2 block">Statut étape</label>
+                    <div className="flex flex-wrap gap-2">
+                      {statutsEtape.map(statut => (
+                        <button
+                          key={statut}
+                          onClick={() => setSelectedStatutEtape(statut)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            selectedStatutEtape === statut
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {statut === 'toutes' ? 'Toutes' : statut}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <p>Aucune procédure trouvée</p>
-                  {searchTerm || selectedStatutProcedure !== 'tous' || selectedStatutEtape !== 'toutes' ? (
-                    <p className="text-sm mt-2">Essayez de modifier vos critères de recherche</p>
-                  ) : null}
                 </div>
-              )}
+
+                {/* Résultats du filtrage */}
+                <div className="mt-3 text-sm text-slate-500 font-medium">
+                  {filteredProcedures.length} procédure{filteredProcedures.length > 1 ? 's' : ''} trouvée{filteredProcedures.length > 1 ? 's' : ''}
+                </div>
+              </div>
+
+              {/* Liste des procédures */}
+              <div className="max-h-[600px] overflow-y-auto">
+                {isLoading ? (
+                  <div className="p-8 text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+                    <p className="text-slate-500">Chargement des procédures...</p>
+                  </div>
+                ) : filteredProcedures.length > 0 ? (
+                  viewMode === 'list' ? (
+                    // Vue liste
+                    <div className="divide-y divide-slate-200">
+                      {filteredProcedures.map(proc => (
+                        <div
+                          key={proc._id}
+                          className={`p-4 transition-all duration-300 cursor-pointer hover:bg-slate-50 ${
+                            selectedProcedure?._id === proc._id ? 'bg-blue-50 border-r-4 border-r-blue-500' : ''
+                          }`}
+                          onClick={() => setSelectedProcedure(proc)}
+                        >
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-bold text-slate-800 truncate">
+                                {proc.prenom} {proc.nom}
+                              </h3>
+                              <p className="text-slate-600 text-sm truncate">{proc.email}</p>
+                            </div>
+                            <span className="text-slate-400 text-xs whitespace-nowrap">
+                              {new Date(proc.createdAt).toLocaleDateString('fr-FR')}
+                            </span>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-slate-700 text-xs font-semibold bg-slate-100 px-2 py-1 rounded">
+                                {proc.destination}
+                              </span>
+                              <span className={`px-2 py-1 rounded text-xs font-semibold border ${getStatutColor(proc.statut)}`}>
+                                {proc.statut}
+                              </span>
+                            </div>
+                            
+                            <div className="flex flex-wrap gap-2">
+                              {proc.steps.map((step) => (
+                                <div key={step.nom} className="flex items-center gap-1">
+                                  <span className="text-slate-500 text-xs">
+                                    {getStepDisplayName(step.nom)}
+                                  </span>
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${getStatutColor(step.statut)}`}>
+                                    {step.statut}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    // Vue grid
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+                      {filteredProcedures.map(proc => (
+                        <ProcedureCard key={proc._id} procedure={proc} />
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <div className="p-8 text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-2xl flex items-center justify-center">
+                      <i className="fas fa-folder-open text-slate-400"></i>
+                    </div>
+                    <p className="text-slate-500 font-medium mb-2">Aucune procédure trouvée</p>
+                    <p className="text-slate-400 text-sm">Essayez de modifier vos critères de recherche</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Détails de la procédure */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-            {selectedProcedure ? (
+          {/* Panneau de détails */}
+          {selectedProcedure && (
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="h-full flex flex-col">
                 {/* Header */}
-                <div className="p-6 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h2 className="text-xl font-bold text-slate-800">
+                <div className="p-4 border-b border-slate-200 bg-slate-50">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <h2 className="text-lg font-bold text-slate-800 mb-1">
                         {selectedProcedure.prenom} {selectedProcedure.nom}
                       </h2>
-                      <p className="text-slate-600">{selectedProcedure.email}</p>
+                      <p className="text-slate-600 text-sm">{selectedProcedure.email}</p>
                       {selectedProcedure.telephone && (
-                        <p className="text-slate-600 text-sm">Tél: {selectedProcedure.telephone}</p>
+                        <p className="text-slate-500 text-xs">📱 {selectedProcedure.telephone}</p>
                       )}
                     </div>
                     <button
                       onClick={() => setSelectedProcedure(null)}
-                      className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
+                      className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all rounded-lg hover:bg-white"
                     >
-                      <i className="fas fa-times text-lg"></i>
+                      <i className="fas fa-times"></i>
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-slate-500 mb-1">Destination</p>
-                      <p className="font-semibold text-slate-800">{selectedProcedure.destination}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                    <div className="bg-white p-2 rounded border border-slate-200">
+                      <p className="text-slate-500 mb-1 text-xs">Destination</p>
+                      <p className="font-bold text-slate-800">{selectedProcedure.destination}</p>
                     </div>
-                    <div>
-                      <p className="text-slate-500 mb-1">Date de création</p>
-                      <p className="font-semibold text-slate-800">
+                    <div className="bg-white p-2 rounded border border-slate-200">
+                      <p className="text-slate-500 mb-1 text-xs">Date création</p>
+                      <p className="font-bold text-slate-800">
                         {new Date(selectedProcedure.createdAt).toLocaleDateString('fr-FR')}
                       </p>
                     </div>
                     {selectedProcedure.niveauEtude && (
-                      <div>
-                        <p className="text-slate-500 mb-1">Niveau d'étude</p>
-                        <p className="font-semibold text-slate-800">{selectedProcedure.niveauEtude}</p>
+                      <div className="bg-white p-2 rounded border border-slate-200">
+                        <p className="text-slate-500 mb-1 text-xs">Niveau d'étude</p>
+                        <p className="font-bold text-slate-800">{selectedProcedure.niveauEtude}</p>
                       </div>
                     )}
                     {selectedProcedure.filiere && (
-                      <div>
-                        <p className="text-slate-500 mb-1">Filière</p>
-                        <p className="font-semibold text-slate-800">{selectedProcedure.filiere}</p>
+                      <div className="bg-white p-2 rounded border border-slate-200">
+                        <p className="text-slate-500 mb-1 text-xs">Filière</p>
+                        <p className="font-bold text-slate-800">{selectedProcedure.filiere}</p>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Informations détaillées */}
-                <div className="flex-1 p-6 space-y-6">
-                  {/* Statut Procédure */}
+                {/* Contenu détaillé */}
+                <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+                  {/* Statut de la procédure */}
                   <div>
-                    <h3 className="text-sm font-medium text-slate-500 mb-3">STATUT PROCÉDURE</h3>
+                    <h3 className="text-sm font-semibold text-slate-600 mb-3">Statut de la Procédure</h3>
                     <div className="flex flex-wrap gap-2">
-                      {['En cours', 'Terminée', 'Refusée', 'Annulée'].map(statut => (
+                      {Object.values(ProcedureStatus).map(statut => (
                         <button
                           key={statut}
-                          onClick={() => updateProcedureStatus(selectedProcedure._id, statut as Procedure['statut'])}
-                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          onClick={() => handleUpdateProcedureStatus(selectedProcedure._id, statut)}
+                          className={`px-3 py-2 rounded text-sm font-medium transition-all ${
                             selectedProcedure.statut === statut
-                              ? 'bg-blue-500 text-white shadow-sm'
+                              ? 'bg-blue-500 text-white'
                               : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                           }`}
                         >
@@ -712,87 +636,107 @@ const AdminProcedures = () => {
                     </div>
                   </div>
 
-                  {/* Gestion des étapes */}
+                  {/* Gestion des étapes avec validation stricte */}
                   <div>
-                    <h3 className="text-sm font-medium text-slate-500 mb-3">GESTION DES ÉTAPES</h3>
+                    <h3 className="text-sm font-semibold text-slate-600 mb-3">Gestion des Étapes</h3>
                     <div className="space-y-3">
-                      {selectedProcedure.steps.map((step, index) => (
-                        <div key={step.nom} className="p-3 border border-slate-200 rounded-xl bg-white">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium text-slate-800">
-                              {getStepDisplayName(step.nom)}
-                            </span>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatutColor(step.statut)}`}>
-                              {step.statut}
-                            </span>
-                          </div>
-                          
-                          <div className="flex flex-wrap gap-2">
-                            {['En attente', 'En cours', 'Terminé', 'Rejeté', 'Annulé'].map(statut => (
-                              <button
-                                key={statut}
-                                onClick={() => {
-                                  setCurrentStepUpdate({
-                                    procedureId: selectedProcedure._id,
-                                    stepName: step.nom,
-                                    currentStatus: step.statut
-                                  });
-                                }}
-                                className={`px-2 py-1 rounded text-xs font-medium transition-all duration-200 ${
-                                  step.statut === statut
-                                    ? 'bg-blue-500 text-white'
-                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                }`}
-                              >
-                                {statut}
-                              </button>
-                            ))}
-                          </div>
-
-                          {step.raisonRefus && (
-                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
-                              <strong>Raison du refus:</strong> {step.raisonRefus}
+                      {selectedProcedure.steps.map((step) => {
+                        const demandeAdmission = selectedProcedure.steps.find(s => s.nom === StepName.DEMANDE_ADMISSION);
+                        
+                        return (
+                          <div key={step.nom} className="bg-slate-50 p-3 rounded border border-slate-200">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-bold text-slate-800 text-sm">
+                                {getStepDisplayName(step.nom)}
+                              </span>
+                              <span className={`px-2 py-1 rounded text-xs font-semibold border ${getStatutColor(step.statut)}`}>
+                                {step.statut}
+                              </span>
                             </div>
-                          )}
-                          
-                          <div className="text-xs text-slate-500 mt-2">
-                            Dernière modification: {new Date(step.dateMaj).toLocaleString('fr-FR')}
+                            
+                            <div className="flex flex-wrap gap-1 mb-2">
+                              {Object.values(StepStatus).map(statut => {
+                                const validation = canUpdateStep(selectedProcedure, step.nom, statut);
+                                const isCurrentStatus = step.statut === statut;
+                                const isDisabled = !validation.canUpdate && !isCurrentStatus;
+
+                                return (
+                                  <button
+                                    key={statut}
+                                    onClick={() => {
+                                      if (!isDisabled) {
+                                        if (statut === StepStatus.REJECTED) {
+                                          setShowRejectModal(true);
+                                          setProcedureToDelete(selectedProcedure);
+                                        } else {
+                                          handleUpdateStepStatus(
+                                            selectedProcedure._id, 
+                                            step.nom, 
+                                            statut
+                                          );
+                                        }
+                                      }
+                                    }}
+                                    disabled={isDisabled}
+                                    title={isDisabled ? validation.reason : ''}
+                                    className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                                      isCurrentStatus
+                                        ? 'bg-blue-500 text-white'
+                                        : isDisabled
+                                        ? 'bg-slate-100 text-slate-400 border border-slate-300 cursor-not-allowed'
+                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    {statut}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {step.raisonRefus && (
+                              <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                                <p className="text-red-700 text-xs font-semibold">Raison du refus:</p>
+                                <p className="text-red-600 text-xs mt-1">{step.raisonRefus}</p>
+                              </div>
+                            )}
+                            
+                            <div className="text-xs text-slate-400 mt-2">
+                              Dernière modification: {new Date(step.dateMaj).toLocaleString('fr-FR')}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 
                   {/* Raison du rejet global */}
                   {selectedProcedure.raisonRejet && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
-                      <h3 className="text-sm font-medium text-red-800 mb-1">RAISON DU REJET</h3>
-                      <p className="text-red-700 text-sm">{selectedProcedure.raisonRejet}</p>
+                    <div className="p-3 bg-red-50 border border-red-200 rounded">
+                      <h3 className="text-sm font-semibold text-red-700 mb-1">RAISON DU REJET</h3>
+                      <p className="text-red-600 text-sm">{selectedProcedure.raisonRejet}</p>
                     </div>
                   )}
                 </div>
 
                 {/* Actions */}
-                <div className="p-6 border-t border-slate-200 bg-slate-50/50">
-                  <div className="flex flex-wrap gap-3">
+                <div className="p-4 border-t border-slate-200 bg-slate-50">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <button 
                       onClick={() => {
-                        const reason = prompt('Veuillez saisir la raison du rejet:');
-                        if (reason) {
-                          rejectProcedure(selectedProcedure._id, reason);
-                        }
+                        setShowRejectModal(true);
+                        setProcedureToDelete(selectedProcedure);
                       }}
-                      className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2"
+                      className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-all font-medium flex items-center justify-center gap-2 text-sm"
                     >
                       <i className="fas fa-times-circle"></i>
-                      Rejeter la procédure
+                      Rejeter
                     </button>
                     <button 
                       onClick={() => {
                         setProcedureToDelete(selectedProcedure);
                         setShowDeleteModal(true);
                       }}
-                      className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2"
+                      className="px-4 py-2 bg-slate-500 text-white rounded hover:bg-slate-600 transition-all font-medium flex items-center justify-center gap-2 text-sm"
                     >
                       <i className="fas fa-trash"></i>
                       Supprimer
@@ -800,46 +744,33 @@ const AdminProcedures = () => {
                   </div>
                 </div>
               </div>
-            ) : (
-              /* Empty State */
-              <div className="h-full flex items-center justify-center p-8">
-                <div className="text-center">
-                  <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center">
-                    <i className="fas fa-tasks text-slate-400 text-2xl"></i>
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-600 mb-2">
-                    Aucune procédure sélectionnée
-                  </h3>
-                  <p className="text-slate-500 text-sm">
-                    Cliquez sur une procédure pour afficher ses détails
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Modal de confirmation de suppression */}
         {showDeleteModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-              <h3 className="text-lg font-semibold text-slate-800 mb-2">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl p-6 max-w-md w-full">
+              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <i className="fas fa-exclamation-triangle text-red-500"></i>
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-2 text-center">
                 Confirmer la suppression
               </h3>
-              <p className="text-slate-600 mb-4">
-                Êtes-vous sûr de vouloir supprimer la procédure de {procedureToDelete?.prenom} {procedureToDelete?.nom} ?
-                Cette action est irréversible.
+              <p className="text-slate-600 mb-6 text-center text-sm">
+                Êtes-vous sûr de vouloir supprimer la procédure de <strong>{procedureToDelete?.prenom} {procedureToDelete?.nom}</strong> ?
               </p>
-              <div className="flex gap-3 justify-end">
+              <div className="flex gap-3 justify-center">
                 <button
                   onClick={() => setShowDeleteModal(false)}
-                  className="px-4 py-2 text-slate-600 hover:text-slate-800 transition-colors duration-200"
+                  className="px-4 py-2 text-slate-600 hover:text-slate-800 transition-colors font-medium"
                 >
                   Annuler
                 </button>
                 <button
-                  onClick={deleteProcedure}
-                  className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 font-medium"
+                  onClick={handleDeleteProcedure}
+                  className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-all font-medium"
                 >
                   Supprimer
                 </button>
@@ -848,70 +779,47 @@ const AdminProcedures = () => {
           </div>
         )}
 
-        {/* Modal de mise à jour d'étape */}
-        {currentStepUpdate && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-              <h3 className="text-lg font-semibold text-slate-800 mb-2">
-                Modifier le statut de l'étape
-              </h3>
-              <p className="text-slate-600 mb-4">
-                Choisissez le nouveau statut pour cette étape.
-              </p>
-              
-              <div className="space-y-3 mb-4">
-                {['En attente', 'En cours', 'Terminé', 'Rejeté', 'Annulé'].map(statut => (
-                  <button
-                    key={statut}
-                    onClick={async () => {
-                      if (statut === 'Rejeté') {
-                        const reason = prompt('Veuillez saisir la raison du rejet:');
-                        if (reason) {
-                          await updateStepStatus(
-                            currentStepUpdate.procedureId, 
-                            currentStepUpdate.stepName, 
-                            statut as Step['statut'],
-                            reason
-                          );
-                        }
-                      } else {
-                        await updateStepStatus(
-                          currentStepUpdate.procedureId, 
-                          currentStepUpdate.stepName, 
-                          statut as Step['statut']
-                        );
-                      }
-                    }}
-                    className={`w-full p-3 rounded-xl text-left transition-all duration-200 ${
-                      currentStepUpdate.currentStatus === statut
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {statut}
-                  </button>
-                ))}
+        {/* Modal de rejet */}
+        {showRejectModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl p-6 max-w-md w-full">
+              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <i className="fas fa-times-circle text-red-500"></i>
               </div>
-              
-              <button
-                onClick={() => setCurrentStepUpdate(null)}
-                className="w-full px-4 py-2 text-slate-600 hover:text-slate-800 transition-colors duration-200 border border-slate-300 rounded-xl"
-              >
-                Annuler
-              </button>
+              <h3 className="text-lg font-bold text-slate-800 mb-2 text-center">
+                Raison du rejet
+              </h3>
+              <p className="text-slate-600 mb-4 text-center text-sm">
+                Veuillez saisir la raison du rejet :
+              </p>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Saisissez la raison du rejet..."
+                className="w-full p-3 border border-slate-200 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-sm"
+                rows={3}
+              />
+              <div className="flex gap-3 justify-center mt-4">
+                <button
+                  onClick={() => {
+                    setShowRejectModal(false);
+                    setRejectReason('');
+                    setProcedureToDelete(null);
+                  }}
+                  className="px-4 py-2 text-slate-600 hover:text-slate-800 transition-colors font-medium"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleConfirmReject}
+                  className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-all font-medium"
+                >
+                  Confirmer
+                </button>
+              </div>
             </div>
           </div>
         )}
-
-        {/* Mobile Floating Action Button */}
-        <div className="lg:hidden fixed bottom-6 right-6">
-          <button 
-            onClick={() => fetchProcedures(1, 50)}
-            className="w-14 h-14 bg-blue-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center hover:bg-blue-600"
-          >
-            <i className="fas fa-sync-alt text-lg"></i>
-          </button>
-        </div>
       </div>
     </RequireAdmin>
   );

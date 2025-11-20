@@ -1,40 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import RequireAdmin from '../../context/RequireAdmin';
-import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
-// Fonction getFullImageUrl conforme à ta demande
-const getFullImageUrl = (imagePath: string) => {
-  if (!imagePath) return '/placeholder-image.jpg';
-  if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
-    return imagePath;
-  }
-  if (import.meta.env.DEV) {
-    return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
-  }
-  return `${API_URL}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
-};
-
-interface Destination {
-  _id: string;
-  country: string;
-  text: string;
-  imagePath: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-interface PaginatedResponse {
-  data: Destination[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
+import { 
+  destinationService, 
+  type Destination,
+  type CreateDestinationData,
+  type UpdateDestinationData
+} from '../../api/admin/DestionService';
 
 interface DataSourceInfo {
   count: number;
@@ -44,7 +16,6 @@ interface DataSourceInfo {
 const initialForm = {
   country: '',
   text: '',
-  imagePath: '',
 };
 
 const AdminDestinations: React.FC = () => {
@@ -62,26 +33,26 @@ const AdminDestinations: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const popoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Affiche un popover animé qui disparaît après 3s
+  // Affiche un popover animé
   const showPopover = (message: string, type: 'success' | 'error') => {
     setPopover({ message, type });
     if (popoverTimeout.current) clearTimeout(popoverTimeout.current);
     popoverTimeout.current = setTimeout(() => setPopover(null), 3000);
   };
 
-  // Fetch destinations (public - pas besoin de token)
+  // Charger les destinations
   const fetchDestinations = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/destinations`);
-      if (!response.ok) throw new Error('Erreur chargement destinations');
+      const data = await destinationService.getAllDestinationsWithoutPagination();
+      setDestinations(data);
       
-      const data: PaginatedResponse = await response.json();
-      setDestinations(data.data);
+      // Mettre à jour les informations de source de données
+      const stats = await destinationService.getStatistics();
       
       setDataSourceInfo({
-        count: data.data.length,
-        lastUpdated: new Date().toLocaleDateString('fr-FR', {
+        count: data.length,
+        lastUpdated: stats.lastUpdated || new Date().toLocaleDateString('fr-FR', {
           day: '2-digit',
           month: '2-digit',
           year: 'numeric',
@@ -89,132 +60,23 @@ const AdminDestinations: React.FC = () => {
           minute: '2-digit'
         })
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur:', error);
-      showPopover('Erreur lors du chargement des destinations', 'error');
+      showPopover(error.message || 'Erreur lors du chargement des destinations', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  // Vérifier si l'utilisateur a les droits admin
+  // Vérifier les droits admin
   const hasAdminRights = () => {
     return isAuthenticated && token && user && (user.role === 'admin' || user.isAdmin);
   };
 
-  // Create destination - STRICTEMENT conforme au backend
-  const createDestination = async (country: string, text: string, imageFile: File): Promise<Destination> => {
-    if (!hasAdminRights()) {
-      throw new Error('Droits administrateur requis');
-    }
-
-    const formData = new FormData();
-    formData.append('country', country);
-    formData.append('text', text);
-    formData.append('image', imageFile);
-
-    const response = await fetch(`${API_URL}/api/destinations`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
-        // NE PAS ajouter 'Content-Type' pour FormData - le navigateur le gère automatiquement
-      },
-      body: formData
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Erreur détaillée:', errorText);
-      
-      if (response.status === 401) {
-        throw new Error('Token invalide ou expiré');
-      }
-      if (response.status === 403) {
-        throw new Error('Droits administrateur requis');
-      }
-      throw new Error(`Erreur création destination: ${response.status}`);
-    }
-    
-    return response.json();
-  };
-
-  // Update destination - STRICTEMENT conforme au backend
-  const updateDestination = async (
-    id: string, 
-    country: string, 
-    text: string, 
-    imageFile?: File
-  ): Promise<Destination> => {
-    if (!hasAdminRights()) {
-      throw new Error('Droits administrateur requis');
-    }
-
-    const formData = new FormData();
-    formData.append('country', country);
-    formData.append('text', text);
-    if (imageFile) {
-      formData.append('image', imageFile);
-    }
-
-    const response = await fetch(`${API_URL}/api/destinations/${id}`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      },
-      body: formData
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Erreur détaillée:', errorText);
-      
-      if (response.status === 401) {
-        throw new Error('Token invalide ou expiré');
-      }
-      if (response.status === 403) {
-        throw new Error('Droits administrateur requis');
-      }
-      throw new Error(`Erreur mise à jour destination: ${response.status}`);
-    }
-    
-    return response.json();
-  };
-
-  // Delete destination - STRICTEMENT conforme au backend
-  const deleteDestination = async (id: string): Promise<void> => {
-    if (!hasAdminRights()) {
-      throw new Error('Droits administrateur requis');
-    }
-
-    const response = await fetch(`${API_URL}/api/destinations/${id}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Erreur détaillée:', errorText);
-      
-      if (response.status === 401) {
-        throw new Error('Token invalide ou expiré');
-      }
-      if (response.status === 403) {
-        throw new Error('Droits administrateur requis');
-      }
-      throw new Error(`Erreur suppression destination: ${response.status}`);
-    }
-    
-    await response.json();
-  };
-
-  // Handle form submission
+  // Soumission du formulaire
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Vérification stricte des droits
     if (!hasAdminRights()) {
       showPopover('Droits administrateur requis pour cette action', 'error');
       return;
@@ -234,56 +96,45 @@ const AdminDestinations: React.FC = () => {
       }
 
       if (editingId) {
-        // Update existing destination
-        await updateDestination(
-          editingId, 
-          form.country.trim(), 
-          form.text.trim(), 
-          imageFile || undefined
-        );
+        // Mise à jour destination existante
+        const updateData: UpdateDestinationData = {
+          country: form.country.trim(),
+          text: form.text.trim(),
+          ...(imageFile && { imageFile })
+        };
+
+        await destinationService.updateDestination(editingId, updateData, token!);
         showPopover('Destination modifiée avec succès', 'success');
       } else {
-        // Create new destination
+        // Création nouvelle destination
         if (!imageFile) {
           showPopover('Veuillez sélectionner une image', 'error');
           return;
         }
-        await createDestination(
-          form.country.trim(), 
-          form.text.trim(), 
+
+        const createData: CreateDestinationData = {
+          country: form.country.trim(),
+          text: form.text.trim(),
           imageFile
-        );
+        };
+
+        await destinationService.createDestination(createData, token!);
         showPopover('Destination ajoutée avec succès', 'success');
       }
 
-      // Reset form and refresh list
+      // Réinitialiser et rafraîchir
       handleCancelEdit();
       fetchDestinations();
     } catch (error: any) {
       console.error('Erreur détaillée:', error);
-      
-      if (error.message.includes('Droits administrateur requis') || error.message.includes('403')) {
-        showPopover('Accès refusé - Droits administrateur requis', 'error');
-      } else if (error.message.includes('Token invalide') || error.message.includes('401')) {
-        showPopover('Session expirée - Veuillez vous reconnecter', 'error');
-      } else {
-        showPopover(
-          editingId 
-            ? 'Erreur lors de la modification' 
-            : 'Erreur lors de l\'ajout', 
-          'error'
-        );
-      }
+      // Le message d'erreur est déjà géré par le service
     } finally {
       setLoading(false);
     }
   };
 
-
-  
-  // Handle delete
+  // Suppression
   const handleDelete = async (id: string) => {
-    // Vérification stricte des droits
     if (!hasAdminRights()) {
       showPopover('Droits administrateur requis pour cette action', 'error');
       return;
@@ -291,45 +142,32 @@ const AdminDestinations: React.FC = () => {
 
     setLoading(true);
     try {
-      await deleteDestination(id);
+      await destinationService.deleteDestination(id, token!);
       showPopover('Destination supprimée avec succès', 'success');
       setShowDeleteConfirm(null);
       fetchDestinations();
     } catch (error: any) {
       console.error('Erreur détaillée:', error);
-      
-      if (error.message.includes('Droits administrateur requis') || error.message.includes('403')) {
-        showPopover('Accès refusé - Droits administrateur requis', 'error');
-      } else if (error.message.includes('Token invalide') || error.message.includes('401')) {
-        showPopover('Session expirée - Veuillez vous reconnecter', 'error');
-      } else {
-        showPopover('Erreur lors de la suppression', 'error');
-      }
+      // Le message d'erreur est déjà géré par le service
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle form input
+  // Gestion des changements de formulaire
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  // Handle image selection
+  // Gestion de l'image
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
 
-      // Validation de la taille (5MB max comme dans le backend)
-      if (file.size > 5 * 1024 * 1024) {
-        showPopover("L'image ne doit pas dépasser 5MB", "error");
-        e.target.value = "";
-        return;
-      }
-
-      // Validation du type (image seulement)
-      if (!file.type.startsWith("image/")) {
-        showPopover("Veuillez sélectionner une image valide", "error");
+      // Validation via le service
+      const validation = destinationService.validateImageFile(file);
+      if (!validation.isValid) {
+        showPopover(validation.error!, "error");
         e.target.value = "";
         return;
       }
@@ -338,31 +176,28 @@ const AdminDestinations: React.FC = () => {
     }
   };
 
-  // Edit destination
+  // Édition
   const handleEdit = (dest: Destination) => {
     setForm({
       country: dest.country,
       text: dest.text,
-      imagePath: dest.imagePath,
     });
     setEditingId(dest._id);
     setImageFile(null);
   };
 
-  // Cancel edit
+  // Annuler l'édition
   const handleCancelEdit = () => {
     setForm(initialForm);
     setEditingId(null);
     setImageFile(null);
     
-    // Réinitialiser le champ fichier
     const fileInput = document.getElementById('image') as HTMLInputElement;
     if (fileInput) fileInput.value = '';
   };
 
   useEffect(() => {
     fetchDestinations();
-    // Nettoyage du timeout popover
     return () => {
       if (popoverTimeout.current) clearTimeout(popoverTimeout.current);
     };
@@ -381,7 +216,6 @@ const AdminDestinations: React.FC = () => {
             Gestion des Destinations
           </h2>
           
-          {/* Indicateur de source de données */}
           <div className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
             <span className="flex items-center gap-1">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -414,21 +248,7 @@ const AdminDestinations: React.FC = () => {
         {/* Formulaire */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-100">
           <h3 className="text-xl font-semibold mb-4 text-gray-800 flex items-center gap-2">
-            {editingId ? (
-              <>
-                <svg className="w-5 h-5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Modifier une destination
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                </svg>
-                Ajouter une nouvelle destination
-              </>
-            )}
+            {editingId ? 'Modifier une destination' : 'Ajouter une nouvelle destination'}
           </h3>
           
           {!isAdmin && (
@@ -446,9 +266,6 @@ const AdminDestinations: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label htmlFor="country" className="text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                  <svg className="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
                   Pays *
                 </label>
                 <input
@@ -465,9 +282,6 @@ const AdminDestinations: React.FC = () => {
               
               <div>
                 <label htmlFor="image" className="text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                  <svg className="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
                   Image {!editingId && '*'}
                 </label>
                 <input
@@ -479,7 +293,7 @@ const AdminDestinations: React.FC = () => {
                   disabled={!isAdmin}
                   className="w-full px-4 py-2 border border-sky-500 rounded-lg focus:outline-none focus:ring-none focus:border-sky-600 transition file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
-                <p className="text-xs text-gray-500 mt-1">Formats acceptés: JPG, PNG, WEBP. Max: 5MB</p>
+                <p className="text-xs text-gray-500 mt-1">Formats acceptés: JPG, PNG, WEBP, SVG. Max: 5MB</p>
                 
                 {imageFile && (
                   <p className="text-sm text-green-600 mt-2 flex items-center gap-1">
@@ -489,19 +303,11 @@ const AdminDestinations: React.FC = () => {
                     Fichier sélectionné: {imageFile.name}
                   </p>
                 )}
-                {form.imagePath && !imageFile && (
-                  <p className="text-sm text-gray-600 mt-2">
-                    Image actuelle: {form.imagePath.split('/').pop()}
-                  </p>
-                )}
               </div>
             </div>
             
             <div>
               <label htmlFor="text" className="text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                <svg className="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                </svg>
                 Description *
               </label>
               <textarea
@@ -532,19 +338,9 @@ const AdminDestinations: React.FC = () => {
                     {editingId ? 'Modification...' : 'Ajout...'}
                   </>
                 ) : editingId ? (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                    Modifier
-                  </>
+                  'Modifier'
                 ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                    </svg>
-                    Ajouter
-                  </>
+                  'Ajouter'
                 )}
               </button>
               
@@ -555,9 +351,6 @@ const AdminDestinations: React.FC = () => {
                   disabled={!isAdmin}
                   className="flex items-center justify-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-6 rounded-lg transition focus:outline-none focus:ring-none disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
                   Annuler
                 </button>
               )}
@@ -569,9 +362,6 @@ const AdminDestinations: React.FC = () => {
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <h3 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-              <svg className="w-6 h-6 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
               Liste des destinations
               <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
                 {destinations.length} élément{destinations.length !== 1 ? 's' : ''}
@@ -610,7 +400,7 @@ const AdminDestinations: React.FC = () => {
                   <div className="flex gap-4">
                     <div className="flex-shrink-0">
                       <img
-                        src={getFullImageUrl(dest.imagePath)}
+                        src={destinationService.getFullImageUrl(dest.imagePath)}
                         alt={dest.country}
                         className="w-20 h-20 object-cover rounded-lg border border-gray-200 shadow-sm"
                         onError={(e) => {
@@ -621,9 +411,6 @@ const AdminDestinations: React.FC = () => {
                     
                     <div className="flex-1 min-w-0">
                       <h4 className="font-semibold text-gray-900 truncate flex items-center gap-1">
-                        <svg className="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
                         {dest.country}
                       </h4>
                       
