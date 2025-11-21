@@ -77,72 +77,71 @@ export class DestinationService {
      * Créer une nouvelle destination (Admin seulement)
      */
     async create(
-        createDestinationDto: CreateDestinationDto,
-        imageFile: Express.Multer.File,
-    ): Promise<Destination> {
-        this.logger.log(`🔄 Tentative création destination: ${createDestinationDto.country}`);
+    createDestinationDto: CreateDestinationDto,
+    imageFile: Express.Multer.File,
+): Promise<Destination> {
+    this.logger.log(`🔄 Tentative création destination.`);
 
-        try {
-            // Validation des données d'entrée
-            if (!createDestinationDto.country?.trim()) {
-                throw new BadRequestException('Le nom du pays est obligatoire');
-            }
-
-            if (!createDestinationDto.text?.trim()) {
-                throw new BadRequestException('La description est obligatoire');
-            }
-
-            if (!imageFile) {
-                throw new BadRequestException('L\'image est obligatoire');
-            }
-
-            // Vérifier si la destination existe déjà
-            const existingDestination = await this.destinationModel.findOne({ 
-                country: createDestinationDto.country.trim()
-            });
-            
-            if (existingDestination) {
-                this.logger.warn(`🚨 Destination déjà existante: ${createDestinationDto.country}`);
-                throw new ConflictException('Cette destination existe déjà');
-            }
-
-            // Upload de l'image
-            const fileName = await this.storageService.uploadFile(imageFile);
-           const imagePath = fileName;
-
-            // Création de la destination
-            const createdDestination = new this.destinationModel({
-                country: createDestinationDto.country.trim(),
-                text: createDestinationDto.text.trim(),
-                imagePath,
-            });
-
-            const savedDestination = await createdDestination.save();
-            
-            this.logger.log(`✅ Destination créée: ${savedDestination.country} (ID: ${savedDestination._id})`);
-            return savedDestination;
-
-        } catch (error) {
-            this.logger.error(`❌ Erreur création destination: ${error.message}`);
-            
-            // Nettoyage en cas d'erreur
-            if (imageFile) {
-                try {
-                    await this.storageService.deleteFile(`uploads/${imageFile.filename}`);
-                } catch (cleanupError) {
-                    this.logger.error('Erreur nettoyage fichier:', cleanupError);
-                }
-            }
-            
-            if (error instanceof BadRequestException || 
-                error instanceof ConflictException) {
-                throw error;
-            }
-            
-            throw new InternalServerErrorException('Erreur lors de la création de la destination');
+    try {
+        // Validation des données d'entrée
+        if (!createDestinationDto.country?.trim()) {
+            throw new BadRequestException('Le nom du pays est obligatoire');
         }
-    }
 
+        if (!createDestinationDto.text?.trim()) {
+            throw new BadRequestException('La description est obligatoire');
+        }
+
+        if (!imageFile) {
+            throw new BadRequestException('L\'image est obligatoire');
+        }
+
+        // Vérifier si la destination existe déjà
+        const existingDestination = await this.destinationModel.findOne({ 
+            country: createDestinationDto.country.trim()
+        });
+        
+        if (existingDestination) {
+            this.logger.warn(`🚨 Destination déjà existante.`);
+            throw new ConflictException('Cette destination existe déjà');
+        }
+
+        // Upload de l'image - CORRECTION ICI
+        const fileName = await this.storageService.uploadFile(imageFile);
+        const imagePath = `uploads/${fileName}`; // ← Ajouter le préfixe 'uploads/'
+
+        // Création de la destination
+        const createdDestination = new this.destinationModel({
+            country: createDestinationDto.country.trim(),
+            text: createDestinationDto.text.trim(),
+            imagePath, // ← Maintenant avec le bon format
+        });
+
+        const savedDestination = await createdDestination.save();
+        
+        this.logger.log(`✅ Destination créée.`);
+        return savedDestination;
+
+    } catch (error) {
+        this.logger.error(`❌ Erreur création destination: ${error.message}`);
+        
+        // Nettoyage en cas d'erreur
+        if (imageFile) {
+            try {
+                await this.storageService.deleteFile(`uploads/${imageFile.filename}`);
+            } catch (cleanupError) {
+                this.logger.error('Erreur nettoyage fichier:', cleanupError);
+            }
+        }
+        
+        if (error instanceof BadRequestException || 
+            error instanceof ConflictException) {
+            throw error;
+        }
+        
+        throw new InternalServerErrorException('Erreur lors de la création de la destination');
+    }
+}
     /**
      * Récupérer toutes les destinations avec pagination (Public)
      */
@@ -387,55 +386,55 @@ export class DestinationService {
     /**
      * Supprimer une destination (Admin seulement)
      */
-    async remove(id: string): Promise<{ message: string; deletedDestination: Destination }> {
-        this.logger.log(`🔄 Tentative suppression destination: ${id}`);
+   async remove(id: string): Promise<{ message: string; deletedDestination: Destination }> {
+    this.logger.log(`🔄 Tentative suppression destination`);
 
-        try {
-            // Validation de l'ID
-            if (!id || id.length !== 24) {
-                throw new BadRequestException('ID de destination invalide');
-            }
-
-            // Récupérer la destination avec toutes les données
-            const destination = await this.destinationModel.findById(id);
-            if (!destination) {
-                throw new NotFoundException(`Destination avec ID ${id} non trouvée`);
-            }
-
-            // Supprimer l'image associée si elle existe
-            if (destination.imagePath) {
-                await this.storageService.deleteFile(destination.imagePath);
-                this.logger.log(`🗑️ Image supprimée: ${destination.imagePath}`);
-            }
-
-            // Supprimer la destination de la base
-            const deletedDestination = await this.destinationModel
-                .findByIdAndDelete(id)
-                .lean()
-                .exec();
-
-            if (!deletedDestination) {
-                throw new NotFoundException(`Destination avec ID ${id} non trouvée lors de la suppression`);
-            }
-
-            this.logger.log(`✅ Destination supprimée: ${destination.country} (ID: ${id})`);
-            
-            return {
-                message: 'Destination supprimée avec succès',
-                deletedDestination: deletedDestination as Destination
-            };
-
-        } catch (error) {
-            this.logger.error(`❌ Erreur suppression destination ${id}: ${error.message}`);
-            
-            if (error instanceof BadRequestException || 
-                error instanceof NotFoundException) {
-                throw error;
-            }
-            
-            throw new InternalServerErrorException('Erreur lors de la suppression de la destination');
+    try {
+        // Validation de l'ID
+        if (!id || id.length !== 24) {
+            throw new BadRequestException('ID de destination invalide');
         }
+
+        // Récupérer la destination avec toutes les données
+        const destination = await this.destinationModel.findById(id);
+        if (!destination) {
+            throw new NotFoundException(`Destination avec ID ${id} non trouvée`);
+        }
+
+        // Supprimer l'image associée si elle existe
+        if (destination.imagePath) {
+            await this.storageService.deleteFile(destination.imagePath);
+            this.logger.log(`🗑️ Image supprimée: ${destination.imagePath}`);
+        }
+
+        // Supprimer la destination de la base
+        const deletedDestination = await this.destinationModel
+            .findByIdAndDelete(id)
+            .lean()
+            .exec();
+
+        if (!deletedDestination) {
+            throw new NotFoundException(`Destination avec ID ${id} non trouvée lors de la suppression`);
+        }
+
+        this.logger.log(`✅ Destination supprimée: ${destination.country} (ID: ${id})`);
+        
+        return {
+            message: 'Destination supprimée avec succès',
+            deletedDestination: deletedDestination as Destination
+        };
+
+    } catch (error) {
+        this.logger.error(`❌ Erreur suppression destination: ${error.message}`);
+        
+        if (error instanceof BadRequestException || 
+            error instanceof NotFoundException) {
+            throw error;
+        }
+        
+        throw new InternalServerErrorException('Erreur lors de la suppression de la destination');
     }
+}
 
     /**
      * Compter le nombre total de destinations
@@ -458,7 +457,7 @@ export class DestinationService {
             const count = await this.destinationModel.countDocuments({ _id: id });
             return count > 0;
         } catch (error) {
-            this.logger.error(`❌ Erreur vérification existence ${id}: ${error.message}`);
+            this.logger.error(`❌ Erreur vérification existence: ${error.message}`);
             return false;
         }
     }
