@@ -8,7 +8,6 @@ import * as fs from 'fs';
 import helmet from 'helmet';
 import { join } from 'path';
 import { AppModule } from './app.module';
-import cookieParser from 'cookie-parser';
 
 function useContainer(appContext: INestApplicationContext, options: { fallbackOnErrors: boolean }) {
   classValidatorUseContainer(appContext, options);
@@ -33,7 +32,6 @@ async function bootstrap() {
   );
 
   useContainer(app.select(AppModule), { fallbackOnErrors: true });
-  app.use(cookieParser());
 
   // Sécurité HTTP avec Helmet
   app.use(
@@ -84,84 +82,32 @@ async function bootstrap() {
     next();
   });
 
-  // CORS (MUST come before rate limiting)
-  const allowedOrigins = [
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'https://panameconsulting.com',
-    'https://www.panameconsulting.com',
-    'https://panameconsulting.vercel.app',
-    'https://www.panameconsulting.vercel.app',
-  ];
-  const netlifyPreviewRegex = /^https?:\/\/([a-z0-9-]+--)?panameconsulting\.netlify\.app$/i;
-  const localhostRegex = /^http:\/\/localhost:\d+$/i;
-  const isAllowedOrigin = (o: string) =>
-    allowedOrigins.includes(o) || netlifyPreviewRegex.test(o) || localhostRegex.test(o);
-
-// CORS Configuration - CORRIGÉ
-app.enableCors({
-  origin: (origin, callback) => {
-   
-    // Fonction de vérification d'origine
-    const allowedOrigins = ['http://localhost:5173','http://localhost:3000','https://panameconsulting.com','https://www.panameconsulting.com','https://panameconsulting.vercel.app','https://www.panameconsulting.vercel.app'];
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    console.warn(`🚫 CORS bloqué pour l'origine: ${origin}`);
-    return callback(new Error('Not allowed by CORS'));
-  },
-
-  credentials: true,
-
-  methods: ['GET', 'POST', 'HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-
-  allowedHeaders: [
-    'Content-Type',
-    'Accept',
-    'Authorization',
-    'Cache-Control',
-    'X-Requested-With',
-    'X-HTTP-Method-Override',
-    'Cookie'
-  ],
-
-  preflightContinue: false,
-  optionsSuccessStatus: 204,
-  maxAge: 86400,
-
-  exposedHeaders: ['set-cookie', 'Authorization'],
-});
-
-
-  // Rate limiting (AFTER CORS with handler that mirrors CORS headers)
+  // Rate limiting ajusté
   app.use(
     rateLimit({
       windowMs: 15 * 60 * 1000,
-      max: process.env.NODE_ENV === 'production' ? 500 : 1000,
-      standardHeaders: true,
-      legacyHeaders: false,
-      skip: (req) => {
-        if (req.method === 'OPTIONS') return true;
-        // Skip rate limiting for auth endpoints in development
-        if (process.env.NODE_ENV !== 'production' && 
-            (req.path === '/api/auth/login' || req.path === '/api/auth/register')) {
-          return true;
-        }
-        return false;
-      },
-      handler: (req: any, res: any) => {
-        // Mirror CORS headers on 429 responses
-        const origin = req.headers.origin as string | undefined;
-        if (origin && isAllowedOrigin(origin)) {
-          res.setHeader('Access-Control-Allow-Origin', origin);
-          res.setHeader('Vary', 'Origin');
-          res.setHeader('Access-Control-Allow-Credentials', 'true');
-        }
-        res.status(429).json({ message: 'Too many requests from this IP, please try again later.' });
-      },
+      max: 500,
+      message: 'Too many requests from this IP, please try again later.',
+      skip: (req) => req.method === 'OPTIONS',
     }),
   );
+
+  // CORS
+  app.enableCors({
+    origin: [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'https://panameconsulting.com'
+    ],
+    methods: ['GET', 'POST', 'HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', ' Cache-Control', 'X-Requested-With', 'X-HTTP-Method-Override'],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+    maxAge: 86400,
+    exposedHeaders: ['set-cookie'],
+    
+  });
 
   // Fichiers statiques
   const uploadsDir = join(__dirname, '..', 'uploads');
@@ -170,17 +116,9 @@ app.enableCors({
     console.log(`📁 Dossier uploads créé: ${uploadsDir}`);
   }
 
-  app.use('/uploads', (req: any, res: any, next: () => void) => {
-    const origin = req.headers.origin as string | undefined;
-    if (origin && isAllowedOrigin(origin)) {
-      res.header('Access-Control-Allow-Origin', origin);
-      res.header('Vary', 'Origin');
-      res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.header('Access-Control-Allow-Credentials', 'true');
-    }
-    if (req.method === 'OPTIONS') {
-      return res.status(204).end();
-    }
+  app.use('/uploads', (req: any, res: { header: (arg0: string, arg1: string) => void; }, next: () => void) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET');
     next();
   });
 
@@ -198,10 +136,6 @@ app.enableCors({
     maxAge: '30d',
   });
   app.use((req: { path: string | string[]; headers: { authorization: any; }; }, res: { status: (arg0: number) => { (): any; new(): any; json: { (arg0: { message: string; }): any; new(): any; }; }; }, next: () => void) => {
-
-  if ((req as any).method === 'OPTIONS') {
-    return next();
-  }
   if (req.path.includes('/stats') && !req.headers.authorization) {
     return res.status(401).json({ message: 'Unauthorized' });
   }

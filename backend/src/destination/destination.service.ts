@@ -108,7 +108,7 @@ export class DestinationService {
 
             // Upload de l'image
             const fileName = await this.storageService.uploadFile(imageFile);
-            const imagePath = `uploads/${fileName}`;
+           const imagePath = fileName;
 
             // Création de la destination
             const createdDestination = new this.destinationModel({

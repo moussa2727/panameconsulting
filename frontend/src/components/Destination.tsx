@@ -53,23 +53,27 @@ const VITE_API_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://local
 const Destination = () => {
   const [destinations, setDestinations] = useState<Destination[]>(defaultDestinations);
   const [loading, setLoading] = useState(true);
-
+// Dans Destination.tsx - version finale de getFullImageUrl
 const getFullImageUrl = (imagePath: string) => {
-  if (!imagePath) return '/paname-consulting';
+  if (!imagePath) return '/paname-consulting.jpg';
   
-  // Si c'est une URL complète (http/data:)
+  // URLs déjà complètes
   if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
     return imagePath;
   }
-
-  // Pour les images en développement (Vite)
-  if (import.meta.env.DEV) {
-    return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+  
+  const baseUrl = VITE_API_URL;
+  
+  // Nettoyer le chemin
+  let cleanPath = imagePath;
+  if (cleanPath.startsWith('/')) {
+    cleanPath = cleanPath.slice(1);
   }
-
-  // Pour la production
-  return `${VITE_API_URL}/api/${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
+  
+  // Construire l'URL finale
+  return `${baseUrl}/${cleanPath}`;
 };
+
 
   const fetchDestinations = async () => {
   try {

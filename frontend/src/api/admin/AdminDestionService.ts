@@ -437,21 +437,27 @@ class DestinationService {
  /**
  * Générer l'URL complète d'une image
  */
+ 
+
+ // Dans Destination.tsx - version finale de getFullImageUrl
  getFullImageUrl = (imagePath: string) => {
-  if (!imagePath) return '/paname-consulting.ico';
+  if (!imagePath) return '/paname-consulting.jpg';
   
-  // Si c'est une URL complète (http/data:)
+  // URLs déjà complètes
   if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
     return imagePath;
   }
-
-  // Pour les images en développement (Vite)
-  if (import.meta.env.DEV) {
-    return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+  
+  const baseUrl = API_URL;
+  
+  // Nettoyer le chemin
+  let cleanPath = imagePath;
+  if (cleanPath.startsWith('/')) {
+    cleanPath = cleanPath.slice(1);
   }
-
-  // Pour la production
-  return `${this.baseUrl}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
+  
+  // Construire l'URL finale
+  return `${baseUrl}/${cleanPath}`;
 };
 
 }
