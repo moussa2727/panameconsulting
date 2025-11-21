@@ -45,11 +45,10 @@ export class ResetToken extends Document {
   })
   status: string;
 
-  // Méthodes virtuelles et hooks peuvent être ajoutés ici
 }
 
 export const ResetTokenSchema = SchemaFactory.createForClass(ResetToken);
-
+ResetTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 // Index composé pour les requêtes fréquentes
 ResetTokenSchema.index({ token: 1, user: 1, used: 1 });
 

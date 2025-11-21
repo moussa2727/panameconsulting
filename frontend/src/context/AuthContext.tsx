@@ -349,13 +349,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [VITE_API_URL, token, navigate]);
 
   
-
-  // DANS AuthContext.tsx - AJOUTER la fonction logoutAll
 const logoutAll = useCallback(async (): Promise<void> => {
+    if (!token || !user?.isAdmin) {
+        toast.error('❌ Droits administrateur requis');
+        return;
+    }
+
+    setIsLoading(true);
+
     try {
-        setIsLoading(true);
+        console.log('🛡️ Admin initie la déconnexion globale des non-admins...');
         
-        // Appel API pour déconnecter tous les utilisateurs (sauf admin)
         const response = await fetch(`${VITE_API_URL}/api/auth/logout-all`, {
             method: 'POST',
             headers: {
@@ -365,27 +369,43 @@ const logoutAll = useCallback(async (): Promise<void> => {
             credentials: 'include'
         });
 
-        if (response.ok) {
-            const result = await response.json();
-            console.log('✅ Déconnexion globale réussie', result);
-            toast.success(`✅ ${result.message} - ${result.stats?.loggedOutCount || 0} utilisateurs déconnectés`);
+        if (!response.ok) {
+            throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log('✅ Déconnexion globale réussie:', result.message);
             
-            // Rafraîchir la page pour mettre à jour l'interface (admin reste connecté)
+            // ✅ AFFICHER LES STATISTIQUES
+            toast.success(
+                <div>
+                    <div>✅ {result.message}</div>
+                    <div style={{ fontSize: '0.8em', marginTop: '5px' }}>
+                        {result.stats?.usersLoggedOut || 0} utilisateurs déconnectés<br/>
+                        🛡️ Admin préservé
+                    </div>
+                </div>,
+                { autoClose: 5000 }
+            );
+
+            // ✅ RAFRAÎCHIR LA PAGE POUR METTRE À JOUR L'INTERFACE
             setTimeout(() => {
                 window.location.reload();
-            }, 1500);
+            }, 2000);
+
         } else {
-            console.warn('⚠️ Déconnexion globale partiellement échouée');
-            toast.warning('⚠️ Déconnexion globale partiellement échouée');
+            throw new Error(result.message || 'Erreur inconnue');
         }
-    } catch (error) {
+
+    } catch (error: any) {
         console.error('❌ Erreur déconnexion globale:', error);
-        toast.error('❌ Erreur lors de la déconnexion globale');
+        toast.error(`❌ ${error.message || 'Erreur lors de la déconnexion globale'}`);
     } finally {
         setIsLoading(false);
     }
-}, [VITE_API_URL, token]);
-
+}, [VITE_API_URL, token, user]);
 
   // ===== GESTION SESSIONSTORAGE SÉCURISÉ =====
   const validateSessionKey = useCallback((key: string): boolean => {

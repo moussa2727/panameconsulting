@@ -12,10 +12,15 @@ export class RefreshToken extends Document {
   @Prop({ required: true })
   expiresAt: Date;
 
-  @Prop({ default: true })
+   @Prop({ default: true })
   isActive: boolean;
+
+  @Prop()
+  deactivatedAt?: Date;
+
 }
 
 export const RefreshTokenSchema = SchemaFactory.createForClass(RefreshToken);
-
 RefreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+RefreshTokenSchema.index({ user: 1 });
+RefreshTokenSchema.index({ token: 1 });

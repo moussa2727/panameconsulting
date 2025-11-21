@@ -27,6 +27,7 @@ export class RevokedToken extends Document {
 }
 
 export const RevokedTokenSchema = SchemaFactory.createForClass(RevokedToken);
+RevokedTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // Export du type Document complet
 export type RevokedTokenDocument = RevokedToken & Document & {

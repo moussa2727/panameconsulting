@@ -3,7 +3,7 @@ import {
     Logger,
     NotFoundException,
     UnauthorizedException,
-    BadRequestException
+    BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
@@ -12,6 +12,7 @@ import { Model, Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { MailService } from '../mail/mail.service';
 import { ResetToken } from '../schemas/reset-token.schema';
+import { Session } from '../schemas/session.schema';
 import { User, UserRole } from '../schemas/user.schema';
 import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
@@ -38,6 +39,8 @@ export class AuthService {
         private readonly refreshTokenService: RefreshTokenService,
         @InjectModel(ResetToken.name)
         private readonly resetTokenModel: Model<ResetToken>,
+        @InjectModel(Session.name)
+        private readonly sessionModel: Model<Session>,
         @InjectModel(User.name) private userModel: Model<User>,
     ) { }
 
@@ -372,121 +375,105 @@ export class AuthService {
         }
     }
 
+    
+
     async logoutAll(): Promise<{ 
-        message: string, 
-        loggedOutCount: number,
-        stats: any 
-    }> {
-        try {
-            this.logger.log('🚀 Début de la déconnexion globale des utilisateurs non-admin');
-            
-            // CRITIQUE: Ne déconnecter que les utilisateurs non-admin
-            const activeUsers = await this.userModel.find({
-                isActive: true,
-                role: { $ne: UserRole.ADMIN } // ← Exclure l'admin
-            }).exec();
+    message: string, 
+    loggedOutCount: number,
+    stats: any 
+}> {
+    try {
+        this.logger.log('🚀 Début de la déconnexion globale des utilisateurs NON-ADMIN');
+        
+        // ✅ EXCLURE TOUS LES UTILISATEURS AVEC LE RÔLE ADMIN
+        const activeNonAdminUsers = await this.userModel.find({
+            isActive: true,
+            role: { $ne: UserRole.ADMIN } // ← CRITIQUE: Exclure tous les admins
+        }).exec();
 
-            this.logger.log(`📊 ${activeUsers.length} utilisateurs non-admin actifs trouvés`);
+        this.logger.log(`📊 ${activeNonAdminUsers.length} utilisateurs non-admin actifs trouvés`);
 
-            if (activeUsers.length === 0) {
-                return {
-                    message: 'Aucun utilisateur non-admin à déconnecter',
-                    loggedOutCount: 0,
-                    stats: {
-                        usersLoggedOut: 0,
-                        adminPreserved: true,
-                        timestamp: new Date().toISOString(),
-                        note: 'Aucun utilisateur non-admin trouvé'
-                    }
-                };
-            }
-
-            // Mettre à jour le statut des utilisateurs
-            const updatePromises = activeUsers.map(user => 
-                this.userModel.findByIdAndUpdate(user._id, {
-                    isActive: false,
-                    logoutUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 heures
-                })
-            );
-
-            await Promise.all(updatePromises);
-            this.logger.log(`✅ Statut de ${activeUsers.length} utilisateurs mis à jour`);
-
-            // Nettoyer les sessions des utilisateurs déconnectés
-            const userIds = activeUsers.map(user => {
-                // S'assurer que _id est converti en string
-                const userId = user._id instanceof Types.ObjectId 
-                    ? user._id.toString() 
-                    : String(user._id);
-                return userId;
-            });
-
-            const sessionCleanupPromises = userIds.map(userId => 
-                this.sessionService.deleteAllUserSessions(userId)
-            );
-
-            await Promise.all(sessionCleanupPromises);
-            this.logger.log(`🗑️ Sessions de ${userIds.length} utilisateurs nettoyées`);
-
-            // Révoquer les tokens des utilisateurs déconnectés
-            const tokenRevocationPromises = activeUsers.map(async (user) => {
-                try {
-                        const userId = user._id instanceof Types.ObjectId 
-                    ? user._id.toString() 
-                    : String(user._id);
-                    
-                    const activeSessions = await this.sessionService.getActiveSessionsByUser(userId);
-                    
-                    for (const session of activeSessions) {
-                        try {
-                            const decoded = this.jwtService.decode(session.token) as any;
-                            if (decoded && decoded.exp) {
-                                await this.revokedTokenService.revokeToken(
-                                    session.token, 
-                                    new Date(decoded.exp * 1000)
-                                );
-                            }
-                        } catch (error) {
-                            this.logger.warn(`Erreur révocation token pour user ${user._id}: ${error.message}`);
-                        }
-                    }
-                } catch (error) {
-                    this.logger.warn(`Erreur récupération sessions pour user ${user._id}: ${error.message}`);
-                }
-            });
-
-            await Promise.all(tokenRevocationPromises);
-            this.logger.log(`🔐 Tokens de ${activeUsers.length} utilisateurs révoqués`);
-
-            // Nettoyer les refresh tokens
-            const refreshTokenCleanupPromises = userIds.map(userId =>
-                this.refreshTokenService.deactivateAllForUser(userId)
-            );
-
-            await Promise.all(refreshTokenCleanupPromises);
-            this.logger.log(`🔄 Refresh tokens de ${userIds.length} utilisateurs désactivés`);
-
-            const result = {
-                message: `${activeUsers.length} utilisateurs déconnectés avec succès (admin conservé)`,
-                loggedOutCount: activeUsers.length,
+        if (activeNonAdminUsers.length === 0) {
+            return {
+                message: 'Aucun utilisateur non-admin à déconnecter',
+                loggedOutCount: 0,
                 stats: {
-                    usersLoggedOut: activeUsers.length,
+                    usersLoggedOut: 0,
                     adminPreserved: true,
                     timestamp: new Date().toISOString(),
-                    userEmails: activeUsers.map(user => user.email), // Pour le debugging
-                    sessionCleaned: userIds.length,
-                    tokensRevoked: activeUsers.length
+                    note: 'Aucun utilisateur non-admin trouvé'
                 }
             };
-
-            this.logger.log(`🎯 Déconnexion globale terminée: ${result.message}`);
-            return result;
-
-        } catch (error) {
-            this.logger.error(`❌ Erreur lors de la déconnexion globale: ${error.message}`, error.stack);
-            throw new BadRequestException(`Erreur lors de la déconnexion globale: ${error.message}`);
         }
+
+        const userIds = activeNonAdminUsers.map(user => 
+            user._id instanceof Types.ObjectId ? user._id.toString() : String(user._id)
+        );
+
+        // ✅ NETTOYAGE COMPLET DES UTILISATEURS NON-ADMIN
+        const cleanupPromises = [
+            // a. Mettre à jour statut utilisateurs
+            this.userModel.updateMany(
+                { _id: { $in: activeNonAdminUsers.map(u => u._id) } },
+                { 
+                    isActive: false,
+                    logoutUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                    lastLogout: new Date()
+                }
+            ),
+            
+            // b. Supprimer TOUTES les sessions des non-admins
+            this.sessionModel.deleteMany({ 
+                user: { $in: userIds } 
+            }),
+            
+            // c. Révoquer TOUS les tokens JWT des non-admins
+            this.resetTokenModel.deleteMany({ 
+                userId: { $in: userIds } 
+            }),
+            
+            // d. Désactiver TOUS les refresh tokens des non-admins
+            this.resetTokenModel.updateMany(
+                { user: { $in: userIds } },
+                { isActive: false, deactivatedAt: new Date() }
+            ),
+            
+            // e. Nettoyer les tokens de reset des non-admins
+            this.resetTokenModel.deleteMany({ 
+                user: { $in: activeNonAdminUsers.map(u => u._id) } 
+            })
+        ];
+
+        await Promise.all(cleanupPromises);
+        this.logger.log(`✅ Nettoyage complet de ${activeNonAdminUsers.length} utilisateurs non-admin`);
+
+        const result = {
+            message: `${activeNonAdminUsers.length} utilisateurs non-admin déconnectés avec succès - Admins préservés`,
+            loggedOutCount: activeNonAdminUsers.length,
+            stats: {
+                usersLoggedOut: activeNonAdminUsers.length,
+                adminPreserved: true,
+                timestamp: new Date().toISOString(),
+                userEmails: activeNonAdminUsers.map(user => user.email),
+                cleanupActions: [
+                    'sessions_supprimees',
+                    'tokens_jwt_revoques', 
+                    'refresh_tokens_desactives',
+                    'tokens_reset_supprimes',
+                    'statuts_utilisateurs_mis_a_jour'
+                ]
+            }
+        };
+
+        this.logger.log(`🎯 Déconnexion globale NON-ADMIN terminée: ${result.message}`);
+        return result;
+
+    } catch (error) {
+        this.logger.error(`❌ Erreur lors de la déconnexion globale: ${error.message}`, error.stack);
+        throw new BadRequestException(`Erreur lors de la déconnexion globale: ${error.message}`);
     }
+}
+
 
     async revokeToken(token: string, expiresAt: Date): Promise<void> {
         try {

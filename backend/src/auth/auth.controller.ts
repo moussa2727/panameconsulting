@@ -174,58 +174,76 @@ async refresh(@Req() req: CustomRequest, @Body() body: any, @Res() res: Response
         return res.json({ message: 'Déconnexion réussie' });
     }
 
-    @Post('logout-all')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN)
-    @ApiOperation({ summary: 'Déconnexion de tous les utilisateurs (sauf admin)' })
-    async logoutAll(@Request() req: any, @Res() res: Response) {
-        try {
-            const result = await this.authService.logoutAll();            
-            return res.json({ 
-                message: result.message,
-                stats: result.stats
-            });
-        } catch (error) {
-            console.error('Erreur logoutAll:', error);
-            return res.status(500).json({ message: 'Erreur lors de la déconnexion globale' });
-        }
-    }
 
-   
-@Get('me')
-@UseGuards(JwtAuthGuard)
-@ApiOperation({ summary: 'Récupérer le profil utilisateur' })
-async getProfile(@Request() req: any) {
-    
-    // ✅ Essayer différents chemins pour l'ID utilisateur
-    const userId = req.user?.sub || req.user?.userId || req.user?.id;
-    
-    if (!userId) {
-        console.error('❌ ERREUR: Aucun ID utilisateur trouvé dans req.user');
-        console.error('❌ Structure de req.user .');
-        throw new BadRequestException('ID utilisateur manquant dans le token');
-    }
-    
-    console.log('✅ ID utilisateur trouvé:', userId);
-    
+    @Post('logout-all')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
+@ApiOperation({ summary: 'Déconnexion de TOUS les utilisateurs SAUF les administrateurs' })
+@ApiResponse({ status: 200, description: 'Utilisateurs non-admin déconnectés avec succès' })
+@ApiResponse({ status: 403, description: 'Accès refusé - Admin uniquement' })
+async logoutAll(@Request() req: any, @Res() res: Response) {
     try {
-        const user = await this.authService.getProfile(userId);
+        const currentAdmin = req.user;
+        console.log(`🛡️ Admin ${currentAdmin.email} initie une déconnexion globale (non-admin uniquement)`);
         
-        return {
-            id: user._id,
-            email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            role: user.role,
-            isAdmin: user.role === UserRole.ADMIN,
-            telephone: user.telephone,
-            isActive: user.isActive
-        };
+        const result = await this.authService.logoutAll();
+        
+        console.log(`✅ Déconnexion globale réussie par l'admin: ${currentAdmin.email}`);
+        
+        return res.json({ 
+            success: true,
+            message: result.message,
+            stats: result.stats,
+            adminInfo: {
+                id: currentAdmin.sub,
+                email: currentAdmin.email,
+                preserved: true
+            }
+        });
     } catch (error) {
-        console.error('❌ Erreur dans getProfile:', error);
-        throw error;
+        console.error(`❌ Erreur déconnexion globale: ${error.message}`);
+        return res.status(500).json({ 
+            success: false,
+            message: 'Erreur lors de la déconnexion globale',
+            error: error.message 
+        });
     }
 }
+    
+    @Get('me')
+    @UseGuards(JwtAuthGuard)
+    @ApiOperation({ summary: 'Récupérer le profil utilisateur' })
+    async getProfile(@Request() req: any) {
+        
+        // ✅ Essayer différents chemins pour l'ID utilisateur
+        const userId = req.user?.sub || req.user?.userId || req.user?.id;
+        
+        if (!userId) {
+            console.error('❌ ERREUR: Aucun ID utilisateur trouvé dans req.user');
+            console.error('❌ Structure de req.user .');
+            throw new BadRequestException('ID utilisateur manquant dans le token');
+        }
+        
+        console.log('✅ ID utilisateur trouvé:', userId);
+        
+        try {
+            const user = await this.authService.getProfile(userId);
+            
+            return {
+                id: user._id,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                role: user.role,
+                isAdmin: user.role === UserRole.ADMIN,
+                telephone: user.telephone,
+                isActive: user.isActive
+            };
+        } catch (error) {
+            console.error('❌ Erreur dans getProfile:', error);
+            throw error;
+        }
+    }
 
     @Patch('me')
     @UseGuards(JwtAuthGuard)
@@ -287,4 +305,6 @@ async getProfile(@Request() req: any) {
     
     return { message: 'Mot de passe mis à jour avec succès' };
     }
+
+
 }
