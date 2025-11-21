@@ -94,45 +94,43 @@ const AdminProcedures = () => {
     }
   };
 
-  // Validation stricte des étapes selon les règles métier
-  const canUpdateStep = (procedure: Procedure, stepName: StepName, newStatus: StepStatus): { canUpdate: boolean; reason?: string } => {
-    const step = procedure.steps.find(s => s.nom === stepName);
-    if (!step) {
-      return { canUpdate: false, reason: 'Étape non trouvée' };
-    }
+const canUpdateStep = (procedure: Procedure, stepName: StepName, newStatus: StepStatus): { canUpdate: boolean; reason?: string } => {
+  const step = procedure.steps.find(s => s.nom === stepName);
+  if (!step) {
+    return { canUpdate: false, reason: 'Étape non trouvée' };
+  }
 
-    // Ne pas permettre de modifier une étape déjà terminée/annulée/rejetée
-    if ([StepStatus.COMPLETED, StepStatus.CANCELLED, StepStatus.REJECTED].includes(step.statut) && step.statut !== newStatus) {
+  // Ne pas permettre de modifier une étape déjà terminée/annulée/rejetée
+  if ([StepStatus.COMPLETED, StepStatus.CANCELLED, StepStatus.REJECTED].includes(step.statut) && step.statut !== newStatus) {
+    return { 
+      canUpdate: false, 
+      reason: `Impossible de modifier une étape ${step.statut.toLowerCase()}` 
+    };
+  }
+
+  // Validation de l'ordre des étapes
+  if (stepName === StepName.DEMANDE_VISA) {
+    const admission = procedure.steps.find(s => s.nom === StepName.DEMANDE_ADMISSION);
+    if (!admission || admission.statut !== StepStatus.COMPLETED) {
       return { 
         canUpdate: false, 
-        reason: `Impossible de modifier une étape ${step.statut.toLowerCase()}` 
+        reason: 'La demande d\'admission doit être terminée avant de modifier la demande de visa' 
       };
     }
-
-    // Validation de l'ordre des étapes
-    if (stepName === StepName.DEMANDE_VISA) {
-      const admission = procedure.steps.find(s => s.nom === StepName.DEMANDE_ADMISSION);
-      if (!admission || admission.statut !== StepStatus.COMPLETED) {
-        return { 
-          canUpdate: false, 
-          reason: 'La demande d\'admission doit être terminée avant de modifier la demande de visa' 
-        };
-      }
+  }
+  
+  if (stepName === StepName.PREPARATIF_VOYAGE) {
+    const visa = procedure.steps.find(s => s.nom === StepName.DEMANDE_VISA);
+    if (!visa || visa.statut !== StepStatus.COMPLETED) {
+      return { 
+        canUpdate: false, 
+        reason: 'La demande de visa doit être terminée avant de modifier les préparatifs de voyage' 
+      };
     }
-    
-    if (stepName === StepName.PREPARATIF_VOYAGE) {
-      const visa = procedure.steps.find(s => s.nom === StepName.DEMANDE_VISA);
-      if (!visa || visa.statut !== StepStatus.COMPLETED) {
-        return { 
-          canUpdate: false, 
-          reason: 'La demande de visa doit être terminée avant de modifier les préparatifs de voyage' 
-        };
-      }
-    }
+  }
 
-    return { canUpdate: true };
-  };
-
+  return { canUpdate: true };
+};
   // Mise à jour du statut de la procédure avec gestion stricte des étapes
   const handleUpdateProcedureStatus = async (procedureId: string, newStatus: ProcedureStatus) => {
     try {
@@ -866,8 +864,8 @@ const refreshProcedures = async () => {
                 <div>
                   <h3 className="text-sm font-semibold text-slate-600 mb-3">Gestion des Étapes</h3>
                   <div className="space-y-3">
-                    {selectedProcedure.steps.map((step) => {
-                      const validation = canUpdateStep(selectedProcedure, step.nom, StepStatus.COMPLETED);
+                   {selectedProcedure.steps.map((step) => {
+                      const validation = canUpdateStep(selectedProcedure, step.nom, StepStatus.COMPLETED);  
                       
                       return (
                         <div key={step.nom} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -884,7 +882,7 @@ const refreshProcedures = async () => {
                             </span>
                           </div>
                           
-                          <div className="grid grid-cols-2 gap-2">
+                         <div className="grid grid-cols-2 gap-2">
                             {Object.values(StepStatus).map(statut => {
                               const stepValidation = canUpdateStep(selectedProcedure, step.nom, statut);
                               const isCurrentStatus = step.statut === statut;
@@ -910,7 +908,7 @@ const refreshProcedures = async () => {
                                     }
                                   }}
                                   disabled={isDisabled}
-                                  title={isDisabled ? stepValidation.reason : ''}
+                                  title={isDisabled ? stepValidation.reason : ''} // ← ICI
                                   className={`p-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1 ${
                                     isCurrentStatus
                                       ? 'bg-blue-500 text-white'
