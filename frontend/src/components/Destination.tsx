@@ -84,7 +84,6 @@ const getFullImageUrl = (imagePath: string) => {
     });
 
     if (!response.ok) {
-      // Silently fallback to default data on error
       return;
     }
 

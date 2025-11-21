@@ -1,250 +1,197 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Mail, User, Clock, CheckCircle, XCircle, Reply, Trash2, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import AdminContactService, { Contact, ContactStats } from '../../api/admin/AdminContactService';
 import { toast } from 'react-toastify';
 
-interface Contact {
-  id: string;
-  firstName?: string;
-  lastName?: string;
-  email: string;
-  message: string;
-  isRead: boolean;
-  adminResponse?: string;
-  respondedAt?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+// Icons
+const Icon = {
+  Eye: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>,
+  Reply: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>,
+  Check: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+  Trash: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
+  Search: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
+  Filter: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>,
+  Refresh: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
+  User: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
+  Email: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
+  Calendar: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
+  ChevronDown: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>,
+  X: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+};
 
-interface ContactStats {
-  total: number;
-  unread: number;
-  read: number;
-  responded: number;
-  thisMonth: number;
-  lastMonth: number;
-}
+// Popover de confirmation pour suppression
+const DeleteConfirmPopover: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  position: { top: number; left: number };
+}> = ({ isOpen, onClose, onConfirm, position }) => {
+  if (!isOpen) return null;
 
-interface ApiResponse {
-  data: Contact[];
-  total: number;
-}
-
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+  return (
+    <div 
+      className="fixed z-50 bg-white border border-blue-300 rounded-lg shadow-lg p-4 min-w-[200px]"
+      style={{
+        top: position.top,
+        left: position.left,
+        transform: 'translateY(10px)'
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-medium text-blue-900">Confirmer la suppression</h4>
+        <button 
+          onClick={onClose}
+          className="text-blue-500 hover:text-blue-600"
+        >
+          <Icon.X />
+        </button>
+      </div>
+      <p className="text-sm text-blue-700 mb-3">Êtes-vous sûr de vouloir supprimer ce message ?</p>
+      <div className="flex justify-end space-x-2">
+        <button 
+          onClick={onClose}
+          className="px-3 py-1 text-sm text-blue-600 border border-blue-300 rounded hover:border-blue-500"
+        >
+          Annuler
+        </button>
+        <button 
+          onClick={onConfirm}
+          className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Supprimer
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const AdminMessages: React.FC = () => {
-  const { token, refreshToken, logout, isAuthenticated } = useAuth();
+  const { user } = useAuth();
+  const contactService = AdminContactService();
+  
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [stats, setStats] = useState<ContactStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
-  const [replyText, setReplyText] = useState('');
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isReplyModalOpen, setIsReplyModalOpen] = useState(false);
+  const [replyMessage, setReplyMessage] = useState('');
+  
+  // États pour la pagination et filtres
+  const [filters, setFilters] = useState({
+    page: 1,
+    limit: 10,
+    search: '',
+    isRead: undefined as boolean | undefined
+  });
+  
+  const [totalContacts, setTotalContacts] = useState(0);
+  
+  // État pour le popover de suppression
+  const [deletePopover, setDeletePopover] = useState<{
+    isOpen: boolean;
+    contactId: string | null;
+    position: { top: number; left: number };
+  }>({
+    isOpen: false,
+    contactId: null,
+    position: { top: 0, left: 0 }
+  });
 
-  // Fonction sécurisée pour les appels API avec meilleure gestion des tokens
-  const apiCall = useCallback(async (url: string, options: RequestInit = {}) => {
-    let currentToken = token;
+  // Charger les contacts
+  const loadContacts = async () => {
+    try {
+      const response = await contactService.getAllContacts(filters);
+      setContacts(response.data);
+      setTotalContacts(response.total);
+    } catch (error) {
+      console.error('Erreur lors du chargement des contacts:', error);
+    }
+  };
+
+  // Charger les statistiques
+  const loadStats = async () => {
+    try {
+      const statsData = await contactService.getContactStats();
+      setStats(statsData);
+    } catch (error) {
+      console.error('Erreur lors du chargement des statistiques:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadContacts();
+    loadStats();
+  }, [filters]);
+
+  // Gestionnaires d'actions
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      await contactService.markAsRead(id);
+      await loadContacts();
+      await loadStats();
+      toast.success('Message marqué comme lu');
+    } catch (error) {
+      toast.error('Erreur lors du marquage du message');
+    }
+  };
+
+  const handleReply = async () => {
+    if (!selectedContact || !replyMessage.trim()) return;
     
-    // Si pas de token, essayer de rafraîchir
-    if (!currentToken) {
-      console.log('🔑 Aucun token, tentative de rafraîchissement...');
-      const refreshed = await refreshToken();
-      if (refreshed) {
-        currentToken = localStorage.getItem('token');
-        if (!currentToken) {
-          throw new Error('Session expirée');
-        }
-      } else {
-        throw new Error('Session expirée');
-      }
-    }
-
-    const makeRequest = async (userToken: string) => {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          ...options.headers,
-          'Authorization': `Bearer ${userToken}`,
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include'
-      });
-      return response;
-    };
-
-    let response = await makeRequest(currentToken);
-
-    // Si 401, essayer de rafraîchir le token et réessayer
-    if (response.status === 401) {
-      console.log('🔄 Token expiré, tentative de rafraîchissement...');
-      const refreshed = await refreshToken();
-      if (refreshed) {
-        const newToken = localStorage.getItem('token');
-        if (newToken) {
-          response = await makeRequest(newToken);
-        } else {
-          throw new Error('Session expirée');
-        }
-      } else {
-        throw new Error('Session expirée');
-      }
-    }
-
-    return response;
-  }, [token, refreshToken]);
-
-  const fetchContacts = useCallback(async () => {
-    if (!isAuthenticated) {
-      console.log('🚫 Utilisateur non authentifié');
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
     try {
-      const queryParams = new URLSearchParams();
-      queryParams.append('page', '1');
-      queryParams.append('limit', '50');
-      if (searchTerm) queryParams.append('search', searchTerm);
-      if (filter === 'read') queryParams.append('isRead', 'true');
-      if (filter === 'unread') queryParams.append('isRead', 'false');
-
-      console.log('📡 Fetching contacts...');
-      const response = await apiCall(
-        `${API_URL}/api/contact?${queryParams.toString()}`
-      );
-
-      if (!response.ok) {
-        throw new Error(`Erreur ${response.status} lors du chargement des messages`);
-      }
-
-      const data: ApiResponse = await response.json();
-      console.log('✅ Contacts chargés:', data.data.length);
-      
-      const normalizedContacts = data.data.map(contact => ({
-        ...contact,
-        id: contact.id
-      }));
-      
-      setContacts(normalizedContacts);
+      await contactService.replyToMessage(selectedContact._id, replyMessage);
+      await loadContacts();
+      await loadStats();
+      setIsReplyModalOpen(false);
+      setReplyMessage('');
+      toast.success('Réponse envoyée avec succès');
     } catch (error) {
-      console.error('❌ Erreur fetchContacts:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue';
-      
-      if (errorMessage.includes('Session expirée')) {
-        toast.error('Session expirée');
-      } else {
-        toast.error(errorMessage);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isAuthenticated, searchTerm, filter, apiCall]);
-
-  const fetchStats = useCallback(async () => {
-    if (!isAuthenticated) return;
-
-    try {
-      console.log('📊 Fetching stats...');
-      const response = await apiCall(`${API_URL}/api/contact/stats`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-        console.log('✅ Stats chargées:', data);
-      }
-    } catch (error) {
-      console.error('❌ Erreur fetchStats:', error);
-    }
-  }, [isAuthenticated, apiCall]);
-
-  const markAsRead = async (id: string) => {
-    try {
-      const response = await apiCall(`${API_URL}/api/contact/${id}/read`, {
-        method: 'PATCH'
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setContacts(prev => prev.map(contact =>
-          contact.id === id ? result.contact : contact
-        ));
-        if (selectedContact?.id === id) {
-          setSelectedContact(prev => prev ? { ...prev, isRead: true } : null);
-        }
-        toast.success('Message marqué comme lu');
-        fetchStats();
-      }
-    } catch (error) {
-      console.error('Erreur markAsRead:', error);
-      toast.error('Erreur lors du marquage comme lu');
+      toast.error('Erreur lors de l\'envoi de la réponse');
     }
   };
 
-  const sendReply = async (contactId: string) => {
-    if (!replyText.trim()) {
-      toast.error('Le message de réponse ne peut pas être vide');
-      return;
-    }
-
+  const handleDelete = async (id: string) => {
     try {
-      const response = await apiCall(`${API_URL}/api/contact/${contactId}/reply`, {
-        method: 'POST',
-        body: JSON.stringify({ reply: replyText })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setContacts(prev => prev.map(contact =>
-          contact.id === contactId ? result.contact : contact
-        ));
-        setSelectedContact(result.contact);
-        setReplyText('');
-        toast.success('Réponse envoyée avec succès');
-        fetchStats();
-      } else {
-        throw new Error('Erreur lors de l\'envoi de la réponse');
-      }
+      await contactService.deleteContact(id);
+      await loadContacts();
+      await loadStats();
+      setDeletePopover({ isOpen: false, contactId: null, position: { top: 0, left: 0 } });
+      toast.success('Message supprimé avec succès');
     } catch (error) {
-      console.error('Erreur sendReply:', error);
-      toast.error(error instanceof Error ? error.message : 'Erreur lors de l\'envoi');
+      toast.error('Erreur lors de la suppression du message');
     }
   };
 
-  const deleteContact = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce message ?')) return;
+  const handleViewDetails = async (contact: Contact) => {
+    setSelectedContact(contact);
+    setIsDetailModalOpen(true);
+    
+    if (!contact.isRead) {
+      await handleMarkAsRead(contact._id);
+    }
+  };
 
-    try {
-      const response = await apiCall(`${API_URL}/api/contact/${id}`, {
-        method: 'DELETE'
-      });
+  const handleOpenReply = (contact: Contact) => {
+    setSelectedContact(contact);
+    setIsReplyModalOpen(true);
+  };
 
-      if (response.ok) {
-        setContacts(prev => prev.filter(contact => contact.id !== id));
-        if (selectedContact?.id === id) {
-          setSelectedContact(null);
-        }
-        toast.success('Message supprimé avec succès');
-        fetchStats();
+  // Ouvrir le popover de suppression
+  const openDeletePopover = (contactId: string, event: React.MouseEvent) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setDeletePopover({
+      isOpen: true,
+      contactId,
+      position: {
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX
       }
-    } catch (error) {
-      console.error('Erreur deleteContact:', error);
-      toast.error('Erreur lors de la suppression');
-    }
+    });
   };
 
-  const getSenderName = (contact: Contact): string => {
-    if (contact.firstName && contact.lastName) {
-      return `${contact.firstName} ${contact.lastName}`;
-    }
-    if (contact.firstName) return contact.firstName;
-    if (contact.lastName) return contact.lastName;
-    return contact.email.split('@')[0];
-  };
-
-  const formatDate = (dateStr: string): string => {
-    return new Date(dateStr).toLocaleDateString('fr-FR', {
+  // Formatage de la date
+  const formatDate = (date: Date | string) => {
+    return new Date(date).toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -253,266 +200,407 @@ const AdminMessages: React.FC = () => {
     });
   };
 
-  // Chargement initial
-  useEffect(() => {
-    console.log('🔐 État authentification:', { isAuthenticated, token: !!token });
-    
-    if (isAuthenticated) {
-      console.log('✅ Utilisateur authentifié, chargement des données...');
-      fetchContacts();
-      fetchStats();
-    }
-  }, [isAuthenticated, fetchContacts, fetchStats]);
-
-  // Rechargement quand les filtres changent
-  useEffect(() => {
-    if (isAuthenticated) {
-      const timeoutId = setTimeout(() => {
-        fetchContacts();
-      }, 300);
-        
-      return () => clearTimeout(timeoutId);
-    }
-  }, [searchTerm, filter, isAuthenticated, fetchContacts]);
-
-  // Si non authentifié, afficher un message
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <Mail className="w-16 h-16 mx-auto mb-4 text-slate-400" />
-          <h2 className="text-xl font-semibold text-slate-800 mb-2">Accès non autorisé</h2>
-          <p className="text-slate-600">Veuillez vous connecter pour accéder aux messages</p>
-        </div>
-      </div>
-    );
-  }
+  // Pagination
+  const totalPages = Math.ceil(totalContacts / filters.limit);
+  const handlePageChange = (newPage: number) => {
+    setFilters(prev => ({ ...prev, page: newPage }));
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4">
-      {/* Header avec statistiques */}
+    <div className="p-4">
+      {/* En-tête */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">Messages de contact</h1>
-        <p className="text-slate-600">Gérez les messages reçus via le formulaire de contact</p>
-        
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
-              <div className="text-2xl font-bold text-slate-800">{stats.total}</div>
-              <div className="text-sm text-slate-600">Total</div>
+        <h1 className="text-2xl md:text-3xl font-bold text-blue-900 mb-2">
+          Gestion des Messages
+        </h1>
+        <p className="text-blue-700">
+          Gérez les messages des utilisateurs et répondez à leurs demandes
+        </p>
+      </div>
+
+      {/* Cartes de statistiques */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white rounded-lg border border-blue-200 p-4">
+            <div className="flex items-center">
+              <div className="bg-blue-500 p-2 rounded-lg">
+                <Icon.Email />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm text-blue-600">Total Messages</p>
+                <p className="text-2xl font-bold text-blue-900">{stats.total}</p>
+              </div>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
-              <div className="text-2xl font-bold text-blue-600">{stats.unread}</div>
-              <div className="text-sm text-slate-600">Non lus</div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-blue-200 p-4">
+            <div className="flex items-center">
+              <div className="bg-blue-500 p-2 rounded-lg">
+                <Icon.Email />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm text-blue-600">Non Lus</p>
+                <p className="text-2xl font-bold text-blue-900">{stats.unread}</p>
+              </div>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
-              <div className="text-2xl font-bold text-emerald-600">{stats.read}</div>
-              <div className="text-sm text-slate-600">Lus</div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-blue-200 p-4">
+            <div className="flex items-center">
+              <div className="bg-blue-500 p-2 rounded-lg">
+                <Icon.Check />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm text-blue-600">Répondu</p>
+                <p className="text-2xl font-bold text-blue-900">{stats.responded}</p>
+              </div>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
-              <div className="text-2xl font-bold text-purple-600">{stats.responded}</div>
-              <div className="text-sm text-slate-600">Répondu</div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-blue-200 p-4">
+            <div className="flex items-center">
+              <div className="bg-blue-500 p-2 rounded-lg">
+                <Icon.Calendar />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm text-blue-600">Ce Mois</p>
+                <p className="text-2xl font-bold text-blue-900">{stats.thisMonth}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Barre de filtres et recherche */}
+      <div className="bg-white rounded-lg border border-blue-200 p-4 mb-6">
+        <div className="flex flex-col md:flex-row gap-4">
+          {/* Recherche */}
+          <div className="flex-1">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Rechercher par nom, email ou message..."
+                value={filters.search}
+                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }))}
+                className="w-full pl-10 pr-4 py-2 border border-blue-300 rounded-lg focus:outline-none"
+              />
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Icon.Search />
+              </div>
+            </div>
+          </div>
+
+          {/* Filtres */}
+          <div className="flex gap-2">
+            <select
+              value={filters.isRead === undefined ? '' : filters.isRead.toString()}
+              onChange={(e) => setFilters(prev => ({ 
+                ...prev, 
+                isRead: e.target.value === '' ? undefined : e.target.value === 'true',
+                page: 1 
+              }))}
+              className="px-4 py-2 border border-blue-300 rounded-lg focus:outline-none"
+            >
+              <option value="">Tous les statuts</option>
+              <option value="false">Non lus</option>
+              <option value="true">Lus</option>
+            </select>
+
+            <button
+              onClick={() => {
+                setFilters({ page: 1, limit: 10, search: '', isRead: undefined });
+              }}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none"
+            >
+              <Icon.Refresh />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tableau des messages */}
+      <div className="bg-white rounded-lg border border-blue-200 overflow-hidden">
+        {/* En-tête du tableau */}
+        <div className="px-4 py-3 bg-blue-500 text-white">
+          <h2 className="text-lg font-semibold">Messages des Utilisateurs</h2>
+        </div>
+
+        {/* Tableau */}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-blue-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-blue-900 uppercase tracking-wider">
+                  Utilisateur
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-blue-900 uppercase tracking-wider">
+                  Message
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-blue-900 uppercase tracking-wider">
+                  Date
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-blue-900 uppercase tracking-wider">
+                  Statut
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-blue-900 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-blue-200">
+              {contacts.map((contact) => (
+                <tr 
+                  key={contact._id} 
+                  className={`hover:bg-blue-50 ${
+                    !contact.isRead ? 'bg-blue-25' : ''
+                  }`}
+                >
+                  <td className="px-4 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="bg-blue-500 p-2 rounded-full">
+                        <Icon.User />
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm font-medium text-blue-900">
+                          {contact.firstName} {contact.lastName}
+                        </p>
+                        <p className="text-sm text-blue-600">{contact.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <p className="text-sm text-blue-900 line-clamp-2">
+                      {contact.message}
+                    </p>
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap">
+                    <p className="text-sm text-blue-600">
+                      {formatDate(contact.createdAt)}
+                    </p>
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      contact.isRead 
+                        ? 'bg-blue-100 text-blue-800' 
+                        : 'bg-blue-500 text-white'
+                    }`}>
+                      {contact.isRead ? 'Lu' : 'Non lu'}
+                    </span>
+                    {contact.adminResponse && (
+                      <span className="ml-1 inline-flex px-2 py-1 text-xs font-semibold bg-blue-100 text-blue-800 rounded-full">
+                        Répondu
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleViewDetails(contact)}
+                        className="text-blue-500 hover:text-blue-600 focus:outline-none"
+                        title="Voir les détails"
+                      >
+                        <Icon.Eye />
+                      </button>
+                      
+                      <button
+                        onClick={() => handleOpenReply(contact)}
+                        className="text-blue-500 hover:text-blue-600 focus:outline-none"
+                        title="Répondre"
+                      >
+                        <Icon.Reply />
+                      </button>
+                      
+                      {!contact.isRead && (
+                        <button
+                          onClick={() => handleMarkAsRead(contact._id)}
+                          className="text-blue-500 hover:text-blue-600 focus:outline-none"
+                          title="Marquer comme lu"
+                        >
+                          <Icon.Check />
+                        </button>
+                      )}
+                      
+                      <button
+                        onClick={(e) => openDeletePopover(contact._id, e)}
+                        className="text-blue-500 hover:text-blue-600 focus:outline-none"
+                        title="Supprimer"
+                      >
+                        <Icon.Trash />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-4 py-3 bg-blue-50 border-t border-blue-200">
+            <div className="flex flex-col sm:flex-row items-center justify-between">
+              <p className="text-sm text-blue-700 mb-2 sm:mb-0">
+                Page {filters.page} sur {totalPages} • {totalContacts} messages
+              </p>
+              <div className="flex space-x-1">
+                <button
+                  onClick={() => handlePageChange(filters.page - 1)}
+                  disabled={filters.page === 1}
+                  className="px-3 py-1 rounded border border-blue-300 text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed hover:border-blue-500 focus:outline-none"
+                >
+                  Précédent
+                </button>
+                <button
+                  onClick={() => handlePageChange(filters.page + 1)}
+                  disabled={filters.page === totalPages}
+                  className="px-3 py-1 rounded border border-blue-300 text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed hover:border-blue-500 focus:outline-none"
+                >
+                  Suivant
+                </button>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Liste des messages */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
-          {/* Filtres et recherche */}
-          <div className="p-4 border-b border-slate-200">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Rechercher par email, nom ou message..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setFilter('all')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    filter === 'all' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  Tous
-                </button>
-                <button
-                  onClick={() => setFilter('unread')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    filter === 'unread' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  Non lus
-                </button>
-                <button
-                  onClick={() => setFilter('read')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    filter === 'read' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  Lus
-                </button>
-              </div>
+      {/* Modal de détails */}
+      {isDetailModalOpen && selectedContact && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg border border-blue-300 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 bg-blue-500 text-white">
+              <h3 className="text-lg font-semibold">Détails du Message</h3>
             </div>
-          </div>
-
-          {/* Liste */}
-          <div className="max-h-[600px] overflow-y-auto">
-            {isLoading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-              </div>
-            ) : contacts.length === 0 ? (
-              <div className="p-8 text-center text-slate-500">
-                <Mail className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                <p>Aucun message trouvé</p>
-              </div>
-            ) : (
-              contacts.map(contact => (
-                <div
-                  key={contact.id}
-                  className={`border-b border-slate-100 last:border-b-0 p-4 cursor-pointer transition-colors hover:bg-slate-50 ${
-                    selectedContact?.id === contact.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
-                  } ${!contact.isRead ? 'bg-slate-50' : ''}`}
-                  onClick={() => {
-                    setSelectedContact(contact);
-                    if (!contact.isRead) {
-                      markAsRead(contact.id);
-                    }
-                  }}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-slate-400" />
-                      <span className="font-semibold text-slate-800">
-                        {getSenderName(contact)}
-                      </span>
-                      {!contact.isRead && (
-                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {contact.adminResponse && (
-                        <CheckCircle className="w-4 h-4 text-emerald-500" />
-                      )}
-                      <Clock className="w-3 h-3 text-slate-400" />
-                      <span className="text-xs text-slate-500">
-                        {formatDate(contact.createdAt).split(' ')[0]}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="text-sm text-slate-600 mb-1">{contact.email}</div>
-                  <p className="text-slate-700 line-clamp-2 text-sm">
-                    {contact.message}
-                  </p>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Détail du message */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
-          {selectedContact ? (
-            <div className="h-full flex flex-col">
-              {/* En-tête */}
-              <div className="p-6 border-b border-slate-200">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-800 mb-1">
-                      {getSenderName(selectedContact)}
-                    </h2>
-                    <p className="text-slate-600">{selectedContact.email}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {selectedContact.isRead ? (
-                      <CheckCircle className="w-5 h-5 text-emerald-500" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-blue-500" />
-                    )}
-                    <span className="text-sm text-slate-500">
-                      {formatDate(selectedContact.createdAt)}
-                    </span>
-                  </div>
-                </div>
-
-                {selectedContact.adminResponse && (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                    <div className="text-sm font-semibold text-emerald-800 mb-1">
-                      ✓ Réponse envoyée le {selectedContact.respondedAt ? formatDate(selectedContact.respondedAt) : 'Date inconnue'}
-                    </div>
-                    <p className="text-emerald-700 text-sm">{selectedContact.adminResponse}</p>
-                  </div>
-                )}
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-blue-700 mb-1">
+                  De
+                </label>
+                <p className="text-blue-900">
+                  {selectedContact.firstName} {selectedContact.lastName}
+                </p>
+                <p className="text-blue-600 text-sm">{selectedContact.email}</p>
               </div>
 
-              {/* Message */}
-              <div className="flex-1 p-6 overflow-y-auto">
-                <div className="prose prose-slate max-w-none">
-                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">
+              <div>
+                <label className="block text-sm font-medium text-blue-700 mb-1">
+                  Date d'envoi
+                </label>
+                <p className="text-blue-900">
+                  {formatDate(selectedContact.createdAt)}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-blue-700 mb-1">
+                  Message
+                </label>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <p className="text-blue-900 whitespace-pre-wrap">
                     {selectedContact.message}
                   </p>
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="p-6 border-t border-slate-200">
-                {!selectedContact.adminResponse ? (
-                  <>
-                    <textarea
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      placeholder="Tapez votre réponse ici..."
-                      className="w-full h-32 p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                    />
-                    <div className="flex gap-3 mt-4">
-                      <button
-                        onClick={() => sendReply(selectedContact.id)}
-                        disabled={!replyText.trim()}
-                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                      >
-                        <Reply className="w-4 h-4" />
-                        Envoyer la réponse
-                      </button>
-                      <button
-                        onClick={() => deleteContact(selectedContact.id)}
-                        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Supprimer
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => deleteContact(selectedContact.id)}
-                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Supprimer
-                    </button>
+              {selectedContact.adminResponse && (
+                <div>
+                  <label className="block text-sm font-medium text-blue-700 mb-1">
+                    Votre réponse
+                  </label>
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <p className="text-blue-900 whitespace-pre-wrap">
+                      {selectedContact.adminResponse}
+                    </p>
+                    <p className="text-blue-600 text-sm mt-2">
+                      Répondu le {formatDate(selectedContact.respondedAt!)}
+                    </p>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="h-full flex items-center justify-center p-8 text-slate-500">
-              <div className="text-center">
-                <Mail className="w-16 h-16 mx-auto mb-4 text-slate-400" />
-                <p>Sélectionnez un message pour afficher son contenu</p>
-              </div>
+
+            <div className="px-6 py-4 bg-blue-50 border-t border-blue-200 flex justify-end space-x-2">
+              <button
+                onClick={() => setIsDetailModalOpen(false)}
+                className="px-4 py-2 text-blue-700 border border-blue-300 rounded-lg hover:border-blue-500 focus:outline-none"
+              >
+                Fermer
+              </button>
+              {!selectedContact.adminResponse && (
+                <button
+                  onClick={() => {
+                    setIsDetailModalOpen(false);
+                    handleOpenReply(selectedContact);
+                  }}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none"
+                >
+                  Répondre
+                </button>
+              )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Modal de réponse */}
+      {isReplyModalOpen && selectedContact && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg border border-blue-300 max-w-2xl w-full">
+            <div className="px-6 py-4 bg-blue-500 text-white">
+              <h3 className="text-lg font-semibold">Répondre au message</h3>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <p className="text-blue-900 font-medium">
+                  À : {selectedContact.firstName} {selectedContact.lastName}
+                </p>
+                <p className="text-blue-600 text-sm">{selectedContact.email}</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-blue-700 mb-2">
+                  Votre réponse
+                </label>
+                <textarea
+                  value={replyMessage}
+                  onChange={(e) => setReplyMessage(e.target.value)}
+                  rows={6}
+                  className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:outline-none resize-none"
+                  placeholder="Tapez votre réponse ici..."
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-blue-50 border-t border-blue-200 flex justify-end space-x-2">
+              <button
+                onClick={() => {
+                  setIsReplyModalOpen(false);
+                  setReplyMessage('');
+                }}
+                className="px-4 py-2 text-blue-700 border border-blue-300 rounded-lg hover:border-blue-500 focus:outline-none"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleReply}
+                disabled={!replyMessage.trim()}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none"
+              >
+                Envoyer la réponse
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popover de confirmation de suppression */}
+      <DeleteConfirmPopover
+        isOpen={deletePopover.isOpen}
+        onClose={() => setDeletePopover({ isOpen: false, contactId: null, position: { top: 0, left: 0 } })}
+        onConfirm={() => deletePopover.contactId && handleDelete(deletePopover.contactId)}
+        position={deletePopover.position}
+      />
     </div>
   );
 };

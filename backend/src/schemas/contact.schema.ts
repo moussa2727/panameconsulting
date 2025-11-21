@@ -1,3 +1,4 @@
+// contact.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -39,6 +40,15 @@ export class Contact {
     @Prop()
     respondedAt?: Date;
 
+    @Prop({ type: Types.ObjectId, ref: 'User' })
+    respondedBy?: Types.ObjectId;
+
+    // Champs timestamps automatiques
+    @Prop({ default: Date.now })
+    createdAt: Date;
+
+    @Prop({ default: Date.now })
+    updatedAt: Date;
 }
 
 export const ContactSchema = SchemaFactory.createForClass(Contact);

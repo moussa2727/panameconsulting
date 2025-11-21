@@ -44,47 +44,50 @@ export class ContactService {
     }
 
     // 📋 Récupérer tous les messages avec pagination et filtres
-    async findAll(
-        page: number = 1,
-        limit: number = 10,
-        isRead?: boolean,
-        search?: string
-    ): Promise<{ data: Contact[]; total: number; page: number; limit: number; }> {
-        try {
-            const skip = (page - 1) * limit;
-            
-            // Construction des filtres
-            const filters: any = {};
-            if (isRead !== undefined) filters.isRead = isRead;
-            if (search) {
-                filters.$or = [
-                    { email: { $regex: search, $options: 'i' } },
-                    { firstName: { $regex: search, $options: 'i' } },
-                    { lastName: { $regex: search, $options: 'i' } },
-                    { message: { $regex: search, $options: 'i' } }
-                ];
-            }
+   async findAll(
+  page: number = 1,
+  limit: number = 10,
+  isRead?: boolean,
+  search?: string
+) {
+  try {
+    // Valider les paramètres
+    if (page < 1) throw new BadRequestException('Le numéro de page doit être supérieur à 0');
+    if (limit < 1 || limit > 100) throw new BadRequestException('La limite doit être entre 1 et 100');
 
-            const [data, total] = await Promise.all([
-                this.contactModel.find(filters)
-                    .skip(skip)
-                    .limit(limit)
-                    .sort({ createdAt: -1 })
-                    .exec(),
-                this.contactModel.countDocuments(filters)
-            ]);
-            
-            return { 
-                data, 
-                total,
-                page,
-                limit
-            };
-        } catch (error) {
-            this.logger.error(`Erreur lors de la récupération des contacts: ${error.message}`);
-            throw error;
-        }
+    const skip = (page - 1) * limit;
+    
+    const filters: any = {};
+    if (isRead !== undefined) filters.isRead = isRead;
+    if (search?.trim()) {
+      filters.$or = [
+        { email: { $regex: search.trim(), $options: 'i' } },
+        { firstName: { $regex: search.trim(), $options: 'i' } },
+        { lastName: { $regex: search.trim(), $options: 'i' } },
+        { message: { $regex: search.trim(), $options: 'i' } }
+      ];
     }
+
+    const [data, total] = await Promise.all([
+      this.contactModel.find(filters)
+        .skip(skip)
+        .limit(limit)
+        .sort({ createdAt: -1 })
+        .exec(),
+      this.contactModel.countDocuments(filters)
+    ]);
+    
+    return { 
+      data, 
+      total,
+      page: Number(page),
+      limit: Number(limit)
+    };
+  } catch (error) {
+    this.logger.error(`Erreur lors de la récupération des contacts: ${error.message}`);
+    throw error;
+  }
+}
 
     // 👁️ Récupérer un message spécifique
     async findOne(id: string): Promise<Contact> {

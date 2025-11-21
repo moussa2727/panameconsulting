@@ -440,25 +440,25 @@ class DestinationService {
  
 
  // Dans Destination.tsx - version finale de getFullImageUrl
- getFullImageUrl = (imagePath: string) => {
-  if (!imagePath) return '/paname-consulting.jpg';
-  
-  // URLs déjà complètes
-  if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
-    return imagePath;
-  }
-  
-  const baseUrl = API_URL;
-  
-  // Nettoyer le chemin
-  let cleanPath = imagePath;
-  if (cleanPath.startsWith('/')) {
-    cleanPath = cleanPath.slice(1);
-  }
-  
-  // Construire l'URL finale
-  return `${baseUrl}/${cleanPath}`;
-};
+  getFullImageUrl = (imagePath: string) => {
+    if (!imagePath) return '/paname-consulting.jpg';
+
+    // URLs déjà complètes
+    if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
+      return imagePath;
+    }
+
+    const baseUrl = API_URL;
+
+    // Nettoyer le chemin
+    let cleanPath = imagePath;
+    if (cleanPath.startsWith('/')) {
+      cleanPath = cleanPath.slice(1);
+    }
+
+    // Construire l'URL finale
+    return `${baseUrl}/${cleanPath}`;
+  };
 
 }
 

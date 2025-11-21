@@ -1012,7 +1012,7 @@ const logoutAll = useCallback(async (): Promise<void> => {
         throw new Error('Réponse d\'authentification invalide');
       }
 
-      console.log('✅ Connexion réussie pour:', data.user.email);
+      console.log('✅ Connexion réussie pour l&apos;admin');
       
       // ✅ Stocker le token
       localStorage.setItem('token', data.accessToken);
@@ -1188,7 +1188,7 @@ const logoutAll = useCallback(async (): Promise<void> => {
 
       resetRateLimit();
 
-      toast.success(`Un email de réinitialisation a été envoyé à ${email}`);
+      toast.success(`Un email de réinitialisation a été envoyé .`);
       navigate('/connexion');
       
     } catch (err: any) {
