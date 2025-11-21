@@ -35,11 +35,8 @@ import {
   Plane,
   FileText,
   Shield,
-  MoreVertical,
   ChevronDown,
   ChevronUp,
-  Download,
-  Upload
 } from 'lucide-react';
 
 const AdminProcedures = () => {
@@ -249,7 +246,8 @@ const AdminProcedures = () => {
       toast.error(error.message || 'Erreur lors de la suppression');
     }
   };
-// AdminProcedure.tsx - GESTION D'ERREURS AMÉLIORÉE
+
+  // ✅ GESTION D'ERREURS SPÉCIFIQUE BACKEND
 const handleUpdateStepStatus = async (
   procedureId: string, 
   stepName: StepName, 
@@ -257,6 +255,8 @@ const handleUpdateStepStatus = async (
   raisonRefus?: string
 ) => {
   try {
+    console.log(`🔄 Mise à jour étape: ${stepName} -> ${newStatus}`);
+    
     const updatedProcedure = await updateStepStatus(procedureId, stepName, newStatus, raisonRefus);
     
     // Mettre à jour l'état local
@@ -271,41 +271,67 @@ const handleUpdateStepStatus = async (
     toast.success('Étape mise à jour avec succès');
     
   } catch (error: any) {
-    console.error('❌ Erreur mise à jour étape:', error);
+    console.error('❌ Erreur détaillée mise à jour étape:', error);
     
-    // Gestion spécifique par type d'erreur
-    if (error.type === 'WORKFLOW') {
-      toast.error(`Règle métier: ${error.message}`);
-    } else if (error.type === 'VALIDATION') {
-      toast.error(`Validation: ${error.message}`);
-    } else if (error.code === 'SESSION_EXPIRED') {
-      toast.error('Session expirée');
+    // ✅ GESTION SPÉCIFIQUE PAR TYPE D'ERREUR
+    if (error.message.includes('Nom d\'étape invalide')) {
+      toast.error(`Erreur: Étape "${stepName}" non reconnue par le serveur`);
+    } else if (error.message.includes('Procédure non trouvée')) {
+      toast.error('Procédure introuvable - peut-être déjà supprimée');
+    } else if (error.message.includes('Session expirée')) {
+      toast.error('Session expirée - reconnexion nécessaire');
       logout();
-    } else if (error.code === 'RATE_LIMIT') {
-      toast.error('Trop de requêtes, veuillez patienter');
+    } else if (error.message.includes('429')) {
+      toast.error('Trop de requêtes - veuillez patienter');
     } else {
-      toast.error(error.message || 'Erreur lors de la mise à jour de l\'étape');
+      toast.error(error.message || 'Erreur lors de la mise à jour');
     }
   }
 };
 
-// Rafraîchissement avec nettoyage cache
+
+  // ✅ VERSION FINALE - Sans dépendance à apiService
 const refreshProcedures = async () => {
   try {
-    // Nettoyer le cache avant rafraîchissement
-    apiService.clearCache();
+    setIsRefreshing(true);
+    console.log('🔄 Rafraîchissement manuel des procédures...');
     
+    // Forcer le rechargement sans cache
     const response = await fetchProcedures(currentPage, 50);
-    setProcedures(response.data);
     
+    setProcedures(response.data);
+    setTotalProcedures(response.total);
+    setTotalPages(response.totalPages);
+    
+    // Mettre à jour la procédure sélectionnée
     if (selectedProcedure) {
       const updatedSelected = response.data.find(p => p._id === selectedProcedure._id);
       setSelectedProcedure(updatedSelected || null);
+      
+      if (!updatedSelected) {
+        toast.info('La procédure sélectionnée a été mise à jour ou supprimée');
+      }
     }
-  } catch (error) {
-    console.error('Erreur lors du rafraîchissement:', error);
+    
+    console.log('✅ Rafraîchissement terminé:', response.data.length, 'procédures');
+    
+  } catch (error: any) {
+    console.error('❌ Erreur rafraîchissement:', error);
+    
+    // Gestion d'erreurs spécifiques
+    if (error.message.includes('Session expirée')) {
+      toast.error('Session expirée - reconnexion nécessaire');
+      logout();
+    } else if (error.message.includes('429')) {
+      toast.warning('Trop de requêtes - veuillez patienter');
+    } else {
+      toast.error('Erreur lors de l\'actualisation des données');
+    }
+  } finally {
+    setIsRefreshing(false);
   }
 };
+
   // Filtrer les procédures
   const filteredProcedures = procedures.filter(proc => {
     const matchesSearch = 

@@ -1,7 +1,6 @@
 // AdminProcedureService.ts - VERSION FONCTIONNELLE OPTIMISÉE
 import { useAuth } from '../../context/AuthContext';
 
-// ✅ Enums alignés avec le backend
 export enum StepStatus {
   PENDING = 'En attente',
   IN_PROGRESS = 'En cours',
@@ -18,9 +17,9 @@ export enum ProcedureStatus {
 }
 
 export enum StepName {
-  DEMANDE_ADMISSION = 'DEMANDE ADMISSION', 
-  DEMANDE_VISA = 'DEMANDE VISA',           
-  PREPARATIF_VOYAGE = 'PREPARATIF VOYAGE'  
+  DEMANDE_ADMISSION = 'DEMANDE ADMISSION',
+  DEMANDE_VISA = 'DEMANDE VISA', 
+  PREPARATIF_VOYAGE = 'PREPARATIF VOYAGE'
 }
 
 export interface Step {
@@ -116,50 +115,88 @@ class AdminProcedureApiService {
     return response;
   }
 
-  // ✅ CHARGEMENT DES PROCÉDURES
-  async fetchProcedures(page: number = 1, limit: number = 50): Promise<ProceduresResponse> {
-    try {
-      const url = `${this.VITE_API_URL}/api/admin/procedures/all?page=${page}&limit=${limit}`;
-      const response = await this.makeAuthenticatedRequest(url, {
-        method: 'GET',
+
+private validateProcedureData(procedure: Procedure): void {
+  if (!procedure._id) throw new Error('ID de procédure manquant');
+  if (!procedure.steps || !Array.isArray(procedure.steps)) {
+    throw new Error('Structure des étapes invalide');
+  }
+  
+  // Vérifier que les noms d'étapes correspondent au backend
+  procedure.steps.forEach(step => {
+    if (!Object.values(StepName).includes(step.nom)) {
+      console.warn(`⚠️ Nom d'étape non reconnu: "${step.nom}"`);
+    }
+  });
+}
+
+async fetchProcedures(page: number = 1, limit: number = 50): Promise<ProceduresResponse> {
+  try {
+    const url = `${this.VITE_API_URL}/api/admin/procedures/all?page=${page}&limit=${limit}`;
+    const response = await this.makeAuthenticatedRequest(url, {
+      method: 'GET',
+    });
+
+    const data = await response.json();
+    
+    // ✅ VALIDATION DES DONNÉES REÇUES
+    if (data.data && Array.isArray(data.data)) {
+      data.data.forEach((procedure: Procedure) => {
+        this.validateProcedureData(procedure);
       });
+    }
+    
+    return data;
+  } catch (error: any) {
+    console.error('❌ Erreur chargement procédures:', error);
+    throw error;
+  }
+}
 
-      const data = await response.json();
-      return data;
-    } catch (error: any) {
-      console.error('❌ Erreur chargement procédures:', error);
-      throw error;
+private validateStepUpdate(
+  procedure: Procedure, 
+  stepName: StepName, 
+  newStatus: StepStatus
+): { canUpdate: boolean; reason?: string } { // ← TYPE DE RETOUR AJOUTÉ
+  const steps = procedure.steps;
+  
+  const currentStep = steps.find(s => s.nom === stepName);
+  if (!currentStep) {
+    return { canUpdate: false, reason: 'Étape non trouvée' };
+  }
+
+  // ❌ Impossible de modifier une étape terminée/annulée/rejetée
+  if ([StepStatus.COMPLETED, StepStatus.CANCELLED, StepStatus.REJECTED].includes(currentStep.statut) && 
+      currentStep.statut !== newStatus) {
+    return { 
+      canUpdate: false, 
+      reason: `Impossible de modifier une étape ${currentStep.statut.toLowerCase()}` 
+    };
+  }
+
+  // ✅ VALIDATION STRICTE DE L'ORDRE DES ÉTAPES
+  if (stepName === StepName.DEMANDE_VISA) {
+    const admission = steps.find(s => s.nom === StepName.DEMANDE_ADMISSION);
+    if (!admission || admission.statut !== StepStatus.COMPLETED) {
+      return { 
+        canUpdate: false, 
+        reason: 'La demande d\'admission doit être terminée avant de modifier la demande de visa' 
+      };
+    }
+  }
+  
+  if (stepName === StepName.PREPARATIF_VOYAGE) {
+    const visa = steps.find(s => s.nom === StepName.DEMANDE_VISA);
+    if (!visa || visa.statut !== StepStatus.COMPLETED) {
+      return { 
+        canUpdate: false, 
+        reason: 'La demande de visa doit être terminée avant de modifier les préparatifs de voyage' 
+      };
     }
   }
 
-  // ✅ VALIDATION DES RÈGLES MÉTIER
-  private validateStepUpdate(procedure: Procedure, stepName: StepName, newStatus: StepStatus): void {
-    const steps = procedure.steps;
-    
-    const currentStep = steps.find(s => s.nom === stepName);
-    if (!currentStep) throw new Error('Étape non trouvée');
-
-    // ❌ Impossible de modifier une étape terminée/annulée/rejetée
-    if ([StepStatus.COMPLETED, StepStatus.CANCELLED, StepStatus.REJECTED].includes(currentStep.statut) && 
-        currentStep.statut !== newStatus) {
-      throw new Error(`Impossible de modifier une étape ${currentStep.statut.toLowerCase()}`);
-    }
-
-    // ✅ VALIDATION STRICTE DE L'ORDRE DES ÉTAPES
-    if (stepName === StepName.DEMANDE_VISA) {
-      const admission = steps.find(s => s.nom === StepName.DEMANDE_ADMISSION);
-      if (!admission || admission.statut !== StepStatus.COMPLETED) {
-        throw new Error('La demande d\'admission doit être terminée avant de modifier la demande de visa');
-      }
-    }
-    
-    if (stepName === StepName.PREPARATIF_VOYAGE) {
-      const visa = steps.find(s => s.nom === StepName.DEMANDE_VISA);
-      if (!visa || visa.statut !== StepStatus.COMPLETED) {
-        throw new Error('La demande de visa doit être terminée avant de modifier les préparatifs de voyage');
-      }
-    }
-  }
+  return { canUpdate: true };
+}
 
   // ✅ MISE À JOUR DU STATUT DE LA PROCÉDURE
   async updateProcedureStatus(procedureId: string, newStatus: ProcedureStatus): Promise<Procedure> {
@@ -177,58 +214,111 @@ class AdminProcedureApiService {
     }
   }
 
-  // ✅ MISE À JOUR D'ÉTAPE OPTIMISÉE
+
   async updateStepStatus(
-    procedureId: string, 
-    stepName: StepName, 
-    newStatus: StepStatus, 
-    raisonRefus?: string
-  ): Promise<Procedure> {
-    try {
-      // ✅ OPTIMISATION : Récupérer seulement cette procédure pour validation
-      const procedure = await this.getProcedureById(procedureId);
-      
-      if (!procedure) {
-        throw new Error('Procédure non trouvée');
-      }
+  procedureId: string, 
+  stepName: StepName, 
+  newStatus: StepStatus, 
+  raisonRefus?: string
+): Promise<Procedure> {
+  try {
+    console.log('🔄 updateStepStatus DÉBUT', {
+      procedureId,
+      stepName,
+      newStatus,
+      raisonRefus: raisonRefus ? 'fournie' : 'non fournie'
+    });
 
-      // ✅ VALIDATION STRICTE AVANT MISE À JOUR
-      this.validateStepUpdate(procedure, stepName, newStatus);
+    // ✅ OPTIMISATION : Récupérer seulement cette procédure pour validation
+    const procedure = await this.getProcedureById(procedureId);
+    
+    if (!procedure) {
+      console.error('❌ Procédure non trouvée:', procedureId);
+      throw new Error('Procédure non trouvée');
+    }
 
-      // ✅ VALIDATION : Raison requise pour le rejet
-      if (newStatus === StepStatus.REJECTED && !raisonRefus) {
-        throw new Error('La raison du refus est obligatoire');
-      }
+    console.log('📋 Procédure récupérée:', {
+      id: procedure._id,
+      statutGlobal: procedure.statut,
+      steps: procedure.steps.map(s => ({ nom: s.nom, statut: s.statut }))
+    });
 
-      const encodedStepName = encodeURIComponent(stepName);
-      const url = `${this.VITE_API_URL}/api/admin/procedures/${procedureId}/steps/${encodedStepName}`;
-      
-      const updateData: any = { 
-        statut: newStatus 
-      };
-      
-      if (raisonRefus) {
-        updateData.raisonRefus = raisonRefus;
-      }
+    // ✅ VALIDATION STRICTE AVANT MISE À JOUR
+    const validation = this.validateStepUpdate(procedure, stepName, newStatus);
+    console.log('✅ Validation étape:', validation);
 
-      const response = await this.makeAuthenticatedRequest(url, {
-        method: 'PUT',
-        body: JSON.stringify(updateData),
-      });
+    if (!validation.canUpdate) {
+      throw new Error(validation.reason || 'Validation échouée');
+    }
 
-      const updatedProcedure = await response.json();
+    // ✅ VALIDATION : Raison requise pour le rejet
+    if (newStatus === StepStatus.REJECTED && !raisonRefus) {
+      console.error('❌ Raison manquante pour rejet');
+      throw new Error('La raison du refus est obligatoire');
+    }
 
-      // ✅ GESTION AUTOMATIQUE DE L'ÉTAPE SUIVANTE
-      if (newStatus === StepStatus.COMPLETED) {
-        await this.activateNextStep(procedureId, stepName, updatedProcedure);
-      }
+    const encodedStepName = encodeURIComponent(stepName);
+    const url = `${this.VITE_API_URL}/api/admin/procedures/${procedureId}/steps/${encodedStepName}`;
+    
+    console.log('🌐 URL appel API:', url);
+    
+    const updateData: any = { 
+      statut: newStatus 
+    };
+    
+    if (raisonRefus) {
+      updateData.raisonRefus = raisonRefus;
+    }
 
-      return updatedProcedure;
-    } catch (error: any) {
-      console.error('❌ Erreur mise à jour étape:', error);
+    console.log('📦 Données envoyées:', updateData);
+
+    const response = await this.makeAuthenticatedRequest(url, {
+      method: 'PUT',
+      body: JSON.stringify(updateData),
+    });
+
+    console.log('✅ Réponse API reçue, statut:', response.status);
+
+    const updatedProcedure = await response.json();
+    console.log('📋 Procédure mise à jour:', {
+      id: updatedProcedure._id,
+      statutGlobal: updatedProcedure.statut,
+      steps: updatedProcedure.steps.map((s: { nom: any; statut: any; }) => ({ nom: s.nom, statut: s.statut }))
+    });
+
+    // ✅ GESTION AUTOMATIQUE DE L'ÉTAPE SUIVANTE
+    console.log('🔍 Vérification activation étape suivante...');
+    console.log('Condition:', {
+      newStatus,
+      shouldActivateNext: newStatus === StepStatus.COMPLETED
+    });
+
+    if (newStatus === StepStatus.COMPLETED) {
+      console.log('🚀 Déclenchement activateNextStep...');
+      await this.activateNextStep(procedureId, stepName, updatedProcedure);
+    } else {
+      console.log('⏸️  Aucune activation automatique (statut non COMPLETED)');
+    }
+
+    console.log('✅ updateStepStatus TERMINÉ avec succès');
+    return updatedProcedure;
+
+  } catch (error: any) {
+    console.error('❌ ERREUR CRITIQUE updateStepStatus:', {
+      procedureId,
+      stepName, 
+      newStatus,
+      error: error.message,
+      stack: error.stack
+    });
+    
+    if (error instanceof Error && error.message.includes('Validation')) {
       throw error;
     }
+    
+    throw new Error(`Erreur lors de la mise à jour de l'étape: ${error.message}`);
   }
+}
 
   // ✅ RÉCUPÉRATION D'UNE PROCÉDURE SPÉCIFIQUE
   private async getProcedureById(procedureId: string): Promise<Procedure> {

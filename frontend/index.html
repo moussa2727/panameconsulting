@@ -47,41 +47,64 @@
   <link rel="apple-touch-icon" href="/paname-consulting.png" />
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#0ea5e9" />
-
-  <!-- Préchargement et optimisation des ressources -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="dns-prefetch" href="https://maps.googleapis.com" />
 
-  <!-- Préchargement des polices critiques -->
-  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="google-font" onload="this.onload=null" />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+
   <noscript>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
   </noscript>
-
   <!-- Canonical URL -->
   <link rel="canonical" href="https://panameconsulting.vercel.app" />
 
+  <!-- Resource Hints supplémentaires -->
+<link rel="dns-prefetch" href="https://panameconsulting.onrender.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+
   <!-- Structured Data JSON-LD -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "ProfessionalService",
-    "name": "Paname Consulting",
-    "description": "Services d'accompagnement pour études à l'étranger, voyages d'affaires et demandes de visa",
-    "url": "https://panameconsulting.vercel.app",
-    "telephone": "+223-91-83-09-41",
-    "email": "panameconsulting906@gmail.com",
-    "address": {
-      "@type": "PostalAddress",
-      "streetAddress": "Kalaban Coura, Imm.Bore en face de l'hôtel Wassulu",
-      "addressLocality": "Bamako",
-      "addressCountry": "ML"
+ <!-- Structured Data JSON-LD amélioré -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "ProfessionalService",
+      "@id": "https://panameconsulting.vercel.app/#organization",
+      "name": "Paname Consulting",
+      "description": "Services d'accompagnement pour études à l'étranger, voyages d'affaires et demandes de visa",
+      "url": "https://panameconsulting.vercel.app",
+      "telephone": "+223-91-83-09-41",
+      "email": "panameconsulting906@gmail.com",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Kalaban Coura, Imm.Bore en face de l'hôtel Wassulu",
+        "addressLocality": "Bamako",
+        "addressCountry": "ML"
+      },
+      "openingHours": "Mo-Fr 09:00-18:00",
+      "serviceType": ["Student Counseling", "Visa Services", "Business Travel"],
+      "areaServed": ["ML", "FR", "CA", "US"],
+      "sameAs": [
+        "https://www.facebook.com/panameconsulting",
+        "https://www.linkedin.com/company/panameconsulting"
+      ]
     },
-    "openingHours": "Mo-Fr 09:00-18:00",
-    "serviceType": ["Student Counseling", "Visa Services", "Business Travel"]
-  }
-  </script>
+    {
+      "@type": "WebSite",
+      "@id": "https://panameconsulting.vercel.app/#website",
+      "url": "https://panameconsulting.vercel.app",
+      "name": "Paname Consulting",
+      "description": "Services d'accompagnement étudiant et professionnel à l'international",
+      "publisher": {
+        "@id": "https://panameconsulting.vercel.app/#organization"
+      }
+    }
+  ]
+}
+</script>
 
   <!-- Sécurité et performances -->
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
