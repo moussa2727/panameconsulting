@@ -177,9 +177,18 @@ async refresh(@Req() req: CustomRequest, @Body() body: any, @Res() res: Response
     @Post('logout-all')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(UserRole.ADMIN)
-    @ApiOperation({ summary: 'Déconnexion de tous les utilisateurs (admin)' })
-    async systemWideLogout() {
-        return this.authService.logoutAll();
+    @ApiOperation({ summary: 'Déconnexion de tous les utilisateurs (sauf admin)' })
+    async logoutAll(@Request() req: any, @Res() res: Response) {
+        try {
+            const result = await this.authService.logoutAll();            
+            return res.json({ 
+                message: result.message,
+                stats: result.stats
+            });
+        } catch (error) {
+            console.error('Erreur logoutAll:', error);
+            return res.status(500).json({ message: 'Erreur lors de la déconnexion globale' });
+        }
     }
 
    

@@ -61,7 +61,27 @@ export class UsersService {
       }
     }
 
+      async validateUser(email: string, password: string): Promise<User | null> {
+    const user = await this.findByEmail(email);
+    if (user && await bcrypt.compare(password, user.password)) {
+      return user;
+    }
+    return null;
+  }
 
+  async exists(userId: string): Promise<boolean> {
+    const user = await this.userModel.findById(userId).exec();
+    return !!user;
+  }
+
+    async findByEmail(email: string): Promise<User | null> {
+      return this.userModel.findOne({ email: email.toLowerCase().trim() }).exec();
+    }
+
+    async findByRole(role: UserRole): Promise<User | null> {
+      return this.userModel.findOne({ role }).exec();
+    }
+      
     async findOne(id: string): Promise<User | null> {
       return this.userModel.findById(id).exec();
     }
@@ -103,62 +123,28 @@ export class UsersService {
   }
 
 
-  async logoutAll(): Promise<{ message: string, loggedOutCount: number }> {
+  // DANS users.service.ts - vérifier la méthode logoutAll
+async logoutAll(): Promise<{ message: string, loggedOutCount: number }> {
+    // CRITIQUE: Ne déconnecter que les utilisateurs non-admin
     const activeUsers = await this.userModel.find({
-      isActive: true,
-      role: { $ne: UserRole.ADMIN } // Ne pas déconnecter les admins
+        isActive: true,
+        role: { $ne: UserRole.ADMIN } // ← Exclure l'admin
     }).exec();
 
     const updatePromises = activeUsers.map(user => 
-      this.userModel.findByIdAndUpdate(user._id, {
-        isActive: false,
-        logoutUntil: new Date(Date.now() + 24 * 60 * 60 * 1000)
-      })
+        this.userModel.findByIdAndUpdate(user._id, {
+            isActive: false,
+            logoutUntil: new Date(Date.now() + 24 * 60 * 60 * 1000)
+        })
     );
 
     await Promise.all(updatePromises);
 
     return {
-      message: `${activeUsers.length} utilisateurs déconnectés`,
-      loggedOutCount: activeUsers.length
+        message: `${activeUsers.length} utilisateurs déconnectés (admin conservé)`,
+        loggedOutCount: activeUsers.length
     };
-  }
-
-
-  async findByIdOrThrow(id: string): Promise<User> {
-    const user = await this.findById(id);
-    if (!user) {
-      throw new NotFoundException('Utilisateur non trouvé');
-    }
-    return user;
-  }
-
-
-  async findByEmail(email: string): Promise<User | null> {
-    return this.userModel.findOne({ email }).exec();
-  }
-
-
-  async findByRole(role: UserRole): Promise<User | null> { // Utiliser UserRole
-    return this.userModel.findOne({ role }).exec();
-  }
-
-
-  async exists(userId: string): Promise<boolean> {
-    const user = await this.userModel.findById(userId).exec();
-    return !!user;
-  }
-
-
-
-  async validateUser(email: string, password: string): Promise<User | null> {
-    const user = await this.findByEmail(email);
-    if (user && await bcrypt.compare(password, user.password)) {
-      return user;
-    }
-    return null;
-  }
-
+}
 
 
 async create(createUserDto: RegisterDto): Promise<User> {

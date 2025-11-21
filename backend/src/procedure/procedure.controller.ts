@@ -43,23 +43,19 @@ export class ProcedureController {
     }
 
     @Get('admin/procedures/all')
-    @UseGuards(RolesGuard)
-    @Roles(UserRole.ADMIN)
-    @ApiOperation({ summary: 'Lister toutes les procédures (Admin)' })
-    @ApiQuery({ name: 'page', required: false, type: Number })
-    @ApiQuery({ name: 'limit', required: false, type: Number })
-    @ApiQuery({ name: 'email', required: false, type: String })
-    async getAllProcedures(
-        @Query('page') page: number = 1,
-        @Query('limit') limit: number = 10,
-        @Query('email') email?: string
-    ) {
-        if (page < 1) throw new BadRequestException('Le numéro de page doit être supérieur à 0');
-        if (limit < 1 || limit > 100) throw new BadRequestException('La limite doit être entre 1 et 100');
-        
-        this.logger.log(`Liste procédures admin - Page: ${page}, Limit: ${limit}, Email: ${email ? 'filtré' : 'tous'}`);
-        return this.procedureService.getAllProcedures(page, limit, email);
-    }
+@UseGuards(RolesGuard)
+@Roles(UserRole.ADMIN)
+@ApiOperation({ summary: 'Lister toutes les procédures non supprimées (Admin)' })
+async getAllProcedures(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10
+) {
+    if (page < 1) throw new BadRequestException('Le numéro de page doit être supérieur à 0');
+    if (limit < 1 || limit > 100) throw new BadRequestException('La limite doit être entre 1 et 100');
+    
+    this.logger.log(`Liste procédures admin - Page: ${page}, Limit: ${limit}`);
+    return this.procedureService.getActiveProcedures(page, limit);
+}
     
     @Put('admin/procedures/:id/reject')
     @UseGuards(RolesGuard)
@@ -108,15 +104,6 @@ export class ProcedureController {
     ) {
         this.logger.log(`Suppression procédure - ID: ${id}`);
         return this.procedureService.softDelete(id, reason);
-    }
-
-    @Put('admin/procedures/:id/restore')
-    @UseGuards(RolesGuard)
-    @Roles(UserRole.ADMIN)
-    @ApiOperation({ summary: 'Restaurer une procédure supprimée' })
-    async restoreProcedure(@Param('id') id: string) {
-        this.logger.log(`Restauration procédure - ID: ${id}`);
-        return this.procedureService.restoreProcedure(id);
     }
 
     @Get('admin/procedures/stats')

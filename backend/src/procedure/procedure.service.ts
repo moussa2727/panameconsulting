@@ -109,128 +109,112 @@ export class ProcedureService {
         return procedure;
     }
 
-    async updateStep(
-        id: string, 
-        stepName: string, 
-        updateDto: UpdateStepDto
-    ): Promise<Procedure> {
+    // procedure.service.ts - CORRECTION DE LA MÉTHODE updateStep
+async updateStep(
+    id: string, 
+    stepName: string, 
+    updateDto: UpdateStepDto
+): Promise<Procedure> {
+    try {
+        this.logger.log(`🔄 Début mise à jour étape - ID: ${id}, Étape: ${stepName}`);
+        
+        // ✅ DÉCODAGE SÉCURISÉ
+        let decodedStepName: string;
         try {
-            this.logger.log(`🔄 Début mise à jour étape - ID: ${id}, Étape: ${stepName}`);
-            
-            // ✅ DÉCODAGE SÉCURISÉ
-            let decodedStepName: string;
-            try {
-                decodedStepName = decodeURIComponent(stepName);
-                this.logger.log(`🔍 Étape décodée: "${decodedStepName}"`);
-            } catch (decodeError) {
-                throw new BadRequestException(`Nom d'étape mal formé: ${stepName}`);
-            }
-            
-            // ✅ VALIDATION DU NOM D'ÉTAPE
-            const validStepNames = Object.values(StepName);
-            if (!validStepNames.includes(decodedStepName as StepName)) {
-                this.logger.error(`❌ Nom d'étape invalide: "${decodedStepName}". Valides: ${validStepNames.join(', ')}`);
-                throw new BadRequestException(
-                    `Nom d'étape invalide: "${decodedStepName}". ` +
-                    `Étapes valides: ${validStepNames.join(', ')}`
-                );
-            }
-
-            // ✅ RECHERCHE DE LA PROCÉDURE
-            const procedure = await this.procedureModel.findById(id).exec();
-            if (!procedure) {
-                this.logger.error(`❌ Procédure non trouvée: ${id}`);
-                throw new NotFoundException('Procédure non trouvée');
-            }
-
-            this.logger.log(`🔍 Procédure trouvée ${procedure.nom}`);
-            this.logger.log(`🔍 Étapes disponibles: ${procedure.steps.map(s => s.nom).join(', ')}`);
-
-            // ✅ RECHERCHE DE L'ÉTAPE
-            const stepIndex = procedure.steps.findIndex((step: Step) => step.nom === decodedStepName);
-            if (stepIndex === -1) {
-                this.logger.error(`❌ Étape non trouvée: "${decodedStepName}" dans la procédure ${id}`);
-                throw new NotFoundException(`Étape "${decodedStepName}" non trouvée dans cette procédure`);
-            }
-
-            this.logger.log(`✅ Étape trouvée à l'index: ${stepIndex}`);
-
-            // ✅ VALIDATION DES DONNÉES DE MISE À JOUR
-            if (updateDto.statut === StepStatus.REJECTED && !updateDto.raisonRefus) {
-                throw new BadRequestException('La raison du refus est obligatoire lorsque le statut est "Rejeté"');
-            }
-
-            const now = new Date();
-
-            // ✅ CONSTRUCTION DES MISES À JOUR
-            const stepUpdates: Partial<Step> = {
-                dateMaj: now
-            };
-
-            // Ajouter statut seulement s'il est défini
-            if (updateDto.statut !== undefined) {
-                stepUpdates.statut = updateDto.statut;
-                this.logger.log(`📝 Nouveau statut: ${updateDto.statut}`);
-            }
-
-            // Ajouter raisonRefus seulement s'il est défini
-            if (updateDto.raisonRefus !== undefined) {
-                stepUpdates.raisonRefus = updateDto.raisonRefus;
-                this.logger.log(`📝 Raison refus`);
-            }
-
-            // ✅ MISE À JOUR DE L'ÉTAPE
-            this.logger.log(`🔄 Avant mise à jour - Étape:`, procedure.steps[stepIndex]);
-            
-            procedure.steps[stepIndex] = {
-                ...procedure.steps[stepIndex],
-                ...stepUpdates
-            };
-
-            this.logger.log(`🔄 Après mise à jour - Étape:`, procedure.steps[stepIndex]);
-
-            // ✅ MISE À JOUR DU STATUT GLOBAL
-            this.updateProcedureGlobalStatus(procedure);
-            this.logger.log(`📊 Nouveau statut global: ${procedure.statut}`);
-
-            // ✅ SAUVEGARDE
-            const savedProcedure = await procedure.save();
-            this.logger.log(`💾 Procédure sauvegardée avec succès`);
-
-            // ✅ GESTION DE L'ÉTAPE SUIVANTE (si étape terminée)
-            if (updateDto.statut === StepStatus.COMPLETED && stepIndex < procedure.steps.length - 1) {
-                const nextStep = procedure.steps[stepIndex + 1];
-                if (nextStep.statut === StepStatus.PENDING) {
-                    nextStep.statut = StepStatus.IN_PROGRESS;
-                    nextStep.dateMaj = now;
-                    this.logger.log(`🚀 Passage étape suivante en "En cours": ${nextStep.nom}`);
-                    await procedure.save();
-                }
-            }
-
-            // ✅ NOTIFICATION
-            try {
-                await this.notificationService.sendProcedureUpdate(savedProcedure);
-                this.logger.log(`📧 Notification envoyée`);
-            } catch (notificationError) {
-                this.logger.warn(`⚠️ Erreur notification: ${notificationError.message}`);
-            }
-
-            this.logger.log(`✅ Étape "${decodedStepName}" mise à jour avec succès pour la procédure ${id}`);
-            return savedProcedure;
-
-        } catch (error) {
-            this.logger.error(`❌ Erreur critique mise à jour étape "${stepName}" pour ${id}:`, error);
-            
-            if (error instanceof BadRequestException || 
-                error instanceof NotFoundException || 
-                error instanceof ForbiddenException) {
-                throw error;
-            }
-            
-            throw new InternalServerErrorException(`Erreur lors de la mise à jour de l'étape: ${error.message}`);
+            decodedStepName = decodeURIComponent(stepName);
+            this.logger.log(`🔍 Étape décodée: "${decodedStepName}"`);
+        } catch (decodeError) {
+            throw new BadRequestException(`Nom d'étape mal formé: ${stepName}`);
         }
+        
+        // ✅ VALIDATION DU NOM D'ÉTAPE
+        const validStepNames = Object.values(StepName);
+        if (!validStepNames.includes(decodedStepName as StepName)) {
+            this.logger.error(`❌ Nom d'étape invalide: "${decodedStepName}". Valides: ${validStepNames.join(', ')}`);
+            throw new BadRequestException(
+                `Nom d'étape invalide: "${decodedStepName}". ` +
+                `Étapes valides: ${validStepNames.join(', ')}`
+            );
+        }
+
+        // ✅ RECHERCHE DE LA PROCÉDURE
+        const procedure = await this.procedureModel.findById(id).exec();
+        if (!procedure) {
+            this.logger.error(`❌ Procédure non trouvée: ${id}`);
+            throw new NotFoundException('Procédure non trouvée');
+        }
+
+        // ✅ RECHERCHE DE L'ÉTAPE
+        const stepIndex = procedure.steps.findIndex((step: Step) => step.nom === decodedStepName);
+        if (stepIndex === -1) {
+            this.logger.error(`❌ Étape non trouvée: "${decodedStepName}" dans la procédure ${id}`);
+            throw new NotFoundException(`Étape "${decodedStepName}" non trouvée dans cette procédure`);
+        }
+
+        // ✅ VALIDATION DES DONNÉES DE MISE À JOUR
+        if (updateDto.statut === StepStatus.REJECTED && !updateDto.raisonRefus) {
+            throw new BadRequestException('La raison du refus est obligatoire lorsque le statut est "Rejeté"');
+        }
+
+        const now = new Date();
+
+        // ✅ CORRECTION CRITIQUE: PRÉSERVER TOUTES LES PROPRIÉTÉS EXISTANTES
+        const existingStep = procedure.steps[stepIndex];
+        
+        // Construction de l'étape mise à jour en préservant toutes les propriétés
+        const updatedStep: Step = {
+            ...existingStep, // ✅ GARDE toutes les propriétés existantes
+            dateMaj: now
+        };
+
+        // Mettre à jour seulement les champs fournis
+        if (updateDto.statut !== undefined) {
+            updatedStep.statut = updateDto.statut;
+        }
+
+        if (updateDto.raisonRefus !== undefined) {
+            updatedStep.raisonRefus = updateDto.raisonRefus;
+        }
+
+        // ✅ MISE À JOUR SÉCURISÉE
+        procedure.steps[stepIndex] = updatedStep;
+
+        // ✅ MISE À JOUR DU STATUT GLOBAL
+        this.updateProcedureGlobalStatus(procedure);
+
+        // ✅ SAUVEGARDE
+        const savedProcedure = await procedure.save();
+
+        // ✅ GESTION DE L'ÉTAPE SUIVANTE (si étape terminée)
+        if (updateDto.statut === StepStatus.COMPLETED && stepIndex < procedure.steps.length - 1) {
+            const nextStep = procedure.steps[stepIndex + 1];
+            if (nextStep.statut === StepStatus.PENDING) {
+                nextStep.statut = StepStatus.IN_PROGRESS;
+                nextStep.dateMaj = now;
+                await procedure.save();
+            }
+        }
+
+        // ✅ NOTIFICATION
+        try {
+            await this.notificationService.sendProcedureUpdate(savedProcedure);
+        } catch (notificationError) {
+            this.logger.warn(`⚠️ Erreur notification: ${notificationError.message}`);
+        }
+
+        return savedProcedure;
+
+    } catch (error) {
+        this.logger.error(`❌ Erreur critique mise à jour étape "${stepName}" pour ${id}:`, error);
+        
+        if (error instanceof BadRequestException || 
+            error instanceof NotFoundException) {
+            throw error;
+        }
+        
+        throw new InternalServerErrorException(`Erreur lors de la mise à jour de l'étape: ${error.message}`);
     }
+}
 
     async findByEmail(email: string): Promise<Procedure[]> {
         if (!email) {
@@ -303,13 +287,10 @@ export class ProcedureService {
             throw new BadRequestException('Procédure déjà finalisée');
         }
 
-        // Soft delete avec annulation
         procedure.isDeleted = true;
         procedure.deletedAt = new Date();
         procedure.deletionReason = reason || 'Annulée par l\'utilisateur';
         procedure.statut = ProcedureStatus.CANCELLED;
-
-        // Annuler toutes les étapes en cours
         procedure.steps.forEach(step => {
             if ([StepStatus.IN_PROGRESS, StepStatus.PENDING].includes(step.statut)) {
                 step.statut = StepStatus.CANCELLED;
@@ -350,51 +331,56 @@ export class ProcedureService {
         };
     }
 
-    async softDelete(id: string, reason?: string): Promise<Procedure> {
-        const procedure = await this.procedureModel.findById(id);
-        if (!procedure) throw new NotFoundException('Procédure non trouvée');
+   // procedure.service.ts - SOFT DELETE AMÉLIORÉ
+async softDelete(id: string, reason?: string): Promise<Procedure> {
+    const procedure = await this.procedureModel.findById(id);
+    if (!procedure) throw new NotFoundException('Procédure non trouvée');
 
-        procedure.isDeleted = true;
-        procedure.deletedAt = new Date();
-        procedure.deletionReason = reason || 'Supprimée par l\'administrateur';
-        procedure.statut = ProcedureStatus.CANCELLED;
+    // ✅ SOFT DELETE: Marquer comme supprimé sans effacer
+    procedure.isDeleted = true;
+    procedure.deletedAt = new Date();
+    procedure.deletionReason = reason || 'Supprimée par l\'administrateur';
+    procedure.statut = ProcedureStatus.CANCELLED;
 
-        // Annuler toutes les étapes en cours
-        procedure.steps.forEach(step => {
-            if ([StepStatus.IN_PROGRESS, StepStatus.PENDING].includes(step.statut)) {
-                step.statut = StepStatus.CANCELLED;
-                step.dateMaj = new Date();
-            }
-        });
+    // Annuler toutes les étapes en cours
+    procedure.steps.forEach(step => {
+        if ([StepStatus.IN_PROGRESS, StepStatus.PENDING].includes(step.statut)) {
+            step.statut = StepStatus.CANCELLED;
+            step.dateMaj = new Date();
+        }
+    });
 
-        const savedProcedure = await procedure.save();
-        await this.notificationService.sendCancellationNotification(savedProcedure);
+    const savedProcedure = await procedure.save();
+    
+    this.logger.log(`🗑️ Procédure marquée comme supprimée (soft delete): ${id}`);
+    return savedProcedure;
+}
 
-        this.logger.log(`🗑️ Procédure supprimée (soft delete): ${id}`);
-        return savedProcedure;
-    }
+async getActiveProcedures(page: number = 1, limit: number = 10, email?: string) {
+    const skip = (page - 1) * limit;
+    const query: any = { isDeleted: false }; // ✅ SEULEMENT LES NON SUPPRIMÉES
+    
+    if (email) query.email = email.toLowerCase();
 
-    async restoreProcedure(id: string): Promise<Procedure> {
-        const procedure = await this.procedureModel.findById(id);
-        if (!procedure) throw new NotFoundException('Procédure non trouvée');
+    const [data, total] = await Promise.all([
+        this.procedureModel.find(query)
+            .select('prenom nom email telephone destination filiere statut steps createdAt') // ✅ SEULEMENT LES CHAMPS SOUHAITÉS
+            .skip(skip)
+            .limit(limit)
+            .sort({ createdAt: -1 }),
+        this.procedureModel.countDocuments(query)
+    ]);
 
-        procedure.isDeleted = false;
-        procedure.deletedAt = undefined;
-        procedure.deletionReason = undefined;
-        procedure.statut = ProcedureStatus.IN_PROGRESS;
+    return {
+        data,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+    };
+}    
 
-        // Réactiver les étapes
-        procedure.steps.forEach((step, index) => {
-            if (step.statut === StepStatus.CANCELLED) {
-                step.statut = index === 0 ? StepStatus.IN_PROGRESS : StepStatus.PENDING;
-                step.dateMaj = new Date();
-            }
-        });
 
-        const savedProcedure = await procedure.save();
-        this.logger.log(`🔧 Procédure ${id} restaurée`);
-        return savedProcedure;
-    }
 
     async getProceduresOverview() {
         const [byStatus, byDestination, total] = await Promise.all([

@@ -18,8 +18,7 @@ import { RevokedTokenService } from './revoked-token.service';
 import { SessionService } from './session.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
-import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
-
+import { User, UserSchema } from '../schemas/user.schema';
 @Module({
     imports: [
         UsersModule,
@@ -31,6 +30,7 @@ import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
             { name: Session.name, schema: SessionSchema },
             { name: ResetToken.name, schema: ResetTokenSchema },
             { name: RefreshToken.name, schema: RefreshTokenSchema },
+            { name: User.name, schema: UserSchema },
         ]),
         JwtModule.registerAsync({
             imports: [ConfigModule],
@@ -38,7 +38,7 @@ import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
                 secret: configService.get<string>('JWT_SECRET'),
                 signOptions: {
                     expiresIn: configService.get('JWT_EXPIRES_IN', '15m'),
-                    issuer: configService.get('APP_NAME', 'api-panameconsulting'),
+                    issuer: configService.get('APP_NAME', 'panameconsulting'),
                     algorithm: 'HS256',
                 },
             }),

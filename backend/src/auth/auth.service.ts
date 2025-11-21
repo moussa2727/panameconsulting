@@ -38,6 +38,7 @@ export class AuthService {
         private readonly refreshTokenService: RefreshTokenService,
         @InjectModel(ResetToken.name)
         private readonly resetTokenModel: Model<ResetToken>,
+        @InjectModel(User.name) private userModel: Model<User>,
     ) { }
 
     // Helper function pour convertir l'ObjectId en string
@@ -371,23 +372,122 @@ export class AuthService {
         }
     }
 
-    async logoutAll() {
-        const [revokeResult, logoutResult] = await Promise.all([
-            this.revokedTokenService.revokeAllTokens(),
-            this.usersService.logoutAll()
-        ]);
+    async logoutAll(): Promise<{ 
+        message: string, 
+        loggedOutCount: number,
+        stats: any 
+    }> {
+        try {
+            this.logger.log('🚀 Début de la déconnexion globale des utilisateurs non-admin');
+            
+            // CRITIQUE: Ne déconnecter que les utilisateurs non-admin
+            const activeUsers = await this.userModel.find({
+                isActive: true,
+                role: { $ne: UserRole.ADMIN } // ← Exclure l'admin
+            }).exec();
 
-        return {
-            message: 'Déconnexion système complète effectuée',
-            stats: {
-                tokensRevoked: revokeResult.revokedCount,
-                sessionsCleared: revokeResult.sessionsCleared,
-                usersLoggedOut: logoutResult.loggedOutCount,
+            this.logger.log(`📊 ${activeUsers.length} utilisateurs non-admin actifs trouvés`);
+
+            if (activeUsers.length === 0) {
+                return {
+                    message: 'Aucun utilisateur non-admin à déconnecter',
+                    loggedOutCount: 0,
+                    stats: {
+                        usersLoggedOut: 0,
+                        adminPreserved: true,
+                        timestamp: new Date().toISOString(),
+                        note: 'Aucun utilisateur non-admin trouvé'
+                    }
+                };
             }
-        };
+
+            // Mettre à jour le statut des utilisateurs
+            const updatePromises = activeUsers.map(user => 
+                this.userModel.findByIdAndUpdate(user._id, {
+                    isActive: false,
+                    logoutUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 heures
+                })
+            );
+
+            await Promise.all(updatePromises);
+            this.logger.log(`✅ Statut de ${activeUsers.length} utilisateurs mis à jour`);
+
+            // Nettoyer les sessions des utilisateurs déconnectés
+            const userIds = activeUsers.map(user => {
+                // S'assurer que _id est converti en string
+                const userId = user._id instanceof Types.ObjectId 
+                    ? user._id.toString() 
+                    : String(user._id);
+                return userId;
+            });
+
+            const sessionCleanupPromises = userIds.map(userId => 
+                this.sessionService.deleteAllUserSessions(userId)
+            );
+
+            await Promise.all(sessionCleanupPromises);
+            this.logger.log(`🗑️ Sessions de ${userIds.length} utilisateurs nettoyées`);
+
+            // Révoquer les tokens des utilisateurs déconnectés
+            const tokenRevocationPromises = activeUsers.map(async (user) => {
+                try {
+                        const userId = user._id instanceof Types.ObjectId 
+                    ? user._id.toString() 
+                    : String(user._id);
+                    
+                    const activeSessions = await this.sessionService.getActiveSessionsByUser(userId);
+                    
+                    for (const session of activeSessions) {
+                        try {
+                            const decoded = this.jwtService.decode(session.token) as any;
+                            if (decoded && decoded.exp) {
+                                await this.revokedTokenService.revokeToken(
+                                    session.token, 
+                                    new Date(decoded.exp * 1000)
+                                );
+                            }
+                        } catch (error) {
+                            this.logger.warn(`Erreur révocation token pour user ${user._id}: ${error.message}`);
+                        }
+                    }
+                } catch (error) {
+                    this.logger.warn(`Erreur récupération sessions pour user ${user._id}: ${error.message}`);
+                }
+            });
+
+            await Promise.all(tokenRevocationPromises);
+            this.logger.log(`🔐 Tokens de ${activeUsers.length} utilisateurs révoqués`);
+
+            // Nettoyer les refresh tokens
+            const refreshTokenCleanupPromises = userIds.map(userId =>
+                this.refreshTokenService.deactivateAllForUser(userId)
+            );
+
+            await Promise.all(refreshTokenCleanupPromises);
+            this.logger.log(`🔄 Refresh tokens de ${userIds.length} utilisateurs désactivés`);
+
+            const result = {
+                message: `${activeUsers.length} utilisateurs déconnectés avec succès (admin conservé)`,
+                loggedOutCount: activeUsers.length,
+                stats: {
+                    usersLoggedOut: activeUsers.length,
+                    adminPreserved: true,
+                    timestamp: new Date().toISOString(),
+                    userEmails: activeUsers.map(user => user.email), // Pour le debugging
+                    sessionCleaned: userIds.length,
+                    tokensRevoked: activeUsers.length
+                }
+            };
+
+            this.logger.log(`🎯 Déconnexion globale terminée: ${result.message}`);
+            return result;
+
+        } catch (error) {
+            this.logger.error(`❌ Erreur lors de la déconnexion globale: ${error.message}`, error.stack);
+            throw new BadRequestException(`Erreur lors de la déconnexion globale: ${error.message}`);
+        }
     }
 
-    // Gestion des tokens
     async revokeToken(token: string, expiresAt: Date): Promise<void> {
         try {
             await this.revokedTokenService.revokeToken(token, expiresAt);

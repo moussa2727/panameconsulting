@@ -9,6 +9,7 @@ interface AuthContextType {
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: (redirectPath?: string, silent?: boolean) => void;
+  logoutAll: () => Promise<void>; 
   register: (data: RegisterFormData) => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
@@ -28,6 +29,7 @@ interface AuthContextType {
   saveRedirectPath: (path: string) => void;
   getRedirectPath: () => string | null;
 }
+
 
 interface User {
   telephone?: string;
@@ -172,168 +174,218 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ===== DÉCLARATIONS AVANCÉES DES FONCTIONS PRINCIPALES =====
-  
-  // Déclarer les fonctions principales d'abord pour éviter les références circulaires
   const logout = useCallback(async (redirectPath?: string, silent?: boolean): Promise<void> => {
-    const tokenToRevoke = token || localStorage.getItem('token');
-    
-    console.log('🔓 Début de la déconnexion...');
+      const tokenToRevoke = token || localStorage.getItem('token');
+      
+      console.log('🔓 Début de la déconnexion complète...');
 
-    // 1. Nettoyer tous les brouillons de formulaire
-    try {
-      const metadata = getFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA) || {};
-      Object.keys(metadata).forEach(formId => {
-        removeFromSession(`${ALLOWED_SESSION_KEYS.FORM_DRAFTS}${formId}`);
-      });
-      removeFromSession(ALLOWED_SESSION_KEYS.FORM_DRAFTS_METADATA);
-      console.log('✅ Brouillons nettoyés');
-    } catch (error) {
-      console.warn('⚠️ Erreur nettoyage brouillons:', error);
-    }
-
-    // 2. Supprimer les tokens du localStorage
-    try {
-      localStorage.removeItem('token');
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      console.log('✅ Tokens supprimés du localStorage');
-    } catch (error) {
-      console.warn('⚠️ Erreur suppression tokens localStorage:', error);
-    }
-
-    // 3. Nettoyer l'état React
-    setToken(null);
-    setUser(null);
-    setError(null);
-    console.log('✅ État React nettoyé');
-
-    // 4. Réinitialiser le rate limiting
-    resetRateLimit();
-
-    // 5. Nettoyer les cookies
-    try {
-      const cookies = [
-        'access_token', 'refresh_token', 'token', 'auth_token',
-        'cookie_consent', 'session_id'
+      // 1. Liste exhaustive de tous les tokens à supprimer
+      const ALL_TOKENS = [
+          'token', 'access_token', 'refresh_token', 'auth_token',
+          'accessToken', 'refreshToken', 'jwt_token', 'jwt',
+          'user_token', 'session_token', 'bearer_token'
       ];
-      
-      const domain = window.location.hostname;
-      const isLocalhost = domain === 'localhost' || domain === '127.0.0.1';
-      
-      cookies.forEach(cookieName => {
-        // Suppression pour le domaine actuel
-        document.cookie = `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
-        
-        // Suppression pour le sous-domaine si en production
-        if (!isLocalhost) {
-          document.cookie = `${cookieName}=; Path=/; Domain=.${domain}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
-        }
-        
-        // Suppression spécifique pour localhost
-        if (isLocalhost) {
-          document.cookie = `${cookieName}=; Path=/; Domain=localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
-        }
-      });
-      console.log('✅ Cookies nettoyés');
-    } catch (error) {
-      console.warn('⚠️ Erreur nettoyage cookies:', error);
-    }
 
-    // 6. Nettoyer les timeouts et intervalles
-    if (refreshTimeoutRef.current) {
-      window.clearTimeout(refreshTimeoutRef.current);
-      refreshTimeoutRef.current = null;
-    }
-
-    if (checkIntervalRef.current) {
-      window.clearInterval(checkIntervalRef.current);
-      checkIntervalRef.current = null;
-    }
-
-    if (rateLimitRetryTimeoutRef.current) {
-      window.clearTimeout(rateLimitRetryTimeoutRef.current);
-      rateLimitRetryTimeoutRef.current = null;
-    }
-
-    if (cleanupIntervalRef.current) {
-      window.clearInterval(cleanupIntervalRef.current);
-      cleanupIntervalRef.current = null;
-    }
-    console.log('✅ Timeouts nettoyés');
-
-    // 7. Appel API de déconnexion (si pas silent et token présent)
-    if (!silent && tokenToRevoke) {
+      // 2. Supprimer tous les tokens du localStorage
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-        await fetch(`${VITE_API_URL}/api/auth/logout`, {
-          method: 'POST',
-          headers: { 
-            'Authorization': `Bearer ${tokenToRevoke}`,
-            'Content-Type': 'application/json'
-          },
-          credentials: 'include',
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-        console.log('✅ Déconnexion API réussie');
+          ALL_TOKENS.forEach(tokenName => {
+              localStorage.removeItem(tokenName);
+              localStorage.removeItem(tokenName.toLowerCase());
+              localStorage.removeItem(tokenName.toUpperCase());
+          });
+          console.log('✅ Tous les tokens supprimés du localStorage');
       } catch (error) {
-        console.warn('⚠️ Erreur lors de la déconnexion API:', error);
+          console.warn('⚠️ Erreur suppression tokens localStorage:', error);
       }
-    }
 
-    // 8. Mettre à jour les métadonnées de session
-    try {
-      saveToSession(ALLOWED_SESSION_KEYS.SESSION_METADATA, {
-        sessionStart: Date.now(),
-        sessionId: crypto.randomUUID?.(),
-        userAgent: navigator.userAgent.substring(0, 100),
-        hasActiveSession: false,
-        loggedOutAt: new Date().toISOString()
-      });
-      console.log('✅ Métadonnées de session mises à jour');
-    } catch (error) {
-      console.warn('⚠️ Erreur mise à jour métadonnées:', error);
-    }
-
-    // 9. Nettoyer les données sensibles supplémentaires
-    try {
-      cleanupExpiredFormDrafts();
-      
-      // Nettoyer les données temporaires
-      removeFromSession(ALLOWED_SESSION_KEYS.REDIRECT_PATH);
-      removeFromSession(ALLOWED_SESSION_KEYS.PASSWORD_RESET_HASH);
-      removeFromSession(ALLOWED_SESSION_KEYS.RATE_LIMIT_INFO);
-      
-      console.log('✅ Données sensibles nettoyées');
-    } catch (error) {
-      console.warn('⚠️ Erreur nettoyage données sensibles:', error);
-    }
-
-    // 10. Redirection
-    const finalRedirectPath = redirectPath || '/connexion';
-    
-    console.log(`🔄 Redirection après déconnexion vers: ${finalRedirectPath}`);
-    
-    setTimeout(() => {
-      navigate(finalRedirectPath, { 
-        replace: true,
-        state: {
-          from: 'logout',
-          timestamp: Date.now()
-        }
-      });
-      
-      window.dispatchEvent(new Event('storage'));
-      
-      if (!silent) {
-        toast.info('Vous avez été déconnecté avec succès');
+      // 3. Supprimer tous les tokens du sessionStorage
+      try {
+          ALL_TOKENS.forEach(tokenName => {
+              sessionStorage.removeItem(tokenName);
+              sessionStorage.removeItem(tokenName.toLowerCase());
+              sessionStorage.removeItem(tokenName.toUpperCase());
+          });
+          console.log('✅ Tous les tokens supprimés du sessionStorage');
+      } catch (error) {
+          console.warn('⚠️ Erreur suppression tokens sessionStorage:', error);
       }
-    }, 100);
+
+      // 4. Nettoyer l'état React
+      setToken(null);
+      setUser(null);
+      setError(null);
+      console.log('✅ État React nettoyé');
+
+      // 5. Réinitialiser le rate limiting
+      resetRateLimit();
+
+      // 6. Nettoyer TOUS les cookies de manière exhaustive
+      try {
+          const cookiesToClear = [
+              'refresh_token', 'refreshToken', 'RefreshToken', 'Refresh_Token',
+              'access_token', 'accessToken', 'AccessToken', 'Access_Token',
+              'token', 'Token', 'auth_token', 'authToken', 'AuthToken',
+              'jwt_token', 'jwtToken', 'JWTToken', 'JWT_Token',
+              'session_token', 'sessionToken', 'refresh_Token', 'access_Token', 'SessionToken',
+              'bearer_token', 'bearerToken', 'BearerToken',
+              'user_token', 'userToken', 'UserToken',
+              'cookie_consent', 'session_id', 'SessionId'
+          ];
+          
+          const domain = window.location.hostname;
+          const isLocalhost = domain === 'localhost' || domain === '127.0.0.1';
+          
+          cookiesToClear.forEach(cookieName => {
+              // Suppression pour le chemin racine
+              document.cookie = `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+              document.cookie = `${cookieName}=; Path=/; Domain=${domain}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+              
+              // Suppression pour le sous-domaine en production
+              if (!isLocalhost) {
+                  const baseDomain = domain.split('.').slice(-2).join('.');
+                  document.cookie = `${cookieName}=; Path=/; Domain=.${baseDomain}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+                  document.cookie = `${cookieName}=; Path=/; Domain=.${domain}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+              }
+              
+              // Suppression spécifique pour localhost
+              if (isLocalhost) {
+                  document.cookie = `${cookieName}=; Path=/; Domain=localhost; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+                  document.cookie = `${cookieName}=; Path=/; Domain=127.0.0.1; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+              }
+          });
+          console.log('✅ Tous les cookies nettoyés');
+      } catch (error) {
+          console.warn('⚠️ Erreur nettoyage cookies:', error);
+      }
+
+      // 7. Nettoyer les timeouts et intervalles
+      if (refreshTimeoutRef.current) {
+          window.clearTimeout(refreshTimeoutRef.current);
+          refreshTimeoutRef.current = null;
+      }
+
+      if (checkIntervalRef.current) {
+          window.clearInterval(checkIntervalRef.current);
+          checkIntervalRef.current = null;
+      }
+
+      if (rateLimitRetryTimeoutRef.current) {
+          window.clearTimeout(rateLimitRetryTimeoutRef.current);
+          rateLimitRetryTimeoutRef.current = null;
+      }
+
+      if (cleanupIntervalRef.current) {
+          window.clearInterval(cleanupIntervalRef.current);
+          cleanupIntervalRef.current = null;
+      }
+      console.log('✅ Timeouts nettoyés');
+
+      // 8. Appel API de déconnexion (si pas silent et token présent)
+      if (!silent && tokenToRevoke) {
+          try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+              await fetch(`${VITE_API_URL}/api/auth/logout`, {
+                  method: 'POST',
+                  headers: { 
+                      'Authorization': `Bearer ${tokenToRevoke}`,
+                      'Content-Type': 'application/json'
+                  },
+                  credentials: 'include',
+                  signal: controller.signal
+              });
+
+              clearTimeout(timeoutId);
+              console.log('✅ Déconnexion API réussie');
+          } catch (error) {
+              console.warn('⚠️ Erreur lors de la déconnexion API:', error);
+          }
+      }
+
+      // 9. Nettoyer les données sensibles supplémentaires
+      try {
+          cleanupExpiredFormDrafts();
+          
+          // Nettoyer toutes les données de session
+          sessionStorage.clear();
+          
+          console.log('✅ SessionStorage complètement nettoyé');
+      } catch (error) {
+          console.warn('⚠️ Erreur nettoyage sessionStorage:', error);
+      }
+
+      // 10. Forcer un re-render et redirection
+      const finalRedirectPath = redirectPath || '/connexion';
+      
+      console.log(`🔄 Redirection après déconnexion vers: ${finalRedirectPath}`);
+      
+      setTimeout(() => {
+          // Navigation avec remplacement
+          navigate(finalRedirectPath, { 
+              replace: true,
+              state: {
+                  from: 'logout',
+                  timestamp: Date.now(),
+                  cleared: true
+              }
+          });
+          
+          // Déclencher des événements de stockage pour synchroniser d'autres onglets
+          window.dispatchEvent(new Event('storage'));
+          window.dispatchEvent(new Event('localStorage'));
+          window.dispatchEvent(new Event('sessionStorage'));
+          
+          if (!silent) {
+              toast.info('Vous avez été déconnecté avec succès');
+          }
+          
+          // Forcer un rechargement complet si nécessaire
+          setTimeout(() => {
+              window.location.reload();
+          }, 100);
+      }, 150);
 
   }, [VITE_API_URL, token, navigate]);
+
+  
+
+  // DANS AuthContext.tsx - AJOUTER la fonction logoutAll
+const logoutAll = useCallback(async (): Promise<void> => {
+    try {
+        setIsLoading(true);
+        
+        // Appel API pour déconnecter tous les utilisateurs (sauf admin)
+        const response = await fetch(`${VITE_API_URL}/api/auth/logout-all`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            console.log('✅ Déconnexion globale réussie', result);
+            toast.success(`✅ ${result.message} - ${result.stats?.loggedOutCount || 0} utilisateurs déconnectés`);
+            
+            // Rafraîchir la page pour mettre à jour l'interface (admin reste connecté)
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else {
+            console.warn('⚠️ Déconnexion globale partiellement échouée');
+            toast.warning('⚠️ Déconnexion globale partiellement échouée');
+        }
+    } catch (error) {
+        console.error('❌ Erreur déconnexion globale:', error);
+        toast.error('❌ Erreur lors de la déconnexion globale');
+    } finally {
+        setIsLoading(false);
+    }
+}, [VITE_API_URL, token]);
+
 
   // ===== GESTION SESSIONSTORAGE SÉCURISÉ =====
   const validateSessionKey = useCallback((key: string): boolean => {
@@ -1393,7 +1445,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [checkAuth, token]);
 
   // ===== VALEUR DU CONTEXTE =====
-  const value: AuthContextType = {
+const value: AuthContextType = {
     user,
     token,
     isAuthenticated: !!user && !!token,
@@ -1402,6 +1454,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     error,
     login,
     logout,
+    logoutAll,
     register,
     forgotPassword,
     resetPassword,
@@ -1416,7 +1469,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     clearFormDraft,
     saveRedirectPath,
     getRedirectPath,
-  };
+};
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
