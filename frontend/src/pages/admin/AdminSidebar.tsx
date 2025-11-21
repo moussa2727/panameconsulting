@@ -304,7 +304,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
         {isCollapsed && (
           <button
             onClick={toggleSidebar}
-            className='fixed left-4 top-4 z-50 p-3 bg-gradient-to-r from-blue-600 to-sky-500 text-white rounded-full shadow-lg hover:from-blue-700 hover:to-sky-600 transition-all duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent'
+            className='fixed left-4 top-4 z-50 p-1 bg-blue-600 text-white rounded shadow-lg hover:bg-blue-500 transition-all duration-200 focus:ring-none focus:outline-none border border-transparent'
             aria-label='Ouvrir le menu'
           >
             <ChevronRight className='w-5 h-5' />
@@ -329,7 +329,9 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
             <div className='flex justify-between items-center h-16'>
               {/* Logo et titre */}
               <div className='flex items-center space-x-3'>
-                
+                <Link to='/' className='w-8 h-8 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-sm font-semibold'>
+                     <SettingsIcon className='w-5 h-5' />
+                  </Link>
                 <h1 className='text-lg font-bold text-slate-800'>Gestionnaire</h1>
               </div>
 
@@ -357,17 +359,6 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
           {isMobileMenuOpen && (
             <div className='bg-white border-t border-slate-200/60 shadow-xl absolute top-16 left-0 right-0 z-50 backdrop-blur-sm bg-white/95 max-h-[85vh] overflow-y-auto'>
               <div className='px-4 py-4 space-y-2'>
-                {/* En-tête profil mobile */}
-                <div className='flex items-center space-x-3 px-4 py-3 mb-2 bg-slate-50 rounded-xl'>
-                  <div className='w-12 h-12 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-lg font-semibold'>
-                    {getNameInitial()}
-                  </div>
-                  <div className='flex-1 min-w-0'>
-                    <p className='text-base font-semibold text-slate-800 truncate'>{getDisplayName()}</p>
-                    <p className='text-sm text-slate-500'>Administrateur</p>
-                  </div>
-                </div>
-
                 {/* Navigation */}
                 <div className='space-y-1'>
                   {menuItems.map(item => (

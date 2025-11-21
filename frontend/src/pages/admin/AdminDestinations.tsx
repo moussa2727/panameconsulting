@@ -6,7 +6,7 @@ import {
   type Destination,
   type CreateDestinationData,
   type UpdateDestinationData
-} from '../../api/admin/DestionService';
+} from '../../api/admin/AdminDestionService';
 
 interface DataSourceInfo {
   count: number;
@@ -45,7 +45,12 @@ const AdminDestinations: React.FC = () => {
     setLoading(true);
     try {
       const data = await destinationService.getAllDestinationsWithoutPagination();
-      setDestinations(data);
+     setDestinations(
+        data.map((dest: any) => ({
+          ...dest,
+          imagePath: destinationService.getFullImageUrl(dest.imagePath),
+        }))
+      );
       
       // Mettre à jour les informations de source de données
       const stats = await destinationService.getStatistics();
@@ -404,7 +409,7 @@ const AdminDestinations: React.FC = () => {
                         alt={dest.country}
                         className="w-20 h-20 object-cover rounded-lg border border-gray-200 shadow-sm"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src = 'https://via.placeholder.com/80x80?text=Image+non+disponible';
+                          (e.target as HTMLImageElement).src = '/paname-placeholder.png';
                         }}
                       />
                     </div>

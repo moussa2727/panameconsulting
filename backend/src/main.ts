@@ -198,9 +198,7 @@ app.enableCors({
     maxAge: '30d',
   });
   app.use((req: { path: string | string[]; headers: { authorization: any; }; }, res: { status: (arg0: number) => { (): any; new(): any; json: { (arg0: { message: string; }): any; new(): any; }; }; }, next: () => void) => {
-  // Allow CORS preflight to pass without Authorization
-  // so browsers can complete OPTIONS before sending actual request
-  // and avoid false 401 causing CORS errors.
+
   if ((req as any).method === 'OPTIONS') {
     return next();
   }

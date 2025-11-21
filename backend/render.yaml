@@ -7,8 +7,8 @@ services:
     branch: main         # Branche de déploiement automatique
     buildCommand: |
       cd backend
-      npm install
-      npm run build
+      pnpm install
+      pnpm run build
     startCommand: node backend/dist/main.js
     autoDeploy: true
     envVars:

@@ -55,7 +55,7 @@ const Destination = () => {
   const [loading, setLoading] = useState(true);
 
 const getFullImageUrl = (imagePath: string) => {
-  if (!imagePath) return '/placeholder-image.avif';
+  if (!imagePath) return '/paname-consulting';
   
   // Si c'est une URL complète (http/data:)
   if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
@@ -68,13 +68,13 @@ const getFullImageUrl = (imagePath: string) => {
   }
 
   // Pour la production
-  return `${VITE_API_URL}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
+  return `${VITE_API_URL}/api/${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
 };
 
   const fetchDestinations = async () => {
   try {
     setLoading(true);
-    const response = await fetch(`${VITE_API_URL}/api/destination`, {
+    const response = await fetch(`${VITE_API_URL}/api/destinations`, {
       credentials: 'include',
       headers: { Accept: 'application/json' }
     });
@@ -143,7 +143,7 @@ const getFullImageUrl = (imagePath: string) => {
                   alt={`${dest.country} flag`}
                   className='w-full h-full object-cover transition-transform duration-500 group-hover:scale-105'
                   onError={e => {
-                    (e.target as HTMLImageElement).src = '/placeholder-image.jpg';
+                    (e.target as HTMLImageElement).src = '/paname-consulting.jpg';
                   }}
                   loading='lazy'
                 />

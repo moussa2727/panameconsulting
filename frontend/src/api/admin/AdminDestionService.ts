@@ -434,21 +434,26 @@ class DestinationService {
   /**
    * Générer l'URL complète d'une image
    */
-  getFullImageUrl(imagePath: string): string {
-    if (!imagePath) {
-      return '/placeholder-destination.jpg';
-    }
-
-    if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
-      return imagePath;
-    }
-
-    if (import.meta.env.DEV) {
-      return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
-    }
-
-    return `${API_URL}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
+ /**
+ * Générer l'URL complète d'une image
+ */
+ getFullImageUrl = (imagePath: string) => {
+  if (!imagePath) return '/paname-consulting.ico';
+  
+  // Si c'est une URL complète (http/data:)
+  if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
+    return imagePath;
   }
+
+  // Pour les images en développement (Vite)
+  if (import.meta.env.DEV) {
+    return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+  }
+
+  // Pour la production
+  return `${this.baseUrl}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
+};
+
 }
 
 // Export singleton

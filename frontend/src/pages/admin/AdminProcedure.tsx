@@ -10,7 +10,7 @@ import {
   StepStatus, 
   ProcedureStatus,
   StepName 
-} from '../../api/admin/AdminProcedureApi';
+} from '../../api/admin/AdminProcedureService';
 
 const AdminProcedures = () => {
   const { user, logout } = useAuth();

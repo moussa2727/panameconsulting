@@ -253,7 +253,7 @@ export class RendezvousService {
             }
         }
 
-        // ⚠️ CORRECTION : SOFT DELETE au lieu de suppression définitive
+        // ⚠️ CORRECTION : SOFT DELETE au lieu de suppression définitive changement de statut en Annulé
         const updated = await this.rendezvousModel.findByIdAndUpdate(
             id,
             { 

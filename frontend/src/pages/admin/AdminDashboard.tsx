@@ -10,7 +10,7 @@ import {
   BookOpen,
   Globe
 } from 'lucide-react';
-import { dashboardApi, DashboardStats, RecentActivity } from '../../api/admin/DashboardApi';
+import { dashboardApi, DashboardStats, RecentActivity } from '../../api/admin/AdminDashboardService';
 interface DashboardData {
   stats: DashboardStats | null;
   recentActivities: RecentActivity[];
@@ -122,7 +122,7 @@ const AdminDashboard = () => {
       description: 'En cours et terminées'
     },
     {
-      title: 'Administrateurs',
+      title: 'Administrateur',
       value: stats.adminUsers || 0,
       icon: Users,
       color: 'bg-orange-500',

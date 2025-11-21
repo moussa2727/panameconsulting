@@ -54,8 +54,10 @@
   <link rel="dns-prefetch" href="https://maps.googleapis.com" />
 
   <!-- Préchargement des polices critiques -->
-  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" /></noscript>
+  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="google-font" onload="this.onload=null" />
+  <noscript>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  </noscript>
 
   <!-- Canonical URL -->
   <link rel="canonical" href="https://panameconsulting.vercel.app" />
@@ -86,7 +88,8 @@
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
   <meta name="format-detection" content="telephone=no" />
 
-  <!-- Fallback CSS sans skeleton -->
+
+  <!-- Fallback CSS  -->
   <style>
     @font-face {
       font-family: 'Inter Fallback';
@@ -124,7 +127,6 @@
     </div>
     <style>#root { display: none; }</style>
   </noscript>
-
   <!-- Fallback navigateurs anciens -->
   <script>
     if (!window.Promise || !window.fetch || !window.Symbol) {
@@ -133,5 +135,4 @@
     }
   </script>
 </body>
-
 </html>

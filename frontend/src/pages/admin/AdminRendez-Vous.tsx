@@ -6,7 +6,6 @@ import {
   Clock, 
   MapPin, 
   Search, 
-  MoreVertical, 
   Trash2, 
   Plus,
   User,
@@ -14,35 +13,39 @@ import {
   Phone,
   GraduationCap,
   BookOpen,
-  Globe,
-  AlertCircle
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Filter,
+  X
 } from 'lucide-react';
+import { useAdminRendezVousService, Rendezvous, CreateRendezVousData } from '../../api/admin/AdminRendezVousService';
 
-interface Rendezvous {
+// Interface pour les destinations de l'API
+interface Destination {
   _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  telephone: string;
-  date: string;
-  time: string;
-  status: 'En attente' | 'Confirmé' | 'Terminé' | 'Annulé';
-  destination: string;
-  destinationAutre?: string;
-  niveauEtude: string;
-  filiere: string;
-  filiereAutre?: string;
-  avisAdmin?: 'Favorable' | 'Défavorable';
+  country: string;
+  imagePath: string;
+  text: string;
   createdAt: string;
   updatedAt: string;
 }
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-
 const AdminRendezVous = () => {
-  const { user, token, refreshToken, isAuthenticated } = useAuth();
+  const { user } = useAuth();
+  const {
+    fetchRendezvous,
+    fetchAvailableDates,
+    fetchAvailableSlots,
+    updateStatus,
+    deleteRendezvous,
+    createRendezvous
+  } = useAdminRendezVousService();
+
   const [rendezvous, setRendezvous] = useState<Rendezvous[]>([]);
+  const [destinations, setDestinations] = useState<Destination[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingDestinations, setIsLoadingDestinations] = useState(true);
   const [selectedRendezVous, setSelectedRendezVous] = useState<Rendezvous | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('tous');
@@ -50,15 +53,15 @@ const AdminRendezVous = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [limit] = useState(10);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showDeletePopover, setShowDeletePopover] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [showAvisModal, setShowAvisModal] = useState(false);
   const [pendingStatusUpdate, setPendingStatusUpdate] = useState<{id: string, status: string} | null>(null);
-  const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // États pour la création d'un rendez-vous
-  const [newRendezVous, setNewRendezVous] = useState({
+  const [newRendezVous, setNewRendezVous] = useState<CreateRendezVousData>({
     firstName: '',
     lastName: '',
     email: '',
@@ -72,20 +75,39 @@ const AdminRendezVous = () => {
     filiereAutre: ''
   });
 
+  // Récupérer les destinations depuis l'API
+  const fetchDestinations = async () => {
+    try {
+      setIsLoadingDestinations(true);
+      const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+      const response = await fetch(`${API_URL}/api/destinations/all`);
+      
+      if (!response.ok) {
+        throw new Error('Erreur lors de la récupération des destinations');
+      }
+      
+      const data = await response.json();
+      setDestinations(data);
+    } catch (error) {
+      console.error('Erreur fetchDestinations:', error);
+      toast.error('Erreur lors du chargement des destinations');
+    } finally {
+      setIsLoadingDestinations(false);
+    }
+  };
+
   // Vérifier si un rendez-vous peut être supprimé selon la logique backend
   const canDeleteRendezvous = (rdv: Rendezvous): { canDelete: boolean; message?: string } => {
     const isAdmin = user?.role === 'ADMIN';
     
-    // Les admins peuvent toujours supprimer
     if (isAdmin) {
       return { canDelete: true };
     }
 
-    // Pour les non-admins, vérifier la contrainte des 2 heures
     const rdvDateTime = new Date(`${rdv.date}T${rdv.time}:00`);
     const now = new Date();
     const diffMs = rdvDateTime.getTime() - now.getTime();
-    const twoHoursMs = 2 * 60 * 60 * 1000; // 2 heures
+    const twoHoursMs = 2 * 60 * 60 * 1000;
 
     if (diffMs <= twoHoursMs) {
       return { 
@@ -98,57 +120,12 @@ const AdminRendezVous = () => {
   };
 
   // Récupération des rendez-vous
-  const fetchRendezvous = async () => {
-    if (!token) {
-      console.error('Token non disponible');
-      return;
-    }
-
+  const loadRendezvous = async () => {
     setIsLoading(true);
-    
     try {
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        let url = `${API_URL}/api/rendezvous?page=${page}&limit=${limit}`;
-        
-        // Ajouter les filtres selon la logique backend
-        if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
-        if (selectedStatus && selectedStatus !== 'tous') url += `&status=${encodeURIComponent(selectedStatus)}`;
-
-        return fetch(url, {
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json'
-          },
-          credentials: 'include'
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Gestion du token expiré
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée');
-        }
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors de la récupération des rendez-vous');
-      }
-
-      const data = await response.json();
-      setRendezvous(data.data || []);
-      setTotalPages(Math.ceil((data.total || 0) / limit));
-
+      const result = await fetchRendezvous(page, limit, searchTerm, selectedStatus);
+      setRendezvous(result.data);
+      setTotalPages(Math.ceil((result.total || 0) / limit));
     } catch (error) {
       console.error('Erreur fetchRendezvous:', error);
       toast.error(error instanceof Error ? error.message : 'Une erreur est survenue');
@@ -157,148 +134,19 @@ const AdminRendezVous = () => {
     }
   };
 
-  // Récupération des dates disponibles
-  const fetchAvailableDates = async () => {
-    if (!token) return;
-
+  // Mise à jour du statut
+  const handleUpdateStatus = async (id: string, status: string, avisAdmin?: string) => {
     try {
-      const response = await fetch(`${API_URL}/api/rendezvous/available-dates`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        credentials: 'include'
-      });
-
-      if (response.ok) {
-        const dates = await response.json();
-        setAvailableDates(dates);
-      }
-    } catch (error) {
-      console.error('Erreur fetchAvailableDates:', error);
-    }
-  };
-
-  // Récupération des créneaux disponibles pour une date
-  const fetchAvailableSlots = async (date: string) => {
-    if (!token || !date) return;
-
-    try {
-      const response = await fetch(`${API_URL}/api/rendezvous/available-slots?date=${date}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        credentials: 'include'
-      });
-
-      if (response.ok) {
-        const slots = await response.json();
-        setAvailableSlots(slots);
-      } else {
-        setAvailableSlots([]);
-      }
-    } catch (error) {
-      console.error('Erreur fetchAvailableSlots:', error);
-      setAvailableSlots([]);
-    }
-  };
-
-  // Mise à jour du statut selon la logique backend
-    const updateStatus = async (id: string, status: string, avisAdmin?: string): Promise<void> => {
-    if (!token) {
-      toast.error('Token non disponible');
-      return;
-    }
-
-    console.log(`🔄 Tentative de mise à jour du statut: ${id} -> ${status} (avis: ${avisAdmin})`);
-
-    try {
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        const bodyData: any = { status };
-        
-        // CORRECTION STRICTE: avisAdmin UNIQUEMENT et OBLIGATOIRE pour le statut "Terminé"
-        if (status === 'Terminé') {
-          if (!avisAdmin || (avisAdmin !== 'Favorable' && avisAdmin !== 'Défavorable')) {
-            throw new Error('L\'avis admin (Favorable ou Défavorable) est obligatoire pour terminer un rendez-vous');
-          }
-          bodyData.avisAdmin = avisAdmin;
-        } else {
-          // CORRECTION STRICTE: Pour tous les autres statuts, NE PAS envoyer avisAdmin
-          // Le backend se chargera de le mettre à null si nécessaire
-          // On n'inclut PAS avisAdmin dans la requête pour les autres statuts
-          console.log(`ℹ️ Statut "${status}" - avisAdmin non inclus dans la requête`);
-        }
-
-        console.log('📤 Données envoyées au backend:', bodyData);
-
-        return fetch(`${API_URL}/api/rendezvous/${id}/status`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(bodyData),
-          credentials: 'include'
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Gestion du token expiré
-      if (response.status === 401) {
-        console.log('🔄 Token expiré, tentative de rafraîchissement...');
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          console.log('✅ Token rafraîchi avec succès');
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            console.log('🔄 Nouvelle tentative avec le nouveau token...');
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée. Veuillez vous reconnecter.');
-        }
-      }
-
-      // Gestion des erreurs HTTP
-      if (!response.ok) {
-        let errorMessage = 'Erreur lors de la mise à jour du statut';
-        
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-          
-          // Gestion spécifique des erreurs de validation backend
-          if (response.status === 400) {
-            if (errorData.message?.includes('avis admin') || errorData.message?.includes('avisAdmin')) {
-              errorMessage = 'L\'avis admin est obligatoire pour terminer un rendez-vous';
-            } else if (errorData.message?.includes('Statut invalide')) {
-              errorMessage = 'Statut invalide. Les statuts autorisés sont: En attente, Confirmé, Terminé, Annulé';
-            }
-          }
-        } catch (parseError) {
-          errorMessage = `Erreur serveur: ${response.status} ${response.statusText}`;
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      // Traitement de la réponse réussie
-      const updatedRdv = await response.json();
-      console.log('✅ Statut mis à jour avec succès:', updatedRdv);
+      const updatedRdv = await updateStatus(id, status, avisAdmin);
       
-      // Mise à jour optimiste de l'état local
       setRendezvous(prev => prev.map(rdv => {
         if (rdv._id === id) {
           const updated = { 
             ...rdv, 
             status: updatedRdv.status,
-            // CORRECTION: Mettre à jour avisAdmin seulement si présent dans la réponse
             ...(updatedRdv.avisAdmin !== undefined && { avisAdmin: updatedRdv.avisAdmin })
           };
           
-          // CORRECTION: Si le statut n'est pas "Terminé", s'assurer que avisAdmin est undefined
           if (updatedRdv.status !== 'Terminé' && updated.avisAdmin) {
             updated.avisAdmin = undefined;
           }
@@ -308,12 +156,10 @@ const AdminRendezVous = () => {
         return rdv;
       }));
       
-      // Mettre à jour également le rendez-vous sélectionné s'il s'agit du même
       if (selectedRendezVous?._id === id) {
         const updatedSelected = { 
           ...selectedRendezVous, 
           status: updatedRdv.status,
-          // CORRECTION: Même logique pour le rendez-vous sélectionné
           ...(updatedRdv.avisAdmin !== undefined && { avisAdmin: updatedRdv.avisAdmin })
         };
         
@@ -324,16 +170,12 @@ const AdminRendezVous = () => {
         setSelectedRendezVous(updatedSelected);
       }
 
-      // Fermer les modales
       setShowAvisModal(false);
       setPendingStatusUpdate(null);
 
-      // Message de succès contextuel
       let successMessage = `Statut mis à jour: ${status}`;
       if (status === 'Terminé' && avisAdmin) {
         successMessage += ` (Avis: ${avisAdmin})`;
-        
-        // Message supplémentaire pour l'avis favorable
         if (avisAdmin === 'Favorable') {
           successMessage += ' - Une procédure a été créée pour cet utilisateur';
         }
@@ -341,110 +183,43 @@ const AdminRendezVous = () => {
       
       toast.success(successMessage);
 
-      // Recharger les données après un délai pour s'assurer de la synchronisation
-      setTimeout(() => {
-        fetchRendezvous();
-      }, 1000);
-
-    } catch (error: any) {
-      console.error('❌ Erreur updateStatus:', error);
-      
-      // Gestion spécifique des erreurs d'authentification
-      if (error instanceof Error && (
-        error.message.includes('Session expirée') || 
-        error.message.includes('Token invalide') ||
-        error.message.includes('Token non disponible')
-      )) {
-        toast.error('Session expirée. Veuillez vous reconnecter.');
-      } else if (error.message.includes('avis admin') || error.message.includes('avisAdmin')) {
-        // Ne pas fermer la modale si l'erreur concerne l'avis admin manquant
-        toast.error(error.message);
-        // Garder la modale ouverte pour que l'admin puisse sélectionner un avis
-      } else {
-        // Affichage d'un message d'erreur générique
-        toast.error(error instanceof Error ? error.message : 'Une erreur est survenue lors de la mise à jour');
-        
-        // Fermer les modales en cas d'erreur générique
-        setShowAvisModal(false);
-        setPendingStatusUpdate(null);
-      }
+    } catch (error) {
+      console.error('Erreur updateStatus:', error);
+      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue lors de la mise à jour');
     }
-    };
+  };
 
-
-  // Gestion du clic sur un statut
-  const handleStatusClick = (id: string, status: string) => {
-    if (status === 'Terminé') {
-      // Pour le statut "Terminé", on demande l'avis admin
-      setPendingStatusUpdate({ id, status });
+  // Gestion du changement de statut via select
+  const handleStatusChange = (id: string, newStatus: string) => {
+    if (newStatus === 'Terminé') {
+      setPendingStatusUpdate({ id, status: newStatus });
       setShowAvisModal(true);
     } else {
-      // Pour les autres statuts, mise à jour directe
-      updateStatus(id, status);
+      handleUpdateStatus(id, newStatus);
     }
   };
 
   // Gestion de la sélection d'avis
   const handleAvisSelection = (avis: 'Favorable' | 'Défavorable') => {
     if (pendingStatusUpdate) {
-      updateStatus(pendingStatusUpdate.id, pendingStatusUpdate.status, avis);
+      handleUpdateStatus(pendingStatusUpdate.id, pendingStatusUpdate.status, avis);
     }
   };
 
-  // Suppression selon la logique backend avec restrictions temporelles
+  // Suppression
   const handleDelete = async (id: string) => {
-    if (!token) {
-      toast.error('Token non disponible');
-      return;
-    }
-
-    // Vérifier si l'utilisateur peut supprimer ce rendez-vous
     const rdvToDelete = rendezvous.find(rdv => rdv._id === id);
     if (rdvToDelete) {
       const { canDelete, message } = canDeleteRendezvous(rdvToDelete);
       if (!canDelete) {
         toast.error(message || 'Suppression non autorisée');
         setShowDeleteModal(null);
-        setShowDeletePopover(null);
         return;
       }
     }
 
     try {
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${API_URL}/api/rendezvous/${id}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json'
-          },
-          credentials: 'include'
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Gestion du token expiré
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée');
-        }
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors de la suppression');
-      }
-
-      // Mise à jour optimiste de l'état local
+      await deleteRendezvous(id);
       setRendezvous(prev => prev.filter(rdv => rdv._id !== id));
       
       if (selectedRendezVous?._id === id) {
@@ -452,7 +227,6 @@ const AdminRendezVous = () => {
       }
 
       setShowDeleteModal(null);
-      setShowDeletePopover(null);
       toast.success('Rendez-vous supprimé avec succès');
 
     } catch (error) {
@@ -461,118 +235,15 @@ const AdminRendezVous = () => {
     }
   };
 
-  // Gestion du clic sur le bouton supprimer
-  const handleDeleteClick = (rdv: Rendezvous) => {
-    const { canDelete, message } = canDeleteRendezvous(rdv);
-    
-    if (!canDelete) {
-      toast.error(message || 'Suppression non autorisée');
-      return;
-    }
-
-    setShowDeleteModal(rdv._id);
-  };
-
   // Création d'un nouveau rendez-vous
   const handleCreateRendezVous = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!token) {
-      toast.error('Token non disponible');
-      return;
-    }
-
-    // LOGIQUE STRICTE POUR LES CHAMPS "AUTRE" - IDENTIQUE AU BACKEND
-    const createData: any = {
-      firstName: newRendezVous.firstName.trim(),
-      lastName: newRendezVous.lastName.trim(),
-      email: newRendezVous.email.trim(),
-      telephone: newRendezVous.telephone.trim(),
-      date: newRendezVous.date,
-      time: newRendezVous.time,
-      niveauEtude: newRendezVous.niveauEtude
-    };
-
-    // Destination - logique stricte
-    if (newRendezVous.destination === 'Autre') {
-      if (!newRendezVous.destinationAutre || newRendezVous.destinationAutre.trim() === '') {
-        toast.error('Veuillez préciser votre destination');
-        return;
-      }
-      createData.destination = newRendezVous.destinationAutre.trim();
-      createData.destinationAutre = newRendezVous.destinationAutre.trim();
-    } else {
-      createData.destination = newRendezVous.destination;
-      // Pas de destinationAutre si pas "Autre"
-    }
-
-    // Filière - logique stricte
-    if (newRendezVous.filiere === 'Autre') {
-      if (!newRendezVous.filiereAutre || newRendezVous.filiereAutre.trim() === '') {
-        toast.error('Veuillez préciser votre filière');
-        return;
-      }
-      createData.filiere = newRendezVous.filiereAutre.trim();
-      createData.filiereAutre = newRendezVous.filiereAutre.trim();
-    } else {
-      createData.filiere = newRendezVous.filiere;
-      // Pas de filiereAutre si pas "Autre"
-    }
-
-    // Validation finale
-    if (!createData.destination || createData.destination.trim() === '') {
-      toast.error('La destination est obligatoire');
-      return;
-    }
-
-    if (!createData.filiere || createData.filiere.trim() === '') {
-      toast.error('La filière est obligatoire');
-      return;
-    }
-
-    console.log('📤 Création RDV - Données envoyées:', createData);
-
     try {
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${API_URL}/api/rendezvous`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(createData),
-          credentials: 'include'
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Gestion du token expiré
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée');
-        }
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors de la création');
-      }
-
-      const createdRdv = await response.json();
+      const createdRdv = await createRendezvous(newRendezVous);
       
-      // Mise à jour optimiste de l'état local
       setRendezvous(prev => [createdRdv, ...prev]);
       
-      // Réinitialiser le formulaire
       setNewRendezVous({
         firstName: '',
         lastName: '',
@@ -590,7 +261,6 @@ const AdminRendezVous = () => {
       setShowCreateModal(false);
       toast.success('Rendez-vous créé avec succès');
 
-      // Recharger les données disponibles
       fetchAvailableDates();
 
     } catch (error) {
@@ -604,10 +274,10 @@ const AdminRendezVous = () => {
     setNewRendezVous(prev => ({ 
       ...prev, 
       date,
-      time: '' // Réinitialiser le temps quand la date change
+      time: ''
     }));
     if (date) {
-      fetchAvailableSlots(date);
+      fetchAvailableSlots(date).then(setAvailableSlots);
     } else {
       setAvailableSlots([]);
     }
@@ -615,8 +285,9 @@ const AdminRendezVous = () => {
 
   // Initialisation
   useEffect(() => {
-    fetchRendezvous();
-    fetchAvailableDates();
+    loadRendezvous();
+    fetchAvailableDates().then(setAvailableDates);
+    fetchDestinations();
   }, [page, searchTerm, selectedStatus]);
 
   const getStatusColor = (status: string) => {
@@ -653,16 +324,21 @@ const AdminRendezVous = () => {
 
   const statuts = ['tous', 'En attente', 'Confirmé', 'Terminé', 'Annulé'];
   const avisOptions = ['Favorable', 'Défavorable'];
-  const destinations = ['Algérie', 'Turquie', 'Maroc', 'France', 'Tunisie', 'Chine', 'Russie', 'Autre'];
   const niveauxEtude = ['Bac', 'Bac+1', 'Bac+2', 'Licence', 'Master I', 'Master II', 'Doctorat'];
   const filieres = ['Informatique', 'Médecine', 'Ingénierie', 'Droit', 'Commerce', 'Autre'];
 
+  // Options de destination depuis l'API + "Autre"
+  const destinationOptions = [
+    ...destinations.map(dest => dest.country),
+    'Autre'
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-4 md:p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-3 md:p-6">
       {/* Modal de confirmation de suppression */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4">
             <div className="p-6 border-b border-slate-200">
               <div className="flex items-center gap-3">
                 <AlertCircle className="w-6 h-6 text-red-500" />
@@ -677,13 +353,13 @@ const AdminRendezVous = () => {
               <button
                 type="button"
                 onClick={() => setShowDeleteModal(null)}
-                className="px-4 py-2 text-slate-700 bg-white rounded-lg border border-slate-300 hover:bg-slate-50 transition-all duration-200 font-medium"
+                className="px-4 py-2 text-slate-700 bg-white rounded-lg border border-slate-300 hover:bg-slate-50 transition-all duration-200 font-medium focus:outline-none focus:ring-none focus:border-blue-500"
               >
                 Annuler
               </button>
               <button
                 onClick={() => handleDelete(showDeleteModal)}
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 font-medium flex items-center gap-2"
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 font-medium flex items-center gap-2 focus:outline-none focus:ring-none focus:border-blue-500"
               >
                 <Trash2 className="w-4 h-4" />
                 Supprimer
@@ -693,48 +369,51 @@ const AdminRendezVous = () => {
         </div>
       )}
 
-      {/* Modal de sélection d'avis pour le statut "Terminé" */}
+     {/* Modal de sélection d'avis pour le statut "Terminé" */}
       {showAvisModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
-            <div className="p-6 border-b border-slate-200">
-              <h2 className="text-lg font-bold text-slate-800">Avis Administratif Requis</h2>
-              <p className="text-sm text-slate-600 mt-1">
-                Pour terminer ce rendez-vous, veuillez sélectionner un avis administratif.
+          <div className="bg-white rounded-2xl shadow-xl max-w-xs w-full mx-4">
+            <div className="p-4 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-blue-500" />
+                <h2 className="text-base font-bold text-slate-800">Avis Administratif</h2>
+              </div>
+              <p className="text-xs text-slate-600 mt-1">
+                Sélectionnez un avis pour terminer le rendez-vous
               </p>
             </div>
             
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-1 gap-3">
                 {avisOptions.map(avis => (
                   <button
                     key={avis}
                     onClick={() => handleAvisSelection(avis as 'Favorable' | 'Défavorable')}
-                    className={`p-4 rounded-xl border-2 transition-all duration-200 focus:ring-none focus:outline-none ${
+                    className={`p-3 rounded-lg border-2 transition-all duration-200 focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 ${
                       avis === 'Favorable'
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300'
-                        : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 hover:border-rose-300'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                        : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
                     }`}
                   >
-                    <div className="font-semibold">{avis}</div>
+                    <div className="font-semibold text-sm">{avis}</div>
                     <div className="text-xs mt-1 opacity-75">
                       {avis === 'Favorable' 
-                        ? 'Le candidat peut passer à la procédure' 
-                        : 'Le candidat ne remplit pas les critères'
+                        ? 'Procédure créée' 
+                        : 'Critères non remplis'
                       }
                     </div>
                   </button>
                 ))}
               </div>
               
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => {
                     setShowAvisModal(false);
                     setPendingStatusUpdate(null);
                   }}
-                  className="px-4 py-2 text-slate-700 bg-white rounded-lg border border-slate-300 hover:bg-slate-50 transition-all duration-200 font-medium"
+                  className="px-3 py-2 text-xs text-slate-700 bg-white rounded-lg border border-slate-300 hover:bg-slate-50 transition-all duration-200 font-medium focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400"
                 >
                   Annuler
                 </button>
@@ -744,23 +423,28 @@ const AdminRendezVous = () => {
         </div>
       )}
 
+
       {/* Modal de création */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-4 border-b border-slate-200">
-              <h2 className="text-lg font-bold text-slate-800">Créer un nouveau rendez-vous</h2>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto mx-auto">
+            <div className="p-4 border-b border-slate-200 sticky top-0 bg-white">
+              <div className="flex items-center gap-2">
+                <Plus className="w-5 h-5 text-blue-500" />
+                <h2 className="text-lg font-bold text-slate-800">Nouveau Rendez-vous</h2>
+              </div>
             </div>
             
-            <form onSubmit={handleCreateRendezVous} className="p-4 space-y-3">
-              <div className="space-y-3">
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <label htmlFor="firstName" className="block text-xs font-medium text-slate-700 mb-1">
+            <form onSubmit={handleCreateRendezVous} className="p-4 space-y-4">
+              <div className="space-y-4">
+                {/* Prénom et Nom */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="firstName" className="block text-sm font-medium text-slate-700 mb-2">
                       Prénom *
                     </label>
                     <div className="relative">
-                      <User className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
+                      <User className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
                       <input
                         id="firstName"
                         name="firstName"
@@ -768,17 +452,18 @@ const AdminRendezVous = () => {
                         required
                         value={newRendezVous.firstName}
                         onChange={(e) => setNewRendezVous(prev => ({ ...prev, firstName: e.target.value }))}
-                        className="w-full pl-8 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200"
+                        className="w-full pl-10 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
+                        placeholder="Entrez le prénom"
                       />
                     </div>
                   </div>
                   
-                  <div className="flex-1">
-                    <label htmlFor="lastName" className="block text-xs font-medium text-slate-700 mb-1">
+                  <div>
+                    <label htmlFor="lastName" className="block text-sm font-medium text-slate-700 mb-2">
                       Nom *
                     </label>
                     <div className="relative">
-                      <User className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
+                      <User className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
                       <input
                         id="lastName"
                         name="lastName"
@@ -786,18 +471,20 @@ const AdminRendezVous = () => {
                         required
                         value={newRendezVous.lastName}
                         onChange={(e) => setNewRendezVous(prev => ({ ...prev, lastName: e.target.value }))}
-                        className="w-full pl-8 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200"
+                        className="w-full pl-10 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
+                        placeholder="Entrez le nom"
                       />
                     </div>
                   </div>
                 </div>
                 
+                {/* Email */}
                 <div>
-                  <label htmlFor="email" className="block text-xs font-medium text-slate-700 mb-1">
+                  <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-2">
                     Email *
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
+                    <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
                     <input
                       id="email"
                       name="email"
@@ -805,17 +492,19 @@ const AdminRendezVous = () => {
                       required
                       value={newRendezVous.email}
                       onChange={(e) => setNewRendezVous(prev => ({ ...prev, email: e.target.value }))}
-                      className="w-full pl-8 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200"
+                      className="w-full pl-10 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
+                      placeholder="email@exemple.com"
                     />
                   </div>
                 </div>
                 
+                {/* Téléphone */}
                 <div>
-                  <label htmlFor="telephone" className="block text-xs font-medium text-slate-700 mb-1">
+                  <label htmlFor="telephone" className="block text-sm font-medium text-slate-700 mb-2">
                     Téléphone *
                   </label>
                   <div className="relative">
-                    <Phone className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
+                    <Phone className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
                     <input
                       id="telephone"
                       name="telephone"
@@ -823,173 +512,198 @@ const AdminRendezVous = () => {
                       required
                       value={newRendezVous.telephone}
                       onChange={(e) => setNewRendezVous(prev => ({ ...prev, telephone: e.target.value }))}
-                      className="w-full pl-8 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200"
+                      className="w-full pl-10 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
+                      placeholder="+33 1 23 45 67 89"
                     />
                   </div>
                 </div>
                 
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <label htmlFor="date" className="block text-xs font-medium text-slate-700 mb-1">
-                      Date *
-                    </label>
-                    <div className="relative">
-                      <Calendar className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
-                      <select
-                        id="date"
-                        name="date"
-                        required
-                        value={newRendezVous.date}
-                        onChange={(e) => handleDateChange(e.target.value)}
-                        className="w-full pl-8 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200"
-                      >
-                        <option value="">Sélectionner une date</option>
-                        {availableDates.map(date => (
-                          <option key={date} value={date}>
-                            {new Date(date).toLocaleDateString('fr-FR')}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  
-                  <div className="flex-1">
-                    <label htmlFor="time" className="block text-xs font-medium text-slate-700 mb-1">
-                      Heure *
-                    </label>
-                    <div className="relative">
-                      <Clock className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
-                      <select
-                        id="time"
-                        name="time"
-                        required
-                        value={newRendezVous.time}
-                        onChange={(e) => setNewRendezVous(prev => ({ ...prev, time: e.target.value }))}
-                        disabled={!newRendezVous.date || availableSlots.length === 0}
-                        className="w-full pl-8 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200 disabled:bg-slate-100 disabled:cursor-not-allowed"
-                      >
-                        <option value="">Sélectionner un créneau</option>
-                        {availableSlots.map(slot => (
-                          <option key={slot} value={slot}>
-                            {slot.replace(':', 'h')}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {newRendezVous.date && availableSlots.length === 0 && (
-                  <p className="text-xs text-amber-600 text-center">
-                    Aucun créneau disponible pour cette date
-                  </p>
-                )}
-                
+                {/* Destination */}
                 <div>
-                  <label htmlFor="destination" className="block text-xs font-medium text-slate-700 mb-1">
+                  <label htmlFor="destination" className="block text-sm font-medium text-slate-700 mb-2">
                     Destination *
                   </label>
                   <div className="relative">
-                    <Globe className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
+                    <MapPin className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
                     <select
                       id="destination"
                       name="destination"
                       required
                       value={newRendezVous.destination}
                       onChange={(e) => setNewRendezVous(prev => ({ ...prev, destination: e.target.value }))}
-                      className="w-full pl-8 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200"
+                      className="w-full pl-10 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200 appearance-none bg-white"
                     >
-                      <option value="">Sélectionner une destination</option>
-                      {destinations.map(dest => (
-                        <option key={dest} value={dest}>{dest}</option>
-                      ))}
+                      <option value="">Choisissez une destination</option>
+                      {isLoadingDestinations ? (
+                        <option value="" disabled>Chargement...</option>
+                      ) : (
+                        destinationOptions.map(dest => (
+                          <option key={dest} value={dest}>{dest}</option>
+                        ))
+                      )}
                     </select>
+                    <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-slate-400 pointer-events-none" />
                   </div>
-                  {newRendezVous.destination === 'Autre' && (
-                    <input
-                      id="destinationAutre"
-                      name="destinationAutre"
-                      type="text"
-                      placeholder="Précisez la destination"
-                      required
-                      value={newRendezVous.destinationAutre}
-                      onChange={(e) => setNewRendezVous(prev => ({ ...prev, destinationAutre: e.target.value }))}
-                      className="w-full mt-2 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200"
-                    />
-                  )}
                 </div>
                 
+                {/* Destination Autre */}
+                {newRendezVous.destination === 'Autre' && (
+                  <div>
+                    <label htmlFor="destinationAutre" className="block text-sm font-medium text-slate-700 mb-2">
+                      Précisez la destination *
+                    </label>
+                    <div className="relative">
+                      <MapPin className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                      <input
+                        id="destinationAutre"
+                        name="destinationAutre"
+                        type="text"
+                        required
+                        value={newRendezVous.destinationAutre}
+                        onChange={(e) => setNewRendezVous(prev => ({ ...prev, destinationAutre: e.target.value }))}
+                        className="w-full pl-10 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
+                        placeholder="Entrez la destination"
+                      />
+                    </div>
+                  </div>
+                )}
+                
+                {/* Niveau d'étude */}
                 <div>
-                  <label htmlFor="niveauEtude" className="block text-xs font-medium text-slate-700 mb-1">
+                  <label htmlFor="niveauEtude" className="block text-sm font-medium text-slate-700 mb-2">
                     Niveau d'étude *
                   </label>
                   <div className="relative">
-                    <GraduationCap className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
+                    <GraduationCap className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
                     <select
                       id="niveauEtude"
                       name="niveauEtude"
                       required
                       value={newRendezVous.niveauEtude}
                       onChange={(e) => setNewRendezVous(prev => ({ ...prev, niveauEtude: e.target.value }))}
-                      className="w-full pl-8 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200"
+                      className="w-full pl-10 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200 appearance-none bg-white"
                     >
-                      <option value="">Sélectionner un niveau</option>
+                      <option value="">Sélectionnez un niveau</option>
                       {niveauxEtude.map(niveau => (
                         <option key={niveau} value={niveau}>{niveau}</option>
                       ))}
                     </select>
+                    <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-slate-400 pointer-events-none" />
                   </div>
                 </div>
                 
+                {/* Filière */}
                 <div>
-                  <label htmlFor="filiere" className="block text-xs font-medium text-slate-700 mb-1">
+                  <label htmlFor="filiere" className="block text-sm font-medium text-slate-700 mb-2">
                     Filière *
                   </label>
                   <div className="relative">
-                    <BookOpen className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
+                    <BookOpen className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
                     <select
                       id="filiere"
                       name="filiere"
                       required
                       value={newRendezVous.filiere}
                       onChange={(e) => setNewRendezVous(prev => ({ ...prev, filiere: e.target.value }))}
-                      className="w-full pl-8 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200"
+                      className="w-full pl-10 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200 appearance-none bg-white"
                     >
-                      <option value="">Sélectionner une filière</option>
+                      <option value="">Choisissez une filière</option>
                       {filieres.map(filiere => (
                         <option key={filiere} value={filiere}>{filiere}</option>
                       ))}
                     </select>
+                    <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-slate-400 pointer-events-none" />
                   </div>
-                  {newRendezVous.filiere === 'Autre' && (
-                    <input
-                      id="filiereAutre"
-                      name="filiereAutre"
-                      type="text"
-                      placeholder="Précisez la filière"
+                </div>
+                
+                {/* Filière Autre */}
+                {newRendezVous.filiere === 'Autre' && (
+                  <div>
+                    <label htmlFor="filiereAutre" className="block text-sm font-medium text-slate-700 mb-2">
+                      Précisez la filière *
+                    </label>
+                    <div className="relative">
+                      <BookOpen className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                      <input
+                        id="filiereAutre"
+                        name="filiereAutre"
+                        type="text"
+                        required
+                        value={newRendezVous.filiereAutre}
+                        onChange={(e) => setNewRendezVous(prev => ({ ...prev, filiereAutre: e.target.value }))}
+                        className="w-full pl-10 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
+                        placeholder="Entrez la filière"
+                      />
+                    </div>
+                  </div>
+                )}
+                
+                {/* Date */}
+                <div>
+                  <label htmlFor="date" className="block text-sm font-medium text-slate-700 mb-2">
+                    Date *
+                  </label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <select
+                      id="date"
+                      name="date"
                       required
-                      value={newRendezVous.filiereAutre}
-                      onChange={(e) => setNewRendezVous(prev => ({ ...prev, filiereAutre: e.target.value }))}
-                      className="w-full mt-2 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200"
-                    />
-                  )}
+                      value={newRendezVous.date}
+                      onChange={(e) => handleDateChange(e.target.value)}
+                      className="w-full pl-10 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200 appearance-none bg-white"
+                    >
+                      <option value="">Sélectionnez une date</option>
+                      {availableDates.map(date => (
+                        <option key={date} value={date}>
+                          {new Date(date).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                  </div>
+                </div>
+                
+                {/* Heure */}
+                <div>
+                  <label htmlFor="time" className="block text-sm font-medium text-slate-700 mb-2">
+                    Heure *
+                  </label>
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <select
+                      id="time"
+                      name="time"
+                      required
+                      value={newRendezVous.time}
+                      onChange={(e) => setNewRendezVous(prev => ({ ...prev, time: e.target.value }))}
+                      className="w-full pl-10 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200 appearance-none bg-white"
+                    >
+                      <option value="">Choisissez un créneau</option>
+                      {availableSlots.map(slot => (
+                        <option key={slot} value={slot}>{slot.replace(':', 'h')}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                  </div>
                 </div>
               </div>
               
-              <div className="flex justify-end gap-2 pt-3">
+              {/* Actions */}
+              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-3 py-2 text-xs text-slate-700 bg-white rounded-lg border border-slate-300 hover:bg-slate-50 transition-all duration-200 font-medium"
+                  className="px-4 py-2.5 text-sm text-slate-700 bg-white rounded-lg border border-slate-300 hover:bg-slate-50 transition-all duration-200 font-medium focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 order-2 sm:order-1"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-3 py-2 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-1"
+                  className="px-4 py-2.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 justify-center focus:outline-none focus:ring-none focus:border-blue-500 order-1 sm:order-2"
                 >
-                  <Plus className="w-3 h-3" />
-                  Créer
+                  <Plus className="w-4 h-4" />
+                  Créer le rendez-vous
                 </button>
               </div>
             </form>
@@ -997,187 +711,358 @@ const AdminRendezVous = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-7xl mx-auto">
-        {/* Liste des rendez-vous */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-          {/* Barre de recherche et filtres */}
-          <div className="p-4 border-b border-slate-200 bg-slate-50/50">
-            <div className="flex items-center justify-between mb-4">
-              <h1 className="text-xl font-bold text-slate-800">Gestion rendez-vous</h1>
-              <button
-  onClick={() => setShowCreateModal(true)}
-  className="px-2.5 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-all duration-200 font-medium text-xs shadow-sm hover:shadow-md flex items-center gap-1 focus:ring-none focus:outline-none"
->
-  <Plus className="w-3 h-3" />
-  Nouveau RDV
-</button>
+      <div className="max-w-7xl mx-auto">
+        {/* En-tête avec recherche et filtres */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-4 md:p-6 mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-slate-800">Gestion des Rendez-vous</h1>
+              <p className="text-slate-600 mt-1 text-sm md:text-base">Consultez et gérez tous les rendez-vous du système</p>
             </div>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2 focus:outline-none focus:ring-none focus:border-blue-500 w-full md:w-auto justify-center"
+            >
+              <Plus className="w-4 h-4" />
+              Nouveau RDV
+            </button>
+          </div>
 
-            <div className="relative mb-4">
+          {/* Barre de recherche et filtres */}
+          <div className="space-y-4">
+            <div className="relative">
               <Search className="absolute left-3 top-3.5 text-slate-400 w-4 h-4" />
               <input 
                 type="text" 
                 placeholder="Rechercher un rendez-vous..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-white border border-slate-300 rounded-xl focus:ring-none focus:outline-none focus:border-sky-500 hover:border-sky-400 transition-all duration-200"
+                className="w-full pl-10 pr-4 py-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
               />
             </div>
 
-            {/* Filtres de statut */}
-            <div className="flex flex-wrap gap-2">
-              {statuts.map(statut => (
-                <button
-                  key={statut}
-                  onClick={() => setSelectedStatus(statut)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 capitalize focus:ring-none focus:outline-none ${
-                    selectedStatus === statut
-                      ? 'bg-blue-500 text-white shadow-sm'
-                      : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 hover:border-sky-400'
-                  }`}
-                >
-                  {statut === 'tous' ? 'Tous les statuts' : statut}
-                </button>
-              ))}
+            {/* Filtres mobiles */}
+            <div className="md:hidden">
+              <button
+                onClick={() => setShowMobileFilters(!showMobileFilters)}
+                className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl flex items-center justify-between focus:outline-none focus:ring-none focus:border-blue-500"
+              >
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  <span>Filtres</span>
+                </div>
+                {showMobileFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              
+              {showMobileFilters && (
+                <div className="mt-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <select
+                    value={selectedStatus}
+                    onChange={(e) => setSelectedStatus(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500"
+                  >
+                    {statuts.map(statut => (
+                      <option key={statut} value={statut}>
+                        {statut === 'tous' ? 'Tous les statuts' : statut}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Filtres desktop */}
+            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="px-4 py-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
+              >
+                {statuts.map(statut => (
+                  <option key={statut} value={statut}>
+                    {statut === 'tous' ? 'Tous les statuts' : statut}
+                  </option>
+                ))}
+              </select>
+
+              <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200">
+                <Calendar className="w-4 h-4" />
+                <span>Total: {rendezvous.length} rendez-vous</span>
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Liste */}
-          <div className="max-h-[600px] overflow-y-auto">
+        {/* Tableau des rendez-vous */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
+          {/* Version mobile - Cards */}
+          <div className="md:hidden">
             {isLoading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+              <div className="p-8 text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
               </div>
             ) : rendezvous.length === 0 ? (
               <div className="p-8 text-center text-slate-500">
-                <Calendar className="w-16 h-16 mx-auto mb-4 text-slate-400" />
+                <Calendar className="w-12 h-12 mx-auto mb-4 text-slate-400" />
                 <p>Aucun rendez-vous trouvé</p>
               </div>
             ) : (
-              rendezvous.map(rdv => {
-                const { canDelete } = canDeleteRendezvous(rdv);
-                
-                return (
-                  <div
-                    key={rdv._id}
-                    className={`border-b border-slate-100 last:border-b-0 transition-all duration-200 cursor-pointer hover:bg-slate-50/70 ${
-                      selectedRendezVous?._id === rdv._id ? 'bg-blue-50/50 border-l-4 border-l-blue-500' : ''
-                    }`}
-                    onClick={() => setSelectedRendezVous(rdv)}
-                  >
-                    <div className="p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <div>
-                              <h3 className="font-semibold text-slate-800">
-                                {rdv.firstName} {rdv.lastName}
-                              </h3>
-                              <p className="text-slate-600 text-sm">{rdv.email}</p>
+              <div className="divide-y divide-slate-200">
+                {rendezvous.map(rdv => {
+                  const { canDelete } = canDeleteRendezvous(rdv);
+                  
+                  return (
+                    <div 
+                      key={rdv._id}
+                      className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                      onClick={() => setSelectedRendezVous(rdv)}
+                    >
+                      <div className="space-y-3">
+                        {/* En-tête */}
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="font-semibold text-slate-800">{rdv.firstName} {rdv.lastName}</h3>
+                            <p className="text-sm text-slate-600">{rdv.email}</p>
+                          </div>
+                          <select
+                            value={rdv.status}
+                            onChange={(e) => handleStatusChange(rdv._id, e.target.value)}
+                            className={`px-2 py-1 rounded-lg text-xs font-medium border focus:outline-none focus:ring-none focus:border-blue-500 ${getStatusColor(rdv.status)}`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <option value="En attente">En attente</option>
+                            <option value="Confirmé">Confirmé</option>
+                            <option value="Terminé">Terminé</option>
+                            <option value="Annulé">Annulé</option>
+                          </select>
+                        </div>
+
+                        {/* Informations */}
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-3 h-3 text-slate-400" />
+                              <span>{new Date(rdv.date).toLocaleDateString('fr-FR')}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm text-slate-500 whitespace-nowrap">
-                                {formatDate(rdv.date)} • {formatTime(rdv.time)}
-                              </span>
-                              <div className="relative">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setShowDeletePopover(showDeletePopover === rdv._id ? null : rdv._id);
-                                  }}
-                                  className="p-1 hover:bg-slate-200 rounded-lg transition-colors focus:ring-none focus:outline-none"
-                                >
-                                  <MoreVertical className="w-4 h-4 text-slate-500" />
-                                </button>
-                                
-                                {/* Popover de suppression */}
-                                {showDeletePopover === rdv._id && (
-                                  <div className="absolute right-0 top-8 bg-white rounded-xl shadow-lg border border-slate-200 z-10 min-w-[200px]">
-                                    <div className="p-3">
-                                      <p className="text-sm text-slate-700 mb-3">Êtes-vous sûr de vouloir supprimer ce rendez-vous ?</p>
-                                      <div className="flex gap-2">
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowDeletePopover(null);
-                                          }}
-                                          className="flex-1 px-3 py-2 text-xs text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
-                                        >
-                                          Annuler
-                                        </button>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteClick(rdv);
-                                          }}
-                                          disabled={!canDelete}
-                                          className={`flex-1 px-3 py-2 text-xs rounded-lg transition-colors flex items-center justify-center gap-1 ${
-                                            canDelete
-                                              ? 'bg-red-500 text-white hover:bg-red-600'
-                                              : 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                                          }`}
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                          Supprimer
-                                        </button>
-                                      </div>
-                                      {!canDelete && user?.role !== 'ADMIN' && (
-                                        <p className="text-xs text-red-500 mt-2 text-center">
-                                          Suppression impossible à moins de 2h du rendez-vous
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              <span>{formatTime(rdv.time)}</span>
                             </div>
                           </div>
-                          
-                          <div className="flex items-center gap-2 mb-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <MapPin className="w-3 h-3 text-slate-400" />
+                              <span className="truncate">
+                                {rdv.destination === 'Autre' && rdv.destinationAutre 
+                                  ? rdv.destinationAutre 
+                                  : rdv.destination
+                                }
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <BookOpen className="w-3 h-3 text-slate-400" />
+                              <span className="truncate">
+                                {rdv.filiere === 'Autre' && rdv.filiereAutre ? rdv.filiereAutre : rdv.filiere}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowDeleteModal(rdv._id);
+                            }}
+                            disabled={!canDelete && user?.role !== 'ADMIN'}
+                            className={`p-2 rounded-lg transition-colors focus:outline-none focus:ring-none focus:border-blue-500 ${
+                              canDelete || user?.role === 'ADMIN'
+                                ? 'text-red-600 hover:bg-red-50'
+                                : 'text-slate-400 cursor-not-allowed'
+                            }`}
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Avis admin */}
+                        {rdv.status === 'Terminé' && rdv.avisAdmin && (
+                          <div className="pt-2 border-t border-slate-200">
+                            <span className={`px-2 py-1 rounded-lg text-xs font-medium border ${getAvisColor(rdv.avisAdmin)}`}>
+                              Avis: {rdv.avisAdmin}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Version desktop - Table */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Contact
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Date & Heure
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Destination
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Filière & Niveau
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Statut
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center">
+                      <div className="flex justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : rendezvous.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                      <Calendar className="w-16 h-16 mx-auto mb-4 text-slate-400" />
+                      <p>Aucun rendez-vous trouvé</p>
+                    </td>
+                  </tr>
+                ) : (
+                  rendezvous.map(rdv => {
+                    const { canDelete } = canDeleteRendezvous(rdv);
+                    
+                    return (
+                      <tr 
+                        key={rdv._id}
+                        className={`hover:bg-slate-50 transition-colors cursor-pointer ${
+                          selectedRendezVous?._id === rdv._id ? 'bg-blue-50' : ''
+                        }`}
+                        onClick={() => setSelectedRendezVous(rdv)}
+                      >
+                        
+                        <td className="px-6 py-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Mail className="w-3 h-3 text-slate-400" />
+                              <span className="text-slate-700">{rdv.email}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              <span className="text-slate-700">{rdv.telephone}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="w-3 h-3 text-slate-400" />
+                              <span className="text-slate-700">
+                                {new Date(rdv.date).toLocaleDateString('fr-FR')}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              <span className="text-slate-700">{formatTime(rdv.time)}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
                             <MapPin className="w-3 h-3 text-slate-400" />
-                            <span className="text-sm text-slate-600">
+                            <span className="text-sm text-slate-700">
                               {rdv.destination === 'Autre' && rdv.destinationAutre 
                                 ? rdv.destinationAutre 
                                 : rdv.destination
                               }
                             </span>
                           </div>
-                          
-                          <div className="flex items-center gap-2">
-                            <GraduationCap className="w-3 h-3 text-slate-400" />
-                            <span className="text-sm text-slate-600">
-                              {rdv.niveauEtude} • {rdv.filiere === 'Autre' && rdv.filiereAutre ? rdv.filiereAutre : rdv.filiere}
-                            </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-sm">
+                              <BookOpen className="w-3 h-3 text-slate-400" />
+                              <span className="text-slate-700">
+                                {rdv.filiere === 'Autre' && rdv.filiereAutre ? rdv.filiereAutre : rdv.filiere}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <GraduationCap className="w-3 h-3 text-slate-400" />
+                              <span className="text-slate-700">{rdv.niveauEtude}</span>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center justify-between mt-3">
-                        <span className={`px-2 py-1 rounded-lg text-xs font-medium border ${getStatusColor(rdv.status)}`}>
-                          {rdv.status}
-                        </span>
-                        
-                        {rdv.status === 'Terminé' && rdv.avisAdmin && (
-                          <span className={`px-2 py-1 rounded-lg text-xs font-medium border ${getAvisColor(rdv.avisAdmin)}`}>
-                            {rdv.avisAdmin}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-2">
+                            <select
+                              value={rdv.status}
+                              onChange={(e) => handleStatusChange(rdv._id, e.target.value)}
+                              className={`px-2 py-1 rounded-lg text-xs font-medium border focus:outline-none focus:ring-none focus:border-blue-500 ${getStatusColor(rdv.status)}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="En attente">En attente</option>
+                              <option value="Confirmé">Confirmé</option>
+                              <option value="Terminé">Terminé</option>
+                              <option value="Annulé">Annulé</option>
+                            </select>
+                            {rdv.status === 'Terminé' && rdv.avisAdmin && (
+                              <span className={`block px-2 py-1 rounded-lg text-xs font-medium border ${getAvisColor(rdv.avisAdmin)}`}>
+                                {rdv.avisAdmin}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowDeleteModal(rdv._id);
+                              }}
+                              disabled={!canDelete && user?.role !== 'ADMIN'}
+                              className={`p-2 rounded-lg transition-colors focus:outline-none focus:ring-none focus:border-blue-500 ${
+                                canDelete || user?.role === 'ADMIN'
+                                  ? 'text-red-600 hover:bg-red-50'
+                                  : 'text-slate-400 cursor-not-allowed'
+                              }`}
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="p-4 border-t border-slate-200 bg-slate-50/50">
+            <div className="px-4 md:px-6 py-4 border-t border-slate-200 bg-slate-50/50">
               <div className="flex items-center justify-between">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-4 py-2 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-none focus:border-blue-500"
                 >
                   Précédent
                 </button>
@@ -1189,198 +1074,13 @@ const AdminRendezVous = () => {
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="px-4 py-2 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-none focus:border-blue-500"
                 >
                   Suivant
                 </button>
               </div>
             </div>
           )}
-        </div>
-
-        {/* Détails du rendez-vous sélectionné */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-          <div className="p-4 border-b border-slate-200 bg-slate-50/50">
-            <h2 className="text-lg font-bold text-slate-800">Détails du rendez-vous</h2>
-          </div>
-          
-          <div className="p-4 max-h-[600px] overflow-y-auto">
-            {selectedRendezVous ? (
-              <div className="space-y-6">
-                {/* Informations personnelles */}
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Informations personnelles</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Prénom</label>
-                      <p className="text-sm text-slate-800">{selectedRendezVous.firstName}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Nom</label>
-                      <p className="text-sm text-slate-800">{selectedRendezVous.lastName}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Email</label>
-                      <p className="text-sm text-slate-800 break-all">{selectedRendezVous.email}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Téléphone</label>
-                      <p className="text-sm text-slate-800">{selectedRendezVous.telephone}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Informations du rendez-vous */}
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Informations du rendez-vous</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Date</label>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-3 h-3 text-slate-400" />
-                        <p className="text-sm text-slate-800">{formatDate(selectedRendezVous.date)}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Heure</label>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-3 h-3 text-slate-400" />
-                        <p className="text-sm text-slate-800">{formatTime(selectedRendezVous.time)}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Destination</label>
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-3 h-3 text-slate-400" />
-                        <p className="text-sm text-slate-800">
-                          {selectedRendezVous.destination === 'Autre' && selectedRendezVous.destinationAutre 
-                            ? selectedRendezVous.destinationAutre 
-                            : selectedRendezVous.destination
-                          }
-                        </p>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Statut actuel</label>
-                      <span className={`px-2 py-1 rounded-lg text-xs font-medium border ${getStatusColor(selectedRendezVous.status)}`}>
-                        {selectedRendezVous.status}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Informations académiques */}
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Informations académiques</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Niveau d'étude</label>
-                      <div className="flex items-center gap-2">
-                        <GraduationCap className="w-3 h-3 text-slate-400" />
-                        <p className="text-sm text-slate-800">{selectedRendezVous.niveauEtude}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Filière</label>
-                      <div className="flex items-center gap-2">
-                        <BookOpen className="w-3 h-3 text-slate-400" />
-                        <p className="text-sm text-slate-800">
-                          {selectedRendezVous.filiere === 'Autre' && selectedRendezVous.filiereAutre 
-                            ? selectedRendezVous.filiereAutre 
-                            : selectedRendezVous.filiere
-                          }
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Métadonnées */}
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Métadonnées</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Date de création</label>
-                      <p className="text-sm text-slate-800">
-                        {new Date(selectedRendezVous.createdAt).toLocaleString('fr-FR')}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Dernière modification</label>
-                      <p className="text-sm text-slate-800">
-                        {new Date(selectedRendezVous.updatedAt).toLocaleString('fr-FR')}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Avis administratif (si terminé) */}
-                {selectedRendezVous.status === 'Terminé' && selectedRendezVous.avisAdmin && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Avis Administratif</h3>
-                    <div className="flex items-center gap-2">
-                      <span className={`px-3 py-2 rounded-lg text-sm font-medium border ${getAvisColor(selectedRendezVous.avisAdmin)}`}>
-                        {selectedRendezVous.avisAdmin}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Actions</h3>
-                  
-                  {/* Boutons de statut */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {['En attente', 'Confirmé', 'Terminé', 'Annulé'].map(status => (
-                      <button
-                        key={status}
-                        onClick={() => handleStatusClick(selectedRendezVous._id, status)}
-                        disabled={selectedRendezVous.status === status}
-                        className={`px-3 py-2 text-xs rounded-lg font-medium transition-all duration-200 focus:ring-none focus:outline-none ${
-                          selectedRendezVous.status === status
-                            ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                            : status === 'En attente'
-                            ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 border border-yellow-300'
-                            : status === 'Confirmé'
-                            ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
-                            : status === 'Terminé'
-                            ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
-                            : 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
-                        }`}
-                      >
-                        {status}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Bouton de suppression */}
-                  <div className="pt-4 border-t border-slate-200">
-                    <button 
-                      onClick={() => handleDeleteClick(selectedRendezVous)}
-                      className="w-full px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center justify-center gap-2 focus:ring-none focus:outline-none"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Supprimer le rendez-vous
-                    </button>
-                    {user?.role !== 'ADMIN' && (
-                      <p className="text-xs text-slate-500 mt-2 text-center">
-                        {canDeleteRendezvous(selectedRendezVous).canDelete 
-                          ? "Vous pouvez supprimer ce rendez-vous jusqu'à 2 heures avant l'horaire prévu"
-                          : "Suppression impossible à moins de 2 heures du rendez-vous"
-                        }
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-slate-500">
-                <Calendar className="w-16 h-16 mx-auto mb-4 text-slate-400" />
-                <p>Sélectionnez un rendez-vous pour voir les détails</p>
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </div>
