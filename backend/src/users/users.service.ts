@@ -123,30 +123,6 @@ export class UsersService {
   }
 
 
-  // DANS users.service.ts - vérifier la méthode logoutAll
-async logoutAll(): Promise<{ message: string, loggedOutCount: number }> {
-    // CRITIQUE: Ne déconnecter que les utilisateurs non-admin
-    const activeUsers = await this.userModel.find({
-        isActive: true,
-        role: { $ne: UserRole.ADMIN } // ← Exclure l'admin
-    }).exec();
-
-    const updatePromises = activeUsers.map(user => 
-        this.userModel.findByIdAndUpdate(user._id, {
-            isActive: false,
-            logoutUntil: new Date(Date.now() + 24 * 60 * 60 * 1000)
-        })
-    );
-
-    await Promise.all(updatePromises);
-
-    return {
-        message: `${activeUsers.length} utilisateurs déconnectés (admin conservé)`,
-        loggedOutCount: activeUsers.length
-    };
-}
-
-
 async create(createUserDto: RegisterDto): Promise<User> {
     const existingUser = await this.findByEmail(createUserDto.email);
     if (existingUser) {
@@ -168,7 +144,6 @@ async create(createUserDto: RegisterDto): Promise<User> {
       password: hashedPassword,
       role: existingAdmin ? UserRole.USER : UserRole.ADMIN
     });
-
     // Normaliser le téléphone avant sauvegarde
     createdUser.telephone = this.normalizeTelephone(createdUser.telephone) as any;
     
