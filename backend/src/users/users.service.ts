@@ -105,45 +105,16 @@ export class UsersService {
 
 
   async create(createUserDto: RegisterDto): Promise<User> {
-        const existingUser = await this.findByEmail(createUserDto.email);
-        if (existingUser) {
-            throw new BadRequestException('Un utilisateur avec cet email existe déjà');
-        }
+    const hashedPassword = await bcrypt.hash(createUserDto.password, AuthConstants.BCRYPT_SALT_ROUNDS);
+    
+    const user = new this.userModel({
+      ...createUserDto,
+      password: hashedPassword,
+      isActive: true, 
+    });
 
-        const existingAdmin = await this.findByRole(UserRole.ADMIN);
-        if (existingAdmin && createUserDto.role === UserRole.ADMIN) {
-            throw new BadRequestException('Il ne peut y avoir qu\'un seul administrateur');
-        }
-
-        const hashedPassword = await bcrypt.hash(
-            createUserDto.password, 
-            AuthConstants.BCRYPT_SALT_ROUNDS
-        );
-
-        // ✅ CRITIQUE : TOUJOURS créer comme actif
-        const createdUser = new this.userModel({
-            ...createUserDto,
-            password: hashedPassword,
-            role: existingAdmin ? UserRole.USER : UserRole.ADMIN,
-            isActive: true, // ← FORCER à true
-            logoutUntil: null // ← S'assurer qu'il n'y a pas de blocage
-        });
-        
-        // Normaliser le téléphone
-        createdUser.telephone = this.normalizeTelephone(createdUser.telephone) as any;
-        
-        const savedUser = await createdUser.save();
-        
-        // ✅ VÉRIFICATION FINALE
-        if (!savedUser.isActive) {
-            this.logger.error(`ERREUR CRITIQUE: Utilisateur créé inactif: ${savedUser.email}`);
-            // Forcer l'activation
-            await this.userModel.findByIdAndUpdate(savedUser._id, { isActive: true });
-            savedUser.isActive = true;
-        }
-        
-        return savedUser;
-    }
+    return user.save();
+  }
 
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {

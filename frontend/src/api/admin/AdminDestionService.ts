@@ -440,26 +440,34 @@ class DestinationService {
  
 
  // Dans Destination.tsx - version finale de getFullImageUrl
-  getFullImageUrl = (imagePath: string) => {
-    if (!imagePath) return '/paname-consulting.jpg';
+ getFullImageUrl = (imagePath: string) => {
+  if (!imagePath) return '/paname-consulting.jpg';
 
-    // URLs déjà complètes
-    if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
-      return imagePath;
-    }
+  // URLs déjà complètes
+  if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
+    return imagePath;
+  }
 
-    const baseUrl = API_URL;
+  const baseUrl = API_URL;
 
-    // Nettoyer le chemin
-    let cleanPath = imagePath;
-    if (cleanPath.startsWith('/')) {
-      cleanPath = cleanPath.slice(1);
-    }
+  // Images dans public (par défaut) - utiliser le chemin relatif directement
+  if (imagePath.startsWith('/')) {
+    return imagePath;
+  }
 
-    // Construire l'URL finale
-    return `${baseUrl}/${cleanPath}`;
-  };
-
+  // Images uploadées - construire l'URL complète avec le préfixe uploads
+  let cleanPath = imagePath;
+  
+  // Si le chemin ne commence pas par 'uploads/', l'ajouter
+  if (!cleanPath.startsWith('uploads/')) {
+    cleanPath = `uploads/${cleanPath}`;
+  }
+  
+  // Nettoyer les doubles slash
+  cleanPath = cleanPath.replace(/\/\//g, '/');
+  
+  return `${baseUrl}/${cleanPath}`;
+};
 }
 
 // Export singleton

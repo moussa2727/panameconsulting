@@ -53,24 +53,28 @@ const VITE_API_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://local
 const Destination = () => {
   const [destinations, setDestinations] = useState<Destination[]>(defaultDestinations);
   const [loading, setLoading] = useState(true);
-// Dans Destination.tsx - version finale de getFullImageUrl
-const getFullImageUrl = (imagePath: string) => {
+ const getFullImageUrl = (imagePath: string) => {
   if (!imagePath) return '/paname-consulting.jpg';
   
   // URLs déjà complètes
   if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
     return imagePath;
   }
-  
-  const baseUrl = VITE_API_URL;
-  
-  // Nettoyer le chemin
-  let cleanPath = imagePath;
-  if (cleanPath.startsWith('/')) {
-    cleanPath = cleanPath.slice(1);
+
+  // Images dans public (par défaut)
+  if (imagePath.startsWith('/')) {
+    return imagePath;
   }
+
+  const baseUrl = VITE_API_URL;
+
+  // Images uploadées
+  let cleanPath = imagePath;
+  if (!cleanPath.startsWith('uploads/')) {
+    cleanPath = `uploads/${cleanPath}`;
+  }
+  cleanPath = cleanPath.replace(/\/\//g, '/');
   
-  // Construire l'URL finale
   return `${baseUrl}/${cleanPath}`;
 };
 

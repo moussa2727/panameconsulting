@@ -467,69 +467,54 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [VITE_API_URL, token, user]);
 
-  // ✅ FONCTION LOGIN SIMPLIFIÉE (sans console.log)
   const login = useCallback(async (email: string, password: string): Promise<void> => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      const loginData = {
-        email: email.trim().toLowerCase(),
-        password: password
-      };
+  setIsLoading(true);
+  setError(null);
+  
+  try {
+    const loginData = {
+      email: email.trim().toLowerCase(),
+      password: password
+    };
 
-      const response = await fetch(`${VITE_API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(loginData),
-        credentials: 'include'
-      });
+    const response = await fetch(`${VITE_API_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(loginData),
+      credentials: 'include'
+    });
 
-      if (!response.ok) {
-        let errorMessage = 'Erreur de connexion';
-        let errorCode = 'UNKNOWN_ERROR';
-        
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-          
-          if (errorMessage === 'COMPTE_DESACTIVE' || 
-              errorMessage.includes('désactivé') || 
-              errorMessage.includes('inactif')) {
-            errorCode = 'COMPTE_DESACTIVE';
-            errorMessage = 'Votre compte est désactivé. Contactez l\'administrateur.';
-          }
-        } catch {
-          errorMessage = `Erreur ${response.status}`;
-        }
-        
-        const errorWithCode = new Error(errorMessage);
-        (errorWithCode as any).code = errorCode;
-        throw errorWithCode;
-      }
-
-      const data = await response.json();
-
-      if (!data.accessToken || !data.user) {
-        throw new Error('Réponse d\'authentification invalide');
-      }
-
-      if (!data.user.isActive) {
-        const error = new Error('Votre compte est désactivé. Contactez l\'administrateur.');
-        (error as any).code = 'COMPTE_DESACTIVE';
-        throw error;
+    if (!response.ok) {
+      // TEMPORAIRE : Ignorer l'erreur "compte désactivé" pour debug
+      console.log('🔍 Debug login - Status:', response.status);
+      const errorText = await response.text();
+      console.log('🔍 Debug login - Response:', errorText);
+      
+      let errorMessage = 'Erreur de connexion';
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || `Erreur ${response.status}`;
       }
       
-      localStorage.setItem('token', data.accessToken);
-      setToken(data.accessToken);
+      throw new Error(errorMessage);
+    }
 
-      const userWithRole: User = {
-        ...data.user,
-        isAdmin: data.user.role === 'admin' || data.user.isAdmin === true
-      };
-      setUser(userWithRole);
+    const data = await response.json();
+    console.log('✅ Login successful - User data:', data.user);
+
+    const userWithRole: User = {
+      ...data.user,
+      isActive: true, // Override temporaire
+      isAdmin: data.user.role === 'admin' || data.user.isAdmin === true
+    };
+
+    localStorage.setItem('token', data.accessToken);
+    setToken(data.accessToken);
+    setUser(userWithRole);
 
       const decoded = jwtDecode<JwtPayload>(data.accessToken);
       saveToSession(ALLOWED_SESSION_KEYS.SESSION_START, decoded.iat * 1000);

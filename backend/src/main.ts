@@ -116,11 +116,23 @@ async function bootstrap() {
     console.log(`📁 Dossier uploads créé: ${uploadsDir}`);
   }
 
-  app.use('/uploads', (req: any, res: { header: (arg0: string, arg1: string) => void; }, next: () => void) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET');
-    next();
-  });
+app.use('/uploads', (req: any, res: { header: (arg0: string, arg1: string) => void; }, next: () => void) => {
+  // Utilisez vos domaines spécifiques au lieu de '*'
+  const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000', 
+    'https://panameconsulting.com'
+  ];
+  
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
+  next();
+});
 
   app.use('/uploads', express.static(uploadsDir, {
     maxAge: '30d',
