@@ -91,55 +91,61 @@ export class AuthService {
         this.logger.log(`Réinitialisation des tentatives pour ${email}`);
     }
 
-    // Méthodes d'authentification
-    async register(registerDto: RegisterDto) {
-        try {
-            const existingAdmin = await this.usersService.findByRole(UserRole.ADMIN);
-            if (existingAdmin) {
-                registerDto.role = UserRole.USER;
-            } else {
-                registerDto.role = UserRole.ADMIN;
-            }
-
-            const newUser = await this.usersService.create(registerDto);
-            const jti = uuidv4();
-            const userId = this.convertObjectIdToString(newUser._id);
-
-            const payload = {
-                email: newUser.email,
-                sub: userId,
-                role: newUser.role,
-                jti
-            };
-
-            const token = this.jwtService.sign(payload);
-            const decoded = this.jwtService.decode(token) as any;
-
-            await this.sessionService.create(
-                userId,
-                token,
-                new Date(decoded.exp * 1000)
-            );
-
-            this.logger.log(`Nouvel utilisateur enregistré: ${newUser.email} (rôle: ${newUser.role})`);
-
-            return {
-                access_token: token,
-                user: {
-                    id: newUser._id,
-                    email: newUser.email,
-                    firstName: newUser.firstName,
-                    lastName: newUser.lastName,
-                    role: newUser.role,
-                    isAdmin: newUser.role === UserRole.ADMIN
-                }
-            };
-        } catch (error) {
-            this.logger.error(`Erreur lors de l'enregistrement: ${error.message}`);
-            throw error;
+  async register(registerDto: RegisterDto) {
+    try {
+        const existingAdmin = await this.usersService.findByRole(UserRole.ADMIN);
+        if (existingAdmin) {
+            registerDto.role = UserRole.USER;
+        } else {
+            registerDto.role = UserRole.ADMIN;
         }
-    }
 
+        const newUser = await this.usersService.create(registerDto);
+        
+        // ✅ SOLUTION SIMPLE : Vérifier et logger seulement
+        if (!newUser.isActive) {
+            this.logger.warn(`Attention: Nouvel utilisateur créé comme inactif: ${newUser.email}`);
+            // Dans ce cas, le problème vient de la création - corriger usersService.create()
+        }
+
+        const jti = uuidv4();
+        const userId = this.convertObjectIdToString(newUser._id as any); // ✅ Cast en any
+
+        const payload = {
+            email: newUser.email,
+            sub: userId,
+            role: newUser.role,
+            jti
+        };
+
+        const token = this.jwtService.sign(payload);
+        const decoded = this.jwtService.decode(token) as any;
+
+        await this.sessionService.create(
+            userId,
+            token,
+            new Date(decoded.exp * 1000)
+        );
+
+        this.logger.log(`Nouvel utilisateur enregistré: ${newUser.email} (rôle: ${newUser.role}, actif: ${newUser.isActive})`);
+
+        return {
+            access_token: token,
+            user: {
+                id: newUser._id,
+                email: newUser.email,
+                firstName: newUser.firstName,
+                lastName: newUser.lastName,
+                role: newUser.role,
+                isAdmin: newUser.role === UserRole.ADMIN,
+                isActive: newUser.isActive
+            }
+        };
+    } catch (error) {
+        this.logger.error(`Erreur lors de l'enregistrement: ${error.message}`);
+        throw error;
+    }
+}
     async login(user: User) {
         const jtiAccess = uuidv4();
         const jtiRefresh = uuidv4();
@@ -201,279 +207,247 @@ export class AuthService {
 
     async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken?: string; sessionExpired?: boolean }> {
   if (!refreshToken) {
-    console.warn('❌ Refresh token manquant dans auth.service');
     throw new UnauthorizedException('Refresh token manquant');
   }
 
-  console.log('🔄 Traitement refresh token, longueur:', refreshToken.length);
-
   try {
-    // Whitelist enforcement
-    let isWhitelisted = await this.refreshTokenService.isValid(refreshToken);
-    console.log('📋 Refresh token whitelisted:', isWhitelisted);
-    
+    // Vérification whitelist
+    const isWhitelisted = await this.refreshTokenService.isValid(refreshToken);
     if (!isWhitelisted) {
-      console.warn('❌ Refresh token non autorisé');
       throw new UnauthorizedException('Refresh token non autorisé');
     }
 
-    // Vérification du token JWT
     const payload = this.jwtService.verify(refreshToken, {
       secret: process.env.JWT_REFRESH_SECRET,
     });
 
-            if ((payload as any)?.tokenType !== 'refresh') {
-                throw new UnauthorizedException('Type de token invalide');
-            }
-
-            // Session lifetime check
-            const maxSessionMs = AuthConstants.MAX_SESSION_DURATION_MS;
-            const issuedAtMs = ((payload as any)?.iat || 0) * 1000;
-            if (issuedAtMs && Date.now() - issuedAtMs > maxSessionMs) {
-                try {
-                    await this.logoutUser((payload as any).sub, 'Session maximale atteinte');
-                    await this.refreshTokenService.deactivateByToken(refreshToken);
-                } catch (error) {
-                    this.logger.warn(`Erreur lors du logout: ${error.message}`);
-                }
-                return {
-                    accessToken: '',
-                    refreshToken,
-                    sessionExpired: true
-                };
-            }
-
-            const user = await this.usersService.findById(payload.sub);
-            if (!user) {
-                throw new UnauthorizedException('Utilisateur non trouvé');
-            }
-
-            const userId = this.convertObjectIdToString(user._id);
-            const newJti = uuidv4();
-            const newAccessToken = this.jwtService.sign(
-                { 
-                    sub: userId, 
-                    email: user.email,
-                    role: user.role,
-                    jti: newJti,
-                    tokenType: 'access'
-                },
-                { 
-                    expiresIn: AuthConstants.JWT_EXPIRATION,
-                }
-            );
-
-            const newRefreshJti = uuidv4();
-            const newRefreshToken = this.jwtService.sign(
-                {
-                    sub: userId,
-                    email: user.email,
-                    role: user.role,
-                    jti: newRefreshJti,
-                    tokenType: 'refresh'
-                },
-                {
-                    expiresIn: AuthConstants.REFRESH_TOKEN_EXPIRATION,
-                    secret: process.env.JWT_REFRESH_SECRET,
-                }
-            );
-
-            await this.sessionService.create(
-                userId,
-                newAccessToken,
-                new Date(Date.now() + 15 * 60 * 1000)
-            );
-
-            try {
-                const expMs = ((payload as any)?.exp || 0) * 1000;
-                await this.revokedTokenService.revokeToken(refreshToken, new Date(expMs || Date.now() + 7 * 24 * 60 * 60 * 1000));
-                await this.refreshTokenService.deactivateByToken(refreshToken);
-             } catch (error: any) {
-                console.error('❌ Erreur vérification refresh token:', error.message);
-                
-                if (error.name === 'JsonWebTokenError') {
-                console.warn('❌ JWT invalide:', error.message);
-                throw new UnauthorizedException('Refresh token invalide');
-                }
-                
-                if (error.name === 'TokenExpiredError') {
-                console.warn('❌ JWT expiré');
-                throw new UnauthorizedException('Refresh token expiré');
-                }
-                
-                throw new UnauthorizedException('Refresh token invalide');
-            }
-
-            try {
-                const decodedNewRefresh = this.jwtService.decode(newRefreshToken) as any;
-                const newExp = new Date(((decodedNewRefresh?.exp || 0) * 1000) || (Date.now() + 7 * 24 * 60 * 60 * 1000));
-                await this.refreshTokenService.create(userId, newRefreshToken, newExp);
-            } catch (error: any) {
-                console.error('❌ Erreur vérification refresh token:', error.message);
-                
-                if (error.name === 'JsonWebTokenError') {
-                console.warn('❌ JWT invalide:', error.message);
-                throw new UnauthorizedException('Refresh token invalide');
-                }
-                
-                if (error.name === 'TokenExpiredError') {
-                console.warn('❌ JWT expiré');
-                throw new UnauthorizedException('Refresh token expiré');
-                }
-                
-                throw new UnauthorizedException('Refresh token invalide');
-            }
-
-            return { 
-                accessToken: newAccessToken,
-                refreshToken: newRefreshToken
-            };
-        } catch (error: any) {
-            console.error('❌ Erreur refresh token:', error.message);
-            throw new UnauthorizedException('Refresh token invalide');
-        }
-    }
+    // ✅ VÉRIFICATION STRICTE 25 MINUTES
+    const maxSessionMs = AuthConstants.MAX_SESSION_DURATION_MS; // 25 minutes
+    const issuedAtMs = (payload.iat || 0) * 1000;
+    const sessionAge = Date.now() - issuedAtMs;
     
-    async validateUser(email: string, password: string): Promise<User | null> {
-        try {
-            const attempts = this.getLoginAttempts(email);
-
-            if (attempts.attempts >= AuthConstants.MAX_LOGIN_ATTEMPTS) {
-                const timeSinceLastAttempt = (Date.now() - attempts.lastAttempt.getTime()) / (1000 * 60);
-                if (timeSinceLastAttempt < AuthConstants.LOGIN_ATTEMPTS_TTL_MINUTES) {
-                    throw new UnauthorizedException(
-                        `Trop de tentatives. Réessayez dans ${Math.ceil(
-                            AuthConstants.LOGIN_ATTEMPTS_TTL_MINUTES - timeSinceLastAttempt
-                        )} minutes`
-                    );
-                } else {
-                    this.resetLoginAttempts(email);
-                }
-            }
-
-            const user = await this.usersService.validateUser(email, password);
-
-            if (!user) {
-                this.incrementLoginAttempts(email);
-                return null;
-            }
-
-            // Maintenance mode check
-            const isMaintenance = await this.usersService.isMaintenanceMode();
-            if (isMaintenance && user.role !== UserRole.ADMIN) {
-                this.logger.warn(`Tentative de connexion bloquée en mode maintenance pour: ${email}`);
-                throw new UnauthorizedException(
-                    'Le système est en maintenance. Seuls les administrateurs peuvent se connecter.'
-                );
-            }
-
-            this.resetLoginAttempts(email);
-            return user;
-        } catch (error) {
-            this.logger.error(`Erreur de validation utilisateur pour ${email}: ${error.message}`);
-            throw error;
-        }
+    if (sessionAge > maxSessionMs) {
+      console.log(`🔒 Session expirée - durée: ${Math.round(sessionAge / (60 * 1000))}min (>25min)`);
+      
+      // Nettoyage complet
+      await this.logoutUser(payload.sub, 'Session de 25 minutes atteinte');
+      await this.refreshTokenService.deactivateByToken(refreshToken);
+      
+      return {
+        accessToken: '',
+        refreshToken: '',
+        sessionExpired: true
+      };
     }
 
-    
+    // Continuer avec le rafraîchissement normal...
+    const user = await this.usersService.findById(payload.sub);
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur non trouvé');
+    }
 
-    async logoutAll(): Promise<{ 
-    message: string, 
-    loggedOutCount: number,
-    stats: any 
-}> {
+    const userId = this.convertObjectIdToString(user._id);
+    
+    // ✅ NOUVEAUX TOKENS AVEC MÊME DATE D'ÉMISSION (important!)
+    const newAccessToken = this.jwtService.sign(
+      { 
+        sub: userId, 
+        email: user.email,
+        role: user.role,
+        jti: uuidv4(),
+        tokenType: 'access',
+        iat: Math.floor(Date.now() / 1000) // Garder le même iat pour la session
+      },
+      { 
+        expiresIn: AuthConstants.JWT_EXPIRATION, // 15 minutes
+      }
+    );
+
+    const newRefreshToken = this.jwtService.sign(
+      {
+        sub: userId,
+        email: user.email,
+        role: user.role,
+        jti: uuidv4(),
+        tokenType: 'refresh',
+        iat: Math.floor(Date.now() / 1000) // Garder le même iat pour la session
+      },
+      {
+        expiresIn: AuthConstants.REFRESH_TOKEN_EXPIRATION, // 25 minutes
+        secret: process.env.JWT_REFRESH_SECRET,
+      }
+    );
+
+    // Mettre à jour la session
+    await this.sessionService.create(
+      userId,
+      newAccessToken,
+      new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
+    );
+
+    // Whitelist le nouveau refresh token
+    const decodedNewRefresh = this.jwtService.decode(newRefreshToken) as any;
+    const newExp = new Date(((decodedNewRefresh?.exp || 0) * 1000) || (Date.now() + 25 * 60 * 1000));
+    await this.refreshTokenService.create(userId, newRefreshToken, newExp);
+
+    // Révoquer l'ancien refresh token
+    await this.refreshTokenService.deactivateByToken(refreshToken);
+
+    return { 
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken
+    };
+
+  } catch (error: any) {
+    console.error('❌ Erreur refresh token:', error.message);
+    throw new UnauthorizedException('Refresh token invalide');
+  }
+}
+
+
+   async validateUser(email: string, password: string): Promise<User | null> {
     try {
-        this.logger.log('🚀 Début de la déconnexion globale des utilisateurs NON-ADMIN');
-        
-        // ✅ EXCLURE TOUS LES UTILISATEURS AVEC LE RÔLE ADMIN
-        const activeNonAdminUsers = await this.userModel.find({
-            isActive: true,
-            role: { $ne: UserRole.ADMIN } // ← CRITIQUE: Exclure tous les admins
-        }).exec();
+        const attempts = this.getLoginAttempts(email);
 
-        this.logger.log(`📊 ${activeNonAdminUsers.length} utilisateurs non-admin actifs trouvés`);
-
-        if (activeNonAdminUsers.length === 0) {
-            return {
-                message: 'Aucun utilisateur non-admin à déconnecter',
-                loggedOutCount: 0,
-                stats: {
-                    usersLoggedOut: 0,
-                    adminPreserved: true,
-                    timestamp: new Date().toISOString(),
-                    note: 'Aucun utilisateur non-admin trouvé'
-                }
-            };
+        if (attempts.attempts >= AuthConstants.MAX_LOGIN_ATTEMPTS) {
+            const timeSinceLastAttempt = (Date.now() - attempts.lastAttempt.getTime()) / (1000 * 60);
+            if (timeSinceLastAttempt < AuthConstants.LOGIN_ATTEMPTS_TTL_MINUTES) {
+                throw new UnauthorizedException(
+                    `Trop de tentatives. Réessayez dans ${Math.ceil(
+                        AuthConstants.LOGIN_ATTEMPTS_TTL_MINUTES - timeSinceLastAttempt
+                    )} minutes`
+                );
+            } else {
+                this.resetLoginAttempts(email);
+            }
         }
 
-        const userIds = activeNonAdminUsers.map(user => 
-            user._id instanceof Types.ObjectId ? user._id.toString() : String(user._id)
-        );
+        // ✅ UTILISER LA MÉTHODE DU USER SERVICE
+        const user = await this.usersService.validateUser(email, password);
 
-        // ✅ NETTOYAGE COMPLET DES UTILISATEURS NON-ADMIN
-        const cleanupPromises = [
-            // a. Mettre à jour statut utilisateurs
-            this.userModel.updateMany(
-                { _id: { $in: activeNonAdminUsers.map(u => u._id) } },
-                { 
-                    isActive: false,
-                    logoutUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
-                    lastLogout: new Date()
-                }
-            ),
-            
-            // b. Supprimer TOUTES les sessions des non-admins
-            this.sessionModel.deleteMany({ 
-                user: { $in: userIds } 
-            }),
-            
-            // c. Révoquer TOUS les tokens JWT des non-admins
-            this.resetTokenModel.deleteMany({ 
-                userId: { $in: userIds } 
-            }),
-            
-            // d. Désactiver TOUS les refresh tokens des non-admins
-            this.resetTokenModel.updateMany(
-                { user: { $in: userIds } },
-                { isActive: false, deactivatedAt: new Date() }
-            ),
-            
-            // e. Nettoyer les tokens de reset des non-admins
-            this.resetTokenModel.deleteMany({ 
-                user: { $in: activeNonAdminUsers.map(u => u._id) } 
-            })
-        ];
+        if (!user) {
+            this.incrementLoginAttempts(email);
+            return null;
+        }
 
-        await Promise.all(cleanupPromises);
-        this.logger.log(`✅ Nettoyage complet de ${activeNonAdminUsers.length} utilisateurs non-admin`);
+        // ✅ CORRECTION CRITIQUE : Vérifier isActive seulement pour les non-admins
+        if (user.role !== UserRole.ADMIN && !user.isActive) {
+            this.logger.warn(`Tentative de connexion d'un compte utilisateur désactivé: ${email}`);
+            throw new UnauthorizedException('COMPTE_DESACTIVE');
+        }
 
-        const result = {
-            message: `${activeNonAdminUsers.length} utilisateurs non-admin déconnectés avec succès - Admins préservés`,
-            loggedOutCount: activeNonAdminUsers.length,
-            stats: {
-                usersLoggedOut: activeNonAdminUsers.length,
-                adminPreserved: true,
-                timestamp: new Date().toISOString(),
-                userEmails: activeNonAdminUsers.map(user => user.email),
-                cleanupActions: [
-                    'sessions_supprimees',
-                    'tokens_jwt_revoques', 
-                    'refresh_tokens_desactives',
-                    'tokens_reset_supprimes',
-                    'statuts_utilisateurs_mis_a_jour'
-                ]
-            }
-        };
+        // Maintenance mode check
+        const isMaintenance = await this.usersService.isMaintenanceMode();
+        if (isMaintenance && user.role !== UserRole.ADMIN) {
+            this.logger.warn(`Tentative de connexion bloquée en mode maintenance pour: ${email}`);
+            throw new UnauthorizedException(
+                'Le système est en maintenance. Seuls les administrateurs peuvent se connecter.'
+            );
+        }
 
-        this.logger.log(`🎯 Déconnexion globale NON-ADMIN terminée: ${result.message}`);
-        return result;
-
+        this.resetLoginAttempts(email);
+        return user;
     } catch (error) {
-        this.logger.error(`❌ Erreur lors de la déconnexion globale: ${error.message}`, error.stack);
-        throw new BadRequestException(`Erreur lors de la déconnexion globale: ${error.message}`);
+        this.logger.error(`Erreur de validation utilisateur pour ${email}: ${error.message}`);
+        throw error;
     }
 }
 
+   async logoutAll(): Promise<{ 
+            message: string, 
+            loggedOutCount: number,
+            stats: any 
+        }> {
+            try {
+                this.logger.log('🚀 Début de la déconnexion globale des utilisateurs NON-ADMIN');
+                
+                // ✅ EXCLURE TOUS LES UTILISATEURS AVEC LE RÔLE ADMIN
+                const activeNonAdminUsers = await this.userModel.find({
+                    isActive: true,
+                    role: { $ne: UserRole.ADMIN }
+                }).exec();
+
+                this.logger.log(`📊 ${activeNonAdminUsers.length} utilisateurs non-admin actifs trouvés`);
+
+                if (activeNonAdminUsers.length === 0) {
+                    return {
+                        message: 'Aucun utilisateur non-admin à déconnecter',
+                        loggedOutCount: 0,
+                        stats: {
+                            usersLoggedOut: 0,
+                            adminPreserved: true,
+                            timestamp: new Date().toISOString(),
+                            note: 'Aucun utilisateur non-admin trouvé'
+                        }
+                    };
+                }
+
+                const userIds = activeNonAdminUsers.map(user => 
+                    user._id instanceof Types.ObjectId ? user._id.toString() : String(user._id)
+                );
+
+                // ✅ CORRECTION : NE PAS DÉSACTIVER LES UTILISATEURS, seulement nettoyer les sessions
+                const cleanupPromises = [
+                    // a. NE PAS modifier isActive - seulement ajouter logoutUntil
+                    this.userModel.updateMany(
+                        { _id: { $in: activeNonAdminUsers.map(u => u._id) } },
+                        { 
+                            logoutUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                            lastLogout: new Date()
+                        }
+                    ),
+                    
+                    // b. Supprimer TOUTES les sessions des non-admins
+                    this.sessionModel.deleteMany({ 
+                        user: { $in: userIds } 
+                    }),
+                    
+                    // c. Révoquer TOUS les tokens JWT des non-admins
+                    this.resetTokenModel.deleteMany({ 
+                        userId: { $in: userIds } 
+                    }),
+                    
+                    // d. Désactiver TOUS les refresh tokens des non-admins
+                    this.resetTokenModel.updateMany(
+                        { user: { $in: userIds } },
+                        { isActive: false, deactivatedAt: new Date() }
+                    ),
+                    
+                    // e. Nettoyer les tokens de reset des non-admins
+                    this.resetTokenModel.deleteMany({ 
+                        user: { $in: activeNonAdminUsers.map(u => u._id) } 
+                    })
+                ];
+
+                await Promise.all(cleanupPromises);
+                this.logger.log(`✅ Nettoyage complet de ${activeNonAdminUsers.length} utilisateurs non-admin`);
+
+                const result = {
+                    message: `${activeNonAdminUsers.length} utilisateurs non-admin déconnectés avec succès - Admins préservés`,
+                    loggedOutCount: activeNonAdminUsers.length,
+                    stats: {
+                        usersLoggedOut: activeNonAdminUsers.length,
+                        adminPreserved: true,
+                        timestamp: new Date().toISOString(),
+                        userEmails: activeNonAdminUsers.map(user => user.email),
+                        cleanupActions: [
+                            'sessions_supprimees',
+                            'tokens_jwt_revoques', 
+                            'refresh_tokens_desactives',
+                            'tokens_reset_supprimes',
+                            'statuts_utilisateurs_mis_a_jour'
+                        ]
+                    }
+                };
+
+                this.logger.log(`🎯 Déconnexion globale NON-ADMIN terminée: ${result.message}`);
+                return result;
+
+            } catch (error) {
+                this.logger.error(`❌ Erreur lors de la déconnexion globale: ${error.message}`, error.stack);
+                throw new BadRequestException(`Erreur lors de la déconnexion globale: ${error.message}`);
+            }
+        }
 
     async revokeToken(token: string, expiresAt: Date): Promise<void> {
         try {

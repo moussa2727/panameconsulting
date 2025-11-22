@@ -3,6 +3,7 @@ import {
     Body,
     Controller,
     Get,
+    Param,
     Patch,
     Post,
     Req,
@@ -152,6 +153,8 @@ async refresh(@Req() req: CustomRequest, @Body() body: any, @Res() res: Response
     });
   }
 }
+
+
 
     @Post('register')
     @ApiOperation({ summary: 'Inscription utilisateur' })

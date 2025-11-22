@@ -1,12 +1,12 @@
 // src/auth/auth.constants.ts
 export const AuthConstants = {
   // JWT Configuration
-  JWT_EXPIRATION: '15m',
-  REFRESH_TOKEN_EXPIRATION: '7d',
+ MAX_SESSION_DURATION_MS: 25 * 60 * 1000, // 25 minutes exactes
+  JWT_EXPIRATION: '15m',                    // Access token: 15 minutes
+  REFRESH_TOKEN_EXPIRATION: '25m',          // Refresh token: 25 minutes (même durée que session)
   
   // Token Configuration
   RESET_TOKEN_EXPIRATION_MS: 3600000, // 1 heure
-  MAX_SESSION_DURATION_MS: 7 * 24 * 60 * 60 * 1000, // 7 jours
   
   // Security Configuration
   MAX_LOGIN_ATTEMPTS: 5,

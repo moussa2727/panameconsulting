@@ -68,7 +68,7 @@ const MinimalLayout = ({ children }: { children: React.ReactNode }) => {
 function App() {
   const location = useLocation();
   const [navigationKey, setNavigationKey] = useState(0);
-  const { isLoading, isAuthenticated, user, saveToSession } = useAuth(); // ✅ Hook au niveau racine
+  const { isLoading, isAuthenticated, user } = useAuth();
   const [isAOSInitialized, setIsAOSInitialized] = useState(false);
 
   const safeScrollToTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
@@ -81,19 +81,6 @@ function App() {
       window.scrollTo(0, 0);
     }
   }, []);
-
-  // 🔥 CORRECTION: Sauvegarde de la redirection avec hook utilisé correctement
-  useEffect(() => {
-    const shouldSaveRedirect = !isAuthenticated && 
-      !location.pathname.startsWith('/connexion') &&
-      !location.pathname.startsWith('/inscription') &&
-      !location.pathname.startsWith('/mot-de-passe-oublie') &&
-      location.pathname !== '/';
-
-    if (shouldSaveRedirect) {
-      saveToSession('auth_redirect_path', location.pathname);
-    }
-  }, [location.pathname, isAuthenticated, saveToSession]);
 
   // Gestion du scroll en haut lors du changement de route
   useEffect(() => {
@@ -128,6 +115,9 @@ function App() {
   if (isLoading) {
     return <Loader />;
   }
+
+  // ✅ Fonction utilitaire pour déterminer si l'utilisateur est admin
+  const isAdminUser = user?.role === 'admin' || user?.isAdmin;
 
   return (
     <ErrorBoundary>
@@ -176,7 +166,7 @@ function App() {
           {/* Redirections uniformisées pour l'authentification */}
           <Route path='/connexion' element={
             isAuthenticated ? (
-              <Navigate to={user?.role === 'admin' || user?.isAdmin ? '/gestionnaire/statistiques' : '/'} replace />
+              <Navigate to={isAdminUser ? '/gestionnaire/statistiques' : '/'} replace />
             ) : (
               <MinimalLayout>
                 <Connexion />
@@ -186,7 +176,7 @@ function App() {
           
           <Route path='/inscription' element={
             isAuthenticated ? (
-              <Navigate to={user?.role === 'admin' || user?.isAdmin ? '/gestionnaire/statistiques' : '/'} replace />
+              <Navigate to={isAdminUser ? '/gestionnaire/statistiques' : '/'} replace />
             ) : (
               <MinimalLayout>
                 <Inscription />
@@ -196,7 +186,7 @@ function App() {
           
           <Route path='/mot-de-passe-oublie' element={
             isAuthenticated ? (
-              <Navigate to={user?.role === 'admin' || user?.isAdmin ? '/gestionnaire/statistiques' : '/'} replace />
+              <Navigate to={isAdminUser ? '/gestionnaire/statistiques' : '/'} replace />
             ) : (
               <MinimalLayout>
                 <MotdePasseoublie />

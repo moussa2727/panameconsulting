@@ -13,12 +13,25 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
     }
 
     async validate(email: string, password: string): Promise<any> {
-        const user = await this.authService.validateUser(email, password);
-        
-        if (!user) {
-            throw new UnauthorizedException('Email ou mot de passe incorrect');
+        try {
+            const user = await this.authService.validateUser(email, password);
+            
+            if (!user) {
+                throw new UnauthorizedException('Email ou mot de passe incorrect');
+            }
+            
+            return user;
+        } catch (error) {
+            // 🚨 PROPAGER LES ERREURS SPÉCIFIQUES COMME "COMPTE_DESACTIVE"
+            if (error.message === 'COMPTE_DESACTIVE') {
+                throw new UnauthorizedException('COMPTE_DESACTIVE');
+            }
+            
+            // ✅ AJOUTER UN LOG POUR DIAGNOSTIQUER
+            console.error('❌ Erreur LocalStrategy:', error.message);
+            console.error('❌ Stack:', error.stack);
+            
+            throw error;
         }
-        
-        return user;
     }
 }

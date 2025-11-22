@@ -41,32 +41,13 @@ export class UsersService {
       return hasPlus ? `+${digits}` : `+${digits}`;
     }
 
-    private validateUpdateData(updateData: any): void {
-      const allowedFields = ['email', 'telephone'];
-      const providedFields = Object.keys(updateData);
-      
-      // Vérifier que seuls les champs autorisés sont présents
-      const unauthorizedFields = providedFields.filter(field => !allowedFields.includes(field));
-      if (unauthorizedFields.length > 0) {
-        throw new BadRequestException(`Champs non autorisés: ${unauthorizedFields.join(', ')}`);
+   
+  async validateUser(email: string, password: string): Promise<User | null> {
+      const user = await this.findByEmail(email);
+      if (user && await bcrypt.compare(password, user.password)) {
+          return user;
       }
-      
-      // Vérifier qu'au moins un champ a une valeur valide
-      const hasValidData = Object.values(updateData).some(value => 
-        value !== undefined && value !== null && value !== ''
-      );
-      
-      if (!hasValidData) {
-        throw new BadRequestException('Aucune donnée valide à mettre à jour');
-      }
-    }
-
-      async validateUser(email: string, password: string): Promise<User | null> {
-    const user = await this.findByEmail(email);
-    if (user && await bcrypt.compare(password, user.password)) {
-      return user;
-    }
-    return null;
+      return null;
   }
 
   async exists(userId: string): Promise<boolean> {
@@ -123,196 +104,209 @@ export class UsersService {
   }
 
 
-async create(createUserDto: RegisterDto): Promise<User> {
-    const existingUser = await this.findByEmail(createUserDto.email);
-    if (existingUser) {
-      throw new BadRequestException('Un utilisateur avec cet email existe déjà');
-    }
-
-    const existingAdmin = await this.findByRole(UserRole.ADMIN);
-    if (existingAdmin && createUserDto.role === UserRole.ADMIN) {
-      throw new BadRequestException('Il ne peut y avoir qu\'un seul administrateur');
-    }
-
-    const hashedPassword = await bcrypt.hash(
-      createUserDto.password, 
-      AuthConstants.BCRYPT_SALT_ROUNDS
-    );
-
-    const createdUser = new this.userModel({
-      ...createUserDto,
-      password: hashedPassword,
-      role: existingAdmin ? UserRole.USER : UserRole.ADMIN
-    });
-    // Normaliser le téléphone avant sauvegarde
-    createdUser.telephone = this.normalizeTelephone(createdUser.telephone) as any;
-    
-    return createdUser.save();
-  }
-
-
-
-async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
-  console.log('🔄 Mise à jour utilisateur.');
-  
-  // Validation de l'ID
-  if (!id || !Types.ObjectId.isValid(id)) {
-    throw new BadRequestException('ID utilisateur invalide');
-  }
-
-  // Filtrer et valider les données
-  const filteredUpdate = this.filterAndValidateUpdateData(updateUserDto);
-  
-  try {
-    // Vérifier l'existence de l'utilisateur
-    await this.verifyUserExists(id);
-    
-    // Vérifier les conflits avant mise à jour
-    await this.checkForConflicts(id, filteredUpdate);
-    
-    // Effectuer la mise à jour
-    const updatedUser = await this.userModel
-      .findByIdAndUpdate(
-        id, 
-        filteredUpdate, 
-        { 
-          new: true, 
-          runValidators: true,
-          context: 'query'
+  async create(createUserDto: RegisterDto): Promise<User> {
+        const existingUser = await this.findByEmail(createUserDto.email);
+        if (existingUser) {
+            throw new BadRequestException('Un utilisateur avec cet email existe déjà');
         }
-      )
-      .exec();
 
-    if (!updatedUser) {
-      throw new NotFoundException('Utilisateur non trouvé après mise à jour');
+        const existingAdmin = await this.findByRole(UserRole.ADMIN);
+        if (existingAdmin && createUserDto.role === UserRole.ADMIN) {
+            throw new BadRequestException('Il ne peut y avoir qu\'un seul administrateur');
+        }
+
+        const hashedPassword = await bcrypt.hash(
+            createUserDto.password, 
+            AuthConstants.BCRYPT_SALT_ROUNDS
+        );
+
+        // ✅ CRITIQUE : TOUJOURS créer comme actif
+        const createdUser = new this.userModel({
+            ...createUserDto,
+            password: hashedPassword,
+            role: existingAdmin ? UserRole.USER : UserRole.ADMIN,
+            isActive: true, // ← FORCER à true
+            logoutUntil: null // ← S'assurer qu'il n'y a pas de blocage
+        });
+        
+        // Normaliser le téléphone
+        createdUser.telephone = this.normalizeTelephone(createdUser.telephone) as any;
+        
+        const savedUser = await createdUser.save();
+        
+        // ✅ VÉRIFICATION FINALE
+        if (!savedUser.isActive) {
+            this.logger.error(`ERREUR CRITIQUE: Utilisateur créé inactif: ${savedUser.email}`);
+            // Forcer l'activation
+            await this.userModel.findByIdAndUpdate(savedUser._id, { isActive: true });
+            savedUser.isActive = true;
+        }
+        
+        return savedUser;
     }
 
-    console.log('✅ Utilisateur mis à jour avec succès');
-    return updatedUser;
 
-  } catch (error: any) {
-    this.handleUpdateError(error);
+  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+    console.log('🔄 Mise à jour utilisateur.');
+    
+    // Validation de l'ID
+    if (!id || !Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('ID utilisateur invalide');
+    }
+
+    // Filtrer et valider les données
+    const filteredUpdate = this.filterAndValidateUpdateData(updateUserDto);
+    
+    try {
+      // Vérifier l'existence de l'utilisateur
+      await this.verifyUserExists(id);
+      
+      // Vérifier les conflits avant mise à jour
+      await this.checkForConflicts(id, filteredUpdate);
+      
+      // Effectuer la mise à jour
+      const updatedUser = await this.userModel
+        .findByIdAndUpdate(
+          id, 
+          filteredUpdate, 
+          { 
+            new: true, 
+            runValidators: true,
+            context: 'query'
+          }
+        )
+        .exec();
+
+      if (!updatedUser) {
+        throw new NotFoundException('Utilisateur non trouvé après mise à jour');
+      }
+
+      console.log('✅ Utilisateur mis à jour avec succès');
+      return updatedUser;
+
+    } catch (error: any) {
+      this.handleUpdateError(error);
+    }
   }
-}
 
 
 
-private filterAndValidateUpdateData(updateUserDto: UpdateUserDto): any {
-  const allowedFields = ['email', 'telephone'];
-  const filteredUpdate: any = {};
-  
-  Object.keys(updateUserDto).forEach(key => {
-    if (allowedFields.includes(key) && updateUserDto[key as keyof UpdateUserDto] !== undefined) {
-      const value = updateUserDto[key as keyof UpdateUserDto];
-      if (value !== null && value !== '') {
-        filteredUpdate[key] = value;
+  private filterAndValidateUpdateData(updateUserDto: UpdateUserDto): any {
+    const allowedFields = ['email', 'telephone'];
+    const filteredUpdate: any = {};
+    
+    Object.keys(updateUserDto).forEach(key => {
+      if (allowedFields.includes(key) && updateUserDto[key as keyof UpdateUserDto] !== undefined) {
+        const value = updateUserDto[key as keyof UpdateUserDto];
+        if (value !== null && value !== '') {
+          filteredUpdate[key] = value;
+        }
+      }
+    });
+
+    if (Object.keys(filteredUpdate).length === 0) {
+      throw new BadRequestException('Aucune donnée valide à mettre à jour');
+    }
+
+    // Normalisation
+    if (filteredUpdate.email) {
+      filteredUpdate.email = filteredUpdate.email.toLowerCase().trim();
+      this.validateEmail(filteredUpdate.email);
+    }
+
+    if (filteredUpdate.telephone) {
+      filteredUpdate.telephone = this.normalizeTelephone(filteredUpdate.telephone);
+      this.validateTelephone(filteredUpdate.telephone);
+    }
+
+    return filteredUpdate;
+  }
+
+
+
+  private validateEmail(email: string): void {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new BadRequestException('Format d\'email invalide');
+    }
+  }
+
+
+
+  private validateTelephone(telephone: string | undefined): void {
+    if (telephone && telephone.length < 5) {
+      throw new BadRequestException('Le téléphone doit contenir au moins 5 caractères');
+    }
+  }
+
+
+
+  private async verifyUserExists(userId: string): Promise<void> {
+    const existingUser = await this.userModel.findById(userId).exec();
+    if (!existingUser) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+  }
+
+
+
+  private async checkForConflicts(userId: string, updateData: any): Promise<void> {
+    if (updateData.email) {
+      const existingUserWithEmail = await this.userModel.findOne({
+        email: updateData.email,
+        _id: { $ne: new Types.ObjectId(userId) }
+      }).exec();
+
+      if (existingUserWithEmail) {
+        throw new BadRequestException('Cet email est déjà utilisé');
       }
     }
-  });
 
-  if (Object.keys(filteredUpdate).length === 0) {
-    throw new BadRequestException('Aucune donnée valide à mettre à jour');
-  }
+    if (updateData.telephone) {
+      const existingUserWithPhone = await this.userModel.findOne({
+        telephone: updateData.telephone,
+        _id: { $ne: new Types.ObjectId(userId) }
+      }).exec();
 
-  // Normalisation
-  if (filteredUpdate.email) {
-    filteredUpdate.email = filteredUpdate.email.toLowerCase().trim();
-    this.validateEmail(filteredUpdate.email);
-  }
-
-  if (filteredUpdate.telephone) {
-    filteredUpdate.telephone = this.normalizeTelephone(filteredUpdate.telephone);
-    this.validateTelephone(filteredUpdate.telephone);
-  }
-
-  return filteredUpdate;
-}
-
-
-
-private validateEmail(email: string): void {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    throw new BadRequestException('Format d\'email invalide');
-  }
-}
-
-
-
-private validateTelephone(telephone: string | undefined): void {
-  if (telephone && telephone.length < 5) {
-    throw new BadRequestException('Le téléphone doit contenir au moins 5 caractères');
-  }
-}
-
-
-
-private async verifyUserExists(userId: string): Promise<void> {
-  const existingUser = await this.userModel.findById(userId).exec();
-  if (!existingUser) {
-    throw new NotFoundException('Utilisateur non trouvé');
-  }
-}
-
-
-
-private async checkForConflicts(userId: string, updateData: any): Promise<void> {
-  if (updateData.email) {
-    const existingUserWithEmail = await this.userModel.findOne({
-      email: updateData.email,
-      _id: { $ne: new Types.ObjectId(userId) }
-    }).exec();
-
-    if (existingUserWithEmail) {
-      throw new BadRequestException('Cet email est déjà utilisé');
+      if (existingUserWithPhone) {
+        throw new BadRequestException('Ce numéro de téléphone est déjà utilisé');
+      }
     }
   }
 
-  if (updateData.telephone) {
-    const existingUserWithPhone = await this.userModel.findOne({
-      telephone: updateData.telephone,
-      _id: { $ne: new Types.ObjectId(userId) }
-    }).exec();
 
-    if (existingUserWithPhone) {
-      throw new BadRequestException('Ce numéro de téléphone est déjà utilisé');
+
+  private handleUpdateError(error: any): never {
+    console.error('❌ Erreur mise à jour utilisateur:', error);
+    
+    if (error?.code === 11000) {
+      const fields = Object.keys(error.keyPattern || {});
+      if (fields.includes('email')) {
+        throw new BadRequestException('Cet email est déjà utilisé');
+      }
+      if (fields.includes('telephone')) {
+        throw new BadRequestException('Ce numéro de téléphone est déjà utilisé');
+      }
+      throw new BadRequestException('Conflit de données');
     }
-  }
-}
-
-
-
-private handleUpdateError(error: any): never {
-  console.error('❌ Erreur mise à jour utilisateur:', error);
-  
-  if (error?.code === 11000) {
-    const fields = Object.keys(error.keyPattern || {});
-    if (fields.includes('email')) {
-      throw new BadRequestException('Cet email est déjà utilisé');
+    
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((err: any) => err.message);
+      throw new BadRequestException(messages.join(', '));
     }
-    if (fields.includes('telephone')) {
-      throw new BadRequestException('Ce numéro de téléphone est déjà utilisé');
+    
+    if (error.name === 'CastError') {
+      throw new BadRequestException('ID utilisateur invalide');
     }
-    throw new BadRequestException('Conflit de données');
+    
+    // Propager les erreurs métier existantes
+    if (error instanceof BadRequestException || error instanceof NotFoundException) {
+      throw error;
+    }
+    
+    this.logger.error(`Erreur inattendue: ${error.message}`, error.stack);
+    throw new BadRequestException('Erreur lors de la mise à jour du profil');
   }
-  
-  if (error.name === 'ValidationError') {
-    const messages = Object.values(error.errors).map((err: any) => err.message);
-    throw new BadRequestException(messages.join(', '));
-  }
-  
-  if (error.name === 'CastError') {
-    throw new BadRequestException('ID utilisateur invalide');
-  }
-  
-  // Propager les erreurs métier existantes
-  if (error instanceof BadRequestException || error instanceof NotFoundException) {
-    throw error;
-  }
-  
-  this.logger.error(`Erreur inattendue: ${error.message}`, error.stack);
-  throw new BadRequestException('Erreur lors de la mise à jour du profil');
-}
 
 
 
@@ -381,18 +375,18 @@ private handleUpdateError(error: any): never {
 
 
 
- async checkDatabaseConnection(): Promise<boolean> {
-  try {
-    if (!this.userModel.db || !this.userModel.db.db) {
-      return false;
+  async checkDatabaseConnection(): Promise<boolean> {
+      try {
+        if (!this.userModel.db || !this.userModel.db.db) {
+          return false;
+        }
+        await this.userModel.db.db.command({ ping: 1 });
+        return true;
+      } catch (error) {
+        this.logger.error('Database connection check failed', error.stack);
+        return false;
+      }
     }
-    await this.userModel.db.db.command({ ping: 1 });
-    return true;
-  } catch (error) {
-    this.logger.error('Database connection check failed', error.stack);
-    return false;
-  }
-}
 
 
 
@@ -414,14 +408,13 @@ private handleUpdateError(error: any): never {
 
 
 
-  async getMaintenanceStatus() {
-  return {
-    isActive: await this.isMaintenanceMode(),
-    logoutUntil: null // Retirer la date fixe
-  };
 
-  
-}
+  async getMaintenanceStatus() {
+    return {
+      isActive: await this.isMaintenanceMode(),
+      logoutUntil: null // Retirer la date fixe
+    };
+  }
 
 
 

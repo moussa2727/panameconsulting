@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import AdminContactService, { Contact, ContactStats } from '../../api/admin/AdminContactService';
 import { toast } from 'react-toastify';
 
-// Icons
+// Icons (vous pouvez remplacer par vos propres icons)
 const Icon = {
   Eye: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>,
   Reply: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>,
@@ -14,55 +14,7 @@ const Icon = {
   Refresh: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
   User: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
   Email: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
-  Calendar: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
-  ChevronDown: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>,
-  X: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-};
-
-// Popover de confirmation pour suppression
-const DeleteConfirmPopover: React.FC<{
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  position: { top: number; left: number };
-}> = ({ isOpen, onClose, onConfirm, position }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div 
-      className="fixed z-50 bg-white border border-blue-300 rounded-lg shadow-lg p-4 min-w-[200px]"
-      style={{
-        top: position.top,
-        left: position.left,
-        transform: 'translateY(10px)'
-      }}
-    >
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-sm font-medium text-blue-900">Confirmer la suppression</h4>
-        <button 
-          onClick={onClose}
-          className="text-blue-500 hover:text-blue-600"
-        >
-          <Icon.X />
-        </button>
-      </div>
-      <p className="text-sm text-blue-700 mb-3">Êtes-vous sûr de vouloir supprimer ce message ?</p>
-      <div className="flex justify-end space-x-2">
-        <button 
-          onClick={onClose}
-          className="px-3 py-1 text-sm text-blue-600 border border-blue-300 rounded hover:border-blue-500"
-        >
-          Annuler
-        </button>
-        <button 
-          onClick={onConfirm}
-          className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-        >
-          Supprimer
-        </button>
-      </div>
-    </div>
-  );
+  Calendar: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
 };
 
 const AdminMessages: React.FC = () => {
@@ -85,17 +37,6 @@ const AdminMessages: React.FC = () => {
   });
   
   const [totalContacts, setTotalContacts] = useState(0);
-  
-  // État pour le popover de suppression
-  const [deletePopover, setDeletePopover] = useState<{
-    isOpen: boolean;
-    contactId: string | null;
-    position: { top: number; left: number };
-  }>({
-    isOpen: false,
-    contactId: null,
-    position: { top: 0, left: 0 }
-  });
 
   // Charger les contacts
   const loadContacts = async () => {
@@ -151,11 +92,12 @@ const AdminMessages: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce message ?')) return;
+    
     try {
       await contactService.deleteContact(id);
       await loadContacts();
       await loadStats();
-      setDeletePopover({ isOpen: false, contactId: null, position: { top: 0, left: 0 } });
       toast.success('Message supprimé avec succès');
     } catch (error) {
       toast.error('Erreur lors de la suppression du message');
@@ -166,6 +108,7 @@ const AdminMessages: React.FC = () => {
     setSelectedContact(contact);
     setIsDetailModalOpen(true);
     
+    // Marquer comme lu si ce n'est pas déjà fait
     if (!contact.isRead) {
       await handleMarkAsRead(contact._id);
     }
@@ -174,19 +117,6 @@ const AdminMessages: React.FC = () => {
   const handleOpenReply = (contact: Contact) => {
     setSelectedContact(contact);
     setIsReplyModalOpen(true);
-  };
-
-  // Ouvrir le popover de suppression
-  const openDeletePopover = (contactId: string, event: React.MouseEvent) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    setDeletePopover({
-      isOpen: true,
-      contactId,
-      position: {
-        top: rect.bottom + window.scrollY,
-        left: rect.left + window.scrollX
-      }
-    });
   };
 
   // Formatage de la date
@@ -207,10 +137,10 @@ const AdminMessages: React.FC = () => {
   };
 
   return (
-    <div className="p-4">
+    <div className="min-h-screen p-4">
       {/* En-tête */}
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-blue-900 mb-2">
+        <h1 className="text-2xl md:text-3xl font-bold text-blue-700 mb-2">
           Gestion des Messages
         </h1>
         <p className="text-blue-700">
@@ -221,9 +151,9 @@ const AdminMessages: React.FC = () => {
       {/* Cartes de statistiques */}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg border border-blue-200 p-4">
+          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-blue-500">
             <div className="flex items-center">
-              <div className="bg-blue-500 p-2 rounded-lg">
+              <div className="bg-blue-100 p-2 rounded-lg">
                 <Icon.Email />
               </div>
               <div className="ml-4">
@@ -233,38 +163,38 @@ const AdminMessages: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-blue-200 p-4">
+          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-red-500">
             <div className="flex items-center">
-              <div className="bg-blue-500 p-2 rounded-lg">
+              <div className="bg-red-100 p-2 rounded-lg">
                 <Icon.Email />
               </div>
               <div className="ml-4">
-                <p className="text-sm text-blue-600">Non Lus</p>
-                <p className="text-2xl font-bold text-blue-900">{stats.unread}</p>
+                <p className="text-sm text-red-600">Non Lus</p>
+                <p className="text-2xl font-bold text-red-900">{stats.unread}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-blue-200 p-4">
+          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-green-500">
             <div className="flex items-center">
-              <div className="bg-blue-500 p-2 rounded-lg">
+              <div className="bg-green-100 p-2 rounded-lg">
                 <Icon.Check />
               </div>
               <div className="ml-4">
-                <p className="text-sm text-blue-600">Répondu</p>
-                <p className="text-2xl font-bold text-blue-900">{stats.responded}</p>
+                <p className="text-sm text-green-600">Répondu</p>
+                <p className="text-2xl font-bold text-green-900">{stats.responded}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-blue-200 p-4">
+          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-purple-500">
             <div className="flex items-center">
-              <div className="bg-blue-500 p-2 rounded-lg">
+              <div className="bg-purple-100 p-2 rounded-lg">
                 <Icon.Calendar />
               </div>
               <div className="ml-4">
-                <p className="text-sm text-blue-600">Ce Mois</p>
-                <p className="text-2xl font-bold text-blue-900">{stats.thisMonth}</p>
+                <p className="text-sm text-purple-600">Ce Mois</p>
+                <p className="text-2xl font-bold text-purple-900">{stats.thisMonth}</p>
               </div>
             </div>
           </div>
@@ -272,7 +202,7 @@ const AdminMessages: React.FC = () => {
       )}
 
       {/* Barre de filtres et recherche */}
-      <div className="bg-white rounded-lg border border-blue-200 p-4 mb-6">
+      <div className="bg-white rounded-lg shadow-md p-4 mb-6">
         <div className="flex flex-col md:flex-row gap-4">
           {/* Recherche */}
           <div className="flex-1">
@@ -282,7 +212,7 @@ const AdminMessages: React.FC = () => {
                 placeholder="Rechercher par nom, email ou message..."
                 value={filters.search}
                 onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }))}
-                className="w-full pl-10 pr-4 py-2 border border-blue-300 rounded-lg focus:outline-none"
+                className="w-full pl-10 pr-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Icon.Search />
@@ -299,7 +229,7 @@ const AdminMessages: React.FC = () => {
                 isRead: e.target.value === '' ? undefined : e.target.value === 'true',
                 page: 1 
               }))}
-              className="px-4 py-2 border border-blue-300 rounded-lg focus:outline-none"
+              className="px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-colors"
             >
               <option value="">Tous les statuts</option>
               <option value="false">Non lus</option>
@@ -310,7 +240,7 @@ const AdminMessages: React.FC = () => {
               onClick={() => {
                 setFilters({ page: 1, limit: 10, search: '', isRead: undefined });
               }}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none"
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-none focus:border-blue-500 transition-colors"
             >
               <Icon.Refresh />
             </button>
@@ -319,7 +249,7 @@ const AdminMessages: React.FC = () => {
       </div>
 
       {/* Tableau des messages */}
-      <div className="bg-white rounded-lg border border-blue-200 overflow-hidden">
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
         {/* En-tête du tableau */}
         <div className="px-4 py-3 bg-blue-500 text-white">
           <h2 className="text-lg font-semibold">Messages des Utilisateurs</h2>
@@ -328,7 +258,7 @@ const AdminMessages: React.FC = () => {
         {/* Tableau */}
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-blue-50">
+            <thead className="bg-blue-100">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-blue-900 uppercase tracking-wider">
                   Utilisateur
@@ -351,13 +281,13 @@ const AdminMessages: React.FC = () => {
               {contacts.map((contact) => (
                 <tr 
                   key={contact._id} 
-                  className={`hover:bg-blue-50 ${
+                  className={`hover:bg-blue-50 transition-colors ${
                     !contact.isRead ? 'bg-blue-25' : ''
                   }`}
                 >
                   <td className="px-4 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="bg-blue-500 p-2 rounded-full">
+                      <div className="bg-blue-100 p-2 rounded-full">
                         <Icon.User />
                       </div>
                       <div className="ml-3">
@@ -381,8 +311,8 @@ const AdminMessages: React.FC = () => {
                   <td className="px-4 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                       contact.isRead 
-                        ? 'bg-blue-100 text-blue-800' 
-                        : 'bg-blue-500 text-white'
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
                     }`}>
                       {contact.isRead ? 'Lu' : 'Non lu'}
                     </span>
@@ -396,7 +326,7 @@ const AdminMessages: React.FC = () => {
                     <div className="flex space-x-2">
                       <button
                         onClick={() => handleViewDetails(contact)}
-                        className="text-blue-500 hover:text-blue-600 focus:outline-none"
+                        className="text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-none transition-colors"
                         title="Voir les détails"
                       >
                         <Icon.Eye />
@@ -404,7 +334,7 @@ const AdminMessages: React.FC = () => {
                       
                       <button
                         onClick={() => handleOpenReply(contact)}
-                        className="text-blue-500 hover:text-blue-600 focus:outline-none"
+                        className="text-green-600 hover:text-green-900 focus:outline-none focus:ring-none transition-colors"
                         title="Répondre"
                       >
                         <Icon.Reply />
@@ -413,7 +343,7 @@ const AdminMessages: React.FC = () => {
                       {!contact.isRead && (
                         <button
                           onClick={() => handleMarkAsRead(contact._id)}
-                          className="text-blue-500 hover:text-blue-600 focus:outline-none"
+                          className="text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-none transition-colors"
                           title="Marquer comme lu"
                         >
                           <Icon.Check />
@@ -421,8 +351,8 @@ const AdminMessages: React.FC = () => {
                       )}
                       
                       <button
-                        onClick={(e) => openDeletePopover(contact._id, e)}
-                        className="text-blue-500 hover:text-blue-600 focus:outline-none"
+                        onClick={() => handleDelete(contact._id)}
+                        className="text-red-600 hover:text-red-900 focus:outline-none focus:ring-none transition-colors"
                         title="Supprimer"
                       >
                         <Icon.Trash />
@@ -446,14 +376,14 @@ const AdminMessages: React.FC = () => {
                 <button
                   onClick={() => handlePageChange(filters.page - 1)}
                   disabled={filters.page === 1}
-                  className="px-3 py-1 rounded border border-blue-300 text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed hover:border-blue-500 focus:outline-none"
+                  className="px-3 py-1 rounded border border-blue-300 text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                 >
                   Précédent
                 </button>
                 <button
                   onClick={() => handlePageChange(filters.page + 1)}
                   disabled={filters.page === totalPages}
-                  className="px-3 py-1 rounded border border-blue-300 text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed hover:border-blue-500 focus:outline-none"
+                  className="px-3 py-1 rounded border border-blue-300 text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                 >
                   Suivant
                 </button>
@@ -466,8 +396,8 @@ const AdminMessages: React.FC = () => {
       {/* Modal de détails */}
       {isDetailModalOpen && selectedContact && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg border border-blue-300 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 bg-blue-500 text-white">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 bg-blue-900 text-white">
               <h3 className="text-lg font-semibold">Détails du Message</h3>
             </div>
             
@@ -495,7 +425,7 @@ const AdminMessages: React.FC = () => {
                 <label className="block text-sm font-medium text-blue-700 mb-1">
                   Message
                 </label>
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <div className="bg-blue-50 p-4 rounded-lg">
                   <p className="text-blue-900 whitespace-pre-wrap">
                     {selectedContact.message}
                   </p>
@@ -504,14 +434,14 @@ const AdminMessages: React.FC = () => {
 
               {selectedContact.adminResponse && (
                 <div>
-                  <label className="block text-sm font-medium text-blue-700 mb-1">
+                  <label className="block text-sm font-medium text-green-700 mb-1">
                     Votre réponse
                   </label>
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    <p className="text-blue-900 whitespace-pre-wrap">
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <p className="text-green-900 whitespace-pre-wrap">
                       {selectedContact.adminResponse}
                     </p>
-                    <p className="text-blue-600 text-sm mt-2">
+                    <p className="text-green-600 text-sm mt-2">
                       Répondu le {formatDate(selectedContact.respondedAt!)}
                     </p>
                   </div>
@@ -522,7 +452,7 @@ const AdminMessages: React.FC = () => {
             <div className="px-6 py-4 bg-blue-50 border-t border-blue-200 flex justify-end space-x-2">
               <button
                 onClick={() => setIsDetailModalOpen(false)}
-                className="px-4 py-2 text-blue-700 border border-blue-300 rounded-lg hover:border-blue-500 focus:outline-none"
+                className="px-4 py-2 text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-100 focus:outline-none focus:ring-none transition-colors"
               >
                 Fermer
               </button>
@@ -532,7 +462,7 @@ const AdminMessages: React.FC = () => {
                     setIsDetailModalOpen(false);
                     handleOpenReply(selectedContact);
                   }}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-none transition-colors"
                 >
                   Répondre
                 </button>
@@ -545,8 +475,8 @@ const AdminMessages: React.FC = () => {
       {/* Modal de réponse */}
       {isReplyModalOpen && selectedContact && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg border border-blue-300 max-w-2xl w-full">
-            <div className="px-6 py-4 bg-blue-500 text-white">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
+            <div className="px-6 py-4 bg-blue-900 text-white">
               <h3 className="text-lg font-semibold">Répondre au message</h3>
             </div>
             
@@ -566,7 +496,7 @@ const AdminMessages: React.FC = () => {
                   value={replyMessage}
                   onChange={(e) => setReplyMessage(e.target.value)}
                   rows={6}
-                  className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:outline-none resize-none"
+                  className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 resize-none"
                   placeholder="Tapez votre réponse ici..."
                 />
               </div>
@@ -578,14 +508,14 @@ const AdminMessages: React.FC = () => {
                   setIsReplyModalOpen(false);
                   setReplyMessage('');
                 }}
-                className="px-4 py-2 text-blue-700 border border-blue-300 rounded-lg hover:border-blue-500 focus:outline-none"
+                className="px-4 py-2 text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-100 focus:outline-none focus:ring-none transition-colors"
               >
                 Annuler
               </button>
               <button
                 onClick={handleReply}
                 disabled={!replyMessage.trim()}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-none transition-colors"
               >
                 Envoyer la réponse
               </button>
@@ -593,14 +523,6 @@ const AdminMessages: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Popover de confirmation de suppression */}
-      <DeleteConfirmPopover
-        isOpen={deletePopover.isOpen}
-        onClose={() => setDeletePopover({ isOpen: false, contactId: null, position: { top: 0, left: 0 } })}
-        onConfirm={() => deletePopover.contactId && handleDelete(deletePopover.contactId)}
-        position={deletePopover.position}
-      />
     </div>
   );
 };

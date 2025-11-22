@@ -4,37 +4,28 @@ import { User } from './user.schema';
 
 @Schema({
   timestamps: true,
-  collection: 'password_reset_tokens',
-  autoIndex: true
+  collection: 'password_reset_tokens'
 })
 export class ResetToken extends Document {
-  @Prop({
-    type: String,
-    required: true,
-    unique: true,
-    index: true
-  })
+@Prop({ required: true, unique: true })
   token: string;
 
   @Prop({
     type: Types.ObjectId,
     ref: 'User',
-    required: true,
-    index: true
+    required: true
   })
   user: User;
 
   @Prop({
     type: Date,
-    required: true,
-    index: { expires: '1h' } // Auto-expire après 1 heure
+    required: true
   })
   expiresAt: Date;
 
   @Prop({
     type: Boolean,
-    default: false,
-    index: true
+    default: false
   })
   used: boolean;
 
@@ -44,13 +35,12 @@ export class ResetToken extends Document {
     default: 'pending'
   })
   status: string;
-
 }
 
 export const ResetTokenSchema = SchemaFactory.createForClass(ResetToken);
+
+// Single index definition for expiration
 ResetTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-// Index composé pour les requêtes fréquentes
-ResetTokenSchema.index({ token: 1, user: 1, used: 1 });
 
 // Middleware pour empêcher la réutilisation des tokens
 ResetTokenSchema.pre('save', function(next) {
@@ -60,7 +50,6 @@ ResetTokenSchema.pre('save', function(next) {
   next();
 });
 
-// Export du type complet
 export type ResetTokenDocument = ResetToken & Document & {
   createdAt: Date;
   updatedAt: Date;

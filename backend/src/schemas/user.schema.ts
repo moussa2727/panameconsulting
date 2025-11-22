@@ -31,7 +31,7 @@ export class User extends Document {
   })
   role: UserRole;
 
-  @Prop({ default: true })
+  @Prop({ default: true }) 
   isActive: boolean;
 
   @Prop()
@@ -47,7 +47,6 @@ export class User extends Document {
 export const UserSchema = SchemaFactory.createForClass(User);
 
 // Index pour les recherches courantes
-UserSchema.index({ email: 1 });
 UserSchema.index({ isActive: 1 });
 UserSchema.index({ role: 1 });
 

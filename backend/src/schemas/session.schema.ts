@@ -1,13 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-import { User } from '../schemas/user.schema';
+import { User } from './user.schema'; // Fixed import path
 
 @Schema({
-  timestamps: true,
-  autoIndex: true,
+  timestamps: true
 })
 export class Session extends Document {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true }) 
   user: User;
 
   @Prop({ required: true, unique: true })

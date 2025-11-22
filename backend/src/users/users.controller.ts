@@ -39,8 +39,20 @@ export class UsersController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  create(@Body() createUserDto: RegisterDto) {
-    return this.usersService.create(createUserDto);
+  async create(@Body() createUserDto: RegisterDto) {
+    // S'assurer que le rôle est géré correctement
+    const userData = { ...createUserDto };
+    
+    // Ne pas permettre à l'admin de créer d'autres admins via cette route
+    // ou gérer la logique des rôles dans le service
+    if (userData.role === UserRole.ADMIN) {
+      const existingAdmin = await this.usersService.findByRole(UserRole.ADMIN);
+      if (existingAdmin) {
+        throw new BadRequestException('Il ne peut y avoir qu\'un seul administrateur');
+      }
+    }
+    
+    return this.usersService.create(userData);
   }
 
   @Get()
@@ -157,6 +169,38 @@ export class UsersController {
     };
   }
 
+  @Post(':id/admin-reset-password')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async adminResetPassword(
+    @Param('id') userId: string,
+    @Body() body: { newPassword: string; confirmNewPassword: string }
+  ) {
+    // Implémentez la logique de réinitialisation par l'admin
+    await this.usersService.resetPassword(userId, body.newPassword);
+    return { message: 'Mot de passe réinitialisé avec succès' };
+  }
+
+
+  @Patch(':id')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
+async updateUser(
+  @Param('id') userId: string,
+  @Body() updateUserDto: UpdateUserDto
+) {
+  const updatedUser = await this.usersService.update(userId, updateUserDto);
+  
+  return {
+    id: updatedUser._id?.toString(),
+    email: updatedUser.email,
+    firstName: updatedUser.firstName,
+    lastName: updatedUser.lastName,
+    role: updatedUser.role,
+    telephone: updatedUser.telephone,
+    isActive: updatedUser.isActive
+  };
+}
 
    @Get('profile/me')
   @UseGuards(JwtAuthGuard)

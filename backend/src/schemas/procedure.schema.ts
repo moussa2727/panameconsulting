@@ -1,4 +1,3 @@
-// procedure.schema.ts - VERSION COMPLÈTE AVEC dateCompletion
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Model, Types } from 'mongoose';
 
@@ -10,7 +9,6 @@ export enum StepStatus {
   CANCELLED = 'Annulé'  
 }
 
-// ✅ CORRIGÉ: Noms AVEC espaces
 export enum StepName {
   DEMANDE_ADMISSION = 'DEMANDE ADMISSION',
   DEMANDE_VISA = 'DEMANDE VISA',
@@ -69,8 +67,7 @@ export class Procedure extends Document {
     type: Types.ObjectId, 
     ref: 'Rendezvous', 
     required: true,
-    unique: true,
-    index: true
+    unique: true
   })
   rendezVousId: Types.ObjectId;
 
@@ -104,15 +101,12 @@ export class Procedure extends Document {
   @Prop({ type: String })
   raisonRejet?: string;
 
-  // ✅ AJOUT: Propriété dateCompletion manquante
   @Prop({ type: Date })
   dateCompletion?: Date;
 
-  // ✅ AJOUT: Propriété dateDerniereModification manquante
   @Prop({ type: Date, default: Date.now })
   dateDerniereModification?: Date;
 
-  // Déclarer les méthodes comme optionnelles dans la classe
   updateGlobalStatus?: () => void;
   addStep?: (stepName: StepName) => void;
   updateStep?: (stepName: StepName, updates: Partial<Step>) => void;
@@ -142,7 +136,7 @@ ProcedureSchema.methods.updateGlobalStatus = function() {
     procedure.statut = ProcedureStatus.CANCELLED;
   } else if (allCompleted) {
     procedure.statut = ProcedureStatus.COMPLETED;
-    procedure.dateCompletion = new Date(); // ✅ MAINTENANT VALIDE
+    procedure.dateCompletion = new Date(); 
   } else {
     procedure.statut = ProcedureStatus.IN_PROGRESS;
   }
@@ -196,7 +190,7 @@ ProcedureSchema.statics.findByUserEmail = function(email: string) {
 
 ProcedureSchema.pre('save', function(next) {
   const procedure = this as any;
-  procedure.dateDerniereModification = new Date(); // ✅ MAINTENANT VALIDE
+  procedure.dateDerniereModification = new Date();
   
   if (procedure.isModified('steps')) {
     procedure.updateGlobalStatus();
