@@ -1,4 +1,4 @@
-// AdminProcedures.tsx
+// AdminProcedures.tsx - Version Mobile
 import React, { useState, useEffect } from 'react';
 import { 
   PencilIcon, 
@@ -10,7 +10,8 @@ import {
   ExclamationTriangleIcon,
   PlusIcon,
   ChevronUpDownIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 import { useAdminProcedureApi, Procedure, ProcedureStatus, StepStatus, StepName } from '../../api/admin/AdminProcedureService';
 import { useAuth } from '../../context/AuthContext';
@@ -57,6 +58,7 @@ const AdminProcedures: React.FC = () => {
     procedureId: null,
     procedureName: ''
   });
+  const [showFilters, setShowFilters] = useState(false);
 
   // Chargement initial
   useEffect(() => {
@@ -85,17 +87,8 @@ const AdminProcedures: React.FC = () => {
         totalPages: response.totalPages
       }));
     } catch (err: any) {
-      // Gestion spécifique des erreurs
-      if (err.message.includes('401')) {
-        setError('Session expirée - Veuillez vous reconnecter');
-        toast.error('Session expirée');
-      } else if (err.message.includes('403')) {
-        setError('Accès non autorisé');
-        toast.error('Droits insuffisants');
-      } else {
-        setError(err.message || 'Erreur lors du chargement des procédures');
-        toast.error('Erreur lors du chargement des procédures');
-      }
+      setError(err.message || 'Erreur lors du chargement des procédures');
+      toast.error('Erreur lors du chargement des procédures');
     } finally {
       setLoading(false);
     }
@@ -113,7 +106,6 @@ const AdminProcedures: React.FC = () => {
 
   // Mise à jour du statut d'une étape
   const handleUpdateStep = async (procedureId: string, stepName: StepName, newStatus: StepStatus, reason?: string) => {
-    // Validation frontend
     if (newStatus === StepStatus.REJECTED && (!reason || reason.trim() === '')) {
       toast.error('La raison du rejet est obligatoire');
       return;
@@ -124,13 +116,12 @@ const AdminProcedures: React.FC = () => {
       
       const updatedProcedure = await updateStepStatus(procedureId, stepName, newStatus, reason);
       
-      // Mettre à jour la liste locale
       setProcedures(prev => 
         prev.map(p => p._id === procedureId ? updatedProcedure : p)
       );
       
       toast.success(`Étape ${stepName} mise à jour avec succès`);
-      loadStats(); // Recharger les stats
+      loadStats();
     } catch (err: any) {
       toast.error(err.message || 'Erreur lors de la mise à jour');
     } finally {
@@ -198,12 +189,15 @@ const AdminProcedures: React.FC = () => {
 
   const applyFilters = () => {
     setPagination(prev => ({ ...prev, page: 1 }));
+    setShowFilters(false);
     loadProcedures();
   };
 
   const resetFilters = () => {
     setFilters({ email: '', destination: '', statut: '' });
     setPagination(prev => ({ ...prev, page: 1 }));
+    setShowFilters(false);
+    loadProcedures();
   };
 
   // Pagination
@@ -222,7 +216,7 @@ const AdminProcedures: React.FC = () => {
 
     const config = statusConfig[status];
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${config.color}`}>
         {config.label}
       </span>
     );
@@ -251,15 +245,13 @@ const AdminProcedures: React.FC = () => {
 
   if (loading && procedures.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50 p-4">
-        <div className="max-w-3xl mx-auto w-full">
-          <div className="animate-pulse">
-            <div className="h-8 bg-blue-200 rounded w-1/4 mb-6"></div>
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-20 bg-white rounded-lg shadow"></div>
-              ))}
-            </div>
+      <div className="min-h-screen bg-slate-50 p-3">
+        <div className="animate-pulse">
+          <div className="h-7 bg-blue-200 rounded w-2/5 mb-6"></div>
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-24 bg-white rounded-lg shadow"></div>
+            ))}
           </div>
         </div>
       </div>
@@ -267,50 +259,41 @@ const AdminProcedures: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4">
-      {/* Container principal adapté tablette */}
-      <div className="max-w-3xl mx-auto w-full">
-        {/* En-tête */}
-        <div className="mb-6">
-          <h1 className="text-xl md:text-2xl font-bold text-blue-600 mb-2">
-            Gestion des Procédures
-          </h1>
-          <p className="text-slate-600 text-sm">
-            Consultez et gérez toutes les procédures des étudiants
-          </p>
-        </div>
+    <div className="min-h-screen bg-slate-50 p-3">
+      {/* En-tête */}
+      <div className="mb-4">
+        <h1 className="text-xl font-bold text-blue-600 mb-1">
+          Gestion des Procédures
+        </h1>
+        <p className="text-slate-600 text-xs">
+          Consultez et gérez toutes les procédures des étudiants
+        </p>
+      </div>
 
-        {/* Statistiques */}
-        {stats && (
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            <div className="bg-white rounded-lg shadow p-3 border-l-4 border-blue-500">
-              <div className="text-xs text-slate-600">Total</div>
-              <div className="text-lg font-bold text-blue-600">{stats.total}</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-3 border-l-4 border-blue-400">
-              <div className="text-xs text-slate-600">En cours</div>
-              <div className="text-lg font-bold text-blue-500">
-                {stats.byStatus?.find((s: any) => s._id === ProcedureStatus.IN_PROGRESS)?.count || 0}
-              </div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-3 border-l-4 border-green-500">
-              <div className="text-xs text-slate-600">Terminées</div>
-              <div className="text-lg font-bold text-green-600">
-                {stats.byStatus?.find((s: any) => s._id === ProcedureStatus.COMPLETED)?.count || 0}
-              </div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-3 border-l-4 border-red-500">
-              <div className="text-xs text-slate-600">Rejetées</div>
-              <div className="text-lg font-bold text-red-600">
-                {stats.byStatus?.find((s: any) => s._id === ProcedureStatus.REJECTED)?.count || 0}
-              </div>
-            </div>
+      {/* Bouton filtre mobile */}
+      <div className="mb-4">
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="w-full bg-white border border-slate-300 rounded-lg p-3 flex items-center justify-between"
+        >
+          <span className="text-sm font-medium text-slate-700">Filtres</span>
+          <ChevronUpDownIcon className="w-4 h-4 text-slate-500" />
+        </button>
+      </div>
+
+      {/* Filtres mobile */}
+      {showFilters && (
+        <div className="bg-white rounded-lg shadow p-4 mb-4 fixed inset-3 z-40 overflow-y-auto">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-lg font-medium text-slate-900">Filtres</h3>
+            <button
+              onClick={() => setShowFilters(false)}
+              className="p-1 rounded-full hover:bg-slate-100"
+            >
+              <XMarkIcon className="w-5 h-5 text-slate-500" />
+            </button>
           </div>
-        )}
-
-        {/* Filtres */}
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Email
@@ -319,7 +302,7 @@ const AdminProcedures: React.FC = () => {
                 type="email"
                 value={filters.email}
                 onChange={(e) => handleFilterChange('email', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors text-sm"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 text-sm"
                 placeholder="Filtrer par email..."
               />
             </div>
@@ -331,7 +314,7 @@ const AdminProcedures: React.FC = () => {
                 type="text"
                 value={filters.destination}
                 onChange={(e) => handleFilterChange('destination', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors text-sm"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 text-sm"
                 placeholder="Filtrer par destination..."
               />
             </div>
@@ -342,7 +325,7 @@ const AdminProcedures: React.FC = () => {
               <select
                 value={filters.statut}
                 onChange={(e) => handleFilterChange('statut', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors text-sm"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 text-sm"
               >
                 <option value="">Tous les statuts</option>
                 {Object.values(ProcedureStatus).map(status => (
@@ -353,159 +336,166 @@ const AdminProcedures: React.FC = () => {
             <div className="flex space-x-2 pt-2">
               <button
                 onClick={applyFilters}
-                className="flex-1 bg-blue-600 text-white px-3 py-2 text-sm rounded-md hover:bg-blue-700 
-                          focus:outline-none focus:ring-none focus:border-blue-500 transition-colors flex items-center justify-center"
+                className="flex-1 bg-blue-600 text-white px-3 py-2 text-sm rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center"
               >
                 <MagnifyingGlassIcon className="w-4 h-4 inline mr-1" />
                 Appliquer
               </button>
               <button
                 onClick={resetFilters}
-                className="px-3 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 focus:outline-none focus:ring-none focus:border-blue-500 transition-colors text-sm"
+                className="flex-1 px-3 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 transition-colors text-sm"
               >
                 Réinitialiser
               </button>
             </div>
           </div>
         </div>
+      )}
 
-        {/* Tableau des procédures */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-400 p-3 mb-4">
-              <div className="flex">
-                <ExclamationTriangleIcon className="h-4 w-4 text-red-400 mr-2 mt-0.5" />
-                <p className="text-red-700 text-sm">{error}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Étudiant
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Destination
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Statut
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-slate-200">
-                {procedures.map((procedure) => (
-                  <tr key={procedure._id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-3 py-3">
-                      <div>
-                        <div className="text-sm font-medium text-slate-900">
-                          {procedure.prenom} {procedure.nom}
-                        </div>
-                        <div className="text-xs text-slate-500 truncate max-w-[120px]">{procedure.email}</div>
-                        {procedure.telephone && (
-                          <div className="text-xs text-slate-500">{procedure.telephone}</div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="text-sm text-slate-900 truncate max-w-[100px]">{procedure.destination}</div>
-                      {procedure.filiere && (
-                        <div className="text-xs text-slate-500 truncate max-w-[100px]">{procedure.filiere}</div>
-                      )}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="space-y-1">
-                        {renderStatusBadge(procedure.statut)}
-                        <div className="text-xs text-slate-500">
-                          {new Date(procedure.createdAt).toLocaleDateString('fr-FR')}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end space-x-1">
-                        <button
-                          onClick={() => {
-                            setSelectedProcedure(procedure);
-                            setShowDetailModal(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50 transition-colors"
-                          title="Voir les détails"
-                        >
-                          <EyeIcon className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(procedure)}
-                          disabled={actionLoading === `delete-${procedure._id}`}
-                          className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50"
-                          title="Supprimer"
-                        >
-                          <TrashIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Statistiques */}
+      {stats && (
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="bg-white rounded-lg shadow p-3 border-l-4 border-blue-500">
+            <div className="text-xs text-slate-600">Total</div>
+            <div className="text-base font-bold text-blue-600">{stats.total}</div>
           </div>
+          <div className="bg-white rounded-lg shadow p-3 border-l-4 border-blue-400">
+            <div className="text-xs text-slate-600">En cours</div>
+            <div className="text-base font-bold text-blue-500">
+              {stats.byStatus?.find((s: any) => s._id === ProcedureStatus.IN_PROGRESS)?.count || 0}
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-3 border-l-4 border-green-500">
+            <div className="text-xs text-slate-600">Terminées</div>
+            <div className="text-base font-bold text-green-600">
+              {stats.byStatus?.find((s: any) => s._id === ProcedureStatus.COMPLETED)?.count || 0}
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-3 border-l-4 border-red-500">
+            <div className="text-xs text-slate-600">Rejetées</div>
+            <div className="text-base font-bold text-red-600">
+              {stats.byStatus?.find((s: any) => s._id === ProcedureStatus.REJECTED)?.count || 0}
+            </div>
+          </div>
+        </div>
+      )}
 
-          {/* Pagination */}
-          {pagination.totalPages > 1 && (
-            <div className="bg-slate-50 px-3 py-3 flex items-center justify-between border-t border-slate-200">
-              <div className="flex-1 flex justify-between items-center">
-                <div>
-                  <p className="text-xs text-slate-700">
-                    Page {pagination.page} sur {pagination.totalPages}
-                  </p>
+      {/* Liste des procédures */}
+      <div className="bg-white rounded-lg shadow">
+        {error && (
+          <div className="bg-red-50 border-l-4 border-red-400 p-3">
+            <div className="flex">
+              <ExclamationTriangleIcon className="h-4 w-4 text-red-400 mr-2 mt-0.5" />
+              <p className="text-red-700 text-xs">{error}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="divide-y divide-slate-200">
+          {procedures.map((procedure) => (
+            <div key={procedure._id} className="p-3 hover:bg-slate-50 transition-colors">
+              <div className="flex justify-between items-start mb-2">
+                <div className="flex-1">
+                  <div className="font-medium text-slate-900 text-sm">
+                    {procedure.prenom} {procedure.nom}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">{procedure.email}</div>
+                  {procedure.telephone && (
+                    <div className="text-xs text-slate-500">{procedure.telephone}</div>
+                  )}
+                </div>
+                <div className="ml-2">
+                  {renderStatusBadge(procedure.statut)}
+                </div>
+              </div>
+              
+              <div className="mb-2">
+                <div className="text-sm text-slate-900 font-medium">{procedure.destination}</div>
+                {procedure.filiere && (
+                  <div className="text-xs text-slate-500">{procedure.filiere}</div>
+                )}
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <div className="text-xs text-slate-500">
+                  {new Date(procedure.createdAt).toLocaleDateString('fr-FR')}
                 </div>
                 <div className="flex space-x-1">
                   <button
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                    disabled={pagination.page === 1}
-                    className="px-2 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                    onClick={() => {
+                      setSelectedProcedure(procedure);
+                      setShowDetailModal(true);
+                    }}
+                    className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50 transition-colors"
+                    title="Voir les détails"
                   >
-                    Précédent
+                    <EyeIcon className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                    disabled={pagination.page === pagination.totalPages}
-                    className="px-2 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                    onClick={() => handleDeleteClick(procedure)}
+                    disabled={actionLoading === `delete-${procedure._id}`}
+                    className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50"
+                    title="Supprimer"
                   >
-                    Suivant
+                    <TrashIcon className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             </div>
-          )}
-
-          {procedures.length === 0 && !loading && (
-            <div className="text-center py-8">
-              <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-slate-400" />
-              <h3 className="mt-2 text-sm font-medium text-slate-900">Aucune procédure</h3>
-              <p className="mt-1 text-xs text-slate-500">
-                Aucune procédure ne correspond à vos critères de recherche.
-              </p>
-            </div>
-          )}
+          ))}
         </div>
+
+        {/* Pagination */}
+        {pagination.totalPages > 1 && (
+          <div className="px-3 py-3 flex items-center justify-between border-t border-slate-200">
+            <div className="flex-1 flex justify-between items-center">
+              <div>
+                <p className="text-xs text-slate-700">
+                  Page {pagination.page} sur {pagination.totalPages}
+                </p>
+              </div>
+              <div className="flex space-x-1">
+                <button
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                  disabled={pagination.page === 1}
+                  className="px-3 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                >
+                  Précédent
+                </button>
+                <button
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                  disabled={pagination.page === pagination.totalPages}
+                  className="px-3 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                >
+                  Suivant
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {procedures.length === 0 && !loading && (
+          <div className="text-center py-8">
+            <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-slate-400" />
+            <h3 className="mt-2 text-sm font-medium text-slate-900">Aucune procédure</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Aucune procédure ne correspond à vos critères de recherche.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Modal de détail */}
       {showDetailModal && selectedProcedure && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="px-4 py-3 border-b border-slate-200">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 z-50">
+          <div className="bg-white rounded-lg w-full max-h-[85vh] overflow-y-auto">
+            <div className="px-4 py-3 border-b border-slate-200 sticky top-0 bg-white">
               <h3 className="text-base font-medium text-slate-900">
                 Détails de la procédure
               </h3>
             </div>
-            <div className="px-4 py-3 space-y-3">
-              <div className="grid grid-cols-1 gap-2">
+            <div className="px-4 py-3 space-y-4">
+              <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="text-xs font-medium text-slate-700">Étudiant</label>
                   <p className="text-sm text-slate-900">{selectedProcedure.prenom} {selectedProcedure.nom}</p>
@@ -587,10 +577,10 @@ const AdminProcedures: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-end">
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end sticky bottom-0 bg-white">
               <button
                 onClick={() => setShowDetailModal(false)}
-                className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 focus:outline-none focus:ring-none focus:border-blue-500"
+                className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 w-full"
               >
                 Fermer
               </button>
@@ -601,8 +591,8 @@ const AdminProcedures: React.FC = () => {
 
       {/* Modal de rejet */}
       {showRejectModal && selectedProcedure && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-sm w-full">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 z-50">
+          <div className="bg-white rounded-lg w-full">
             <div className="px-4 py-3 border-b border-slate-200">
               <h3 className="text-base font-medium text-slate-900">
                 Rejeter la procédure
@@ -616,26 +606,26 @@ const AdminProcedures: React.FC = () => {
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 placeholder="Raison du rejet..."
-                rows={3}
-                className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-none focus:border-blue-500"
+                rows={4}
+                className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:ring-none focus:border-blue-500"
               />
             </div>
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-end space-x-2">
+            <div className="px-4 py-3 border-t border-slate-200 flex flex-col space-y-2">
+              <button
+                onClick={handleRejectProcedure}
+                disabled={!rejectReason.trim() || actionLoading === `reject-${selectedProcedure._id}`}
+                className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed w-full"
+              >
+                {actionLoading === `reject-${selectedProcedure._id}` ? 'Rejet...' : 'Confirmer le rejet'}
+              </button>
               <button
                 onClick={() => {
                   setShowRejectModal(false);
                   setRejectReason('');
                 }}
-                className="px-3 py-1.5 border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50 focus:outline-none focus:ring-none focus:border-blue-500"
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50 w-full"
               >
                 Annuler
-              </button>
-              <button
-                onClick={handleRejectProcedure}
-                disabled={!rejectReason.trim() || actionLoading === `reject-${selectedProcedure._id}`}
-                className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-none focus:border-blue-500"
-              >
-                {actionLoading === `reject-${selectedProcedure._id}` ? 'Rejet...' : 'Confirmer'}
               </button>
             </div>
           </div>
@@ -644,8 +634,8 @@ const AdminProcedures: React.FC = () => {
 
       {/* Modal de suppression */}
       {deleteModal.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-sm w-full">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 z-50">
+          <div className="bg-white rounded-lg w-full">
             <div className="px-4 py-3 border-b border-slate-200">
               <h3 className="text-base font-medium text-slate-900">
                 Confirmer la suppression
@@ -657,19 +647,19 @@ const AdminProcedures: React.FC = () => {
                 Cette action est irréversible.
               </p>
             </div>
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-end space-x-2">
-              <button
-                onClick={() => setDeleteModal({ isOpen: false, procedureId: null, procedureName: '' })}
-                className="px-3 py-1.5 border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50 focus:outline-none focus:ring-none focus:border-blue-500"
-              >
-                Annuler
-              </button>
+            <div className="px-4 py-3 border-t border-slate-200 flex flex-col space-y-2">
               <button
                 onClick={handleDeleteConfirm}
                 disabled={actionLoading === `delete-${deleteModal.procedureId}`}
-                className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50 focus:outline-none focus:ring-none focus:border-blue-500"
+                className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50 w-full"
               >
-                {actionLoading ? 'Suppression...' : 'Confirmer'}
+                {actionLoading ? 'Suppression...' : 'Confirmer la suppression'}
+              </button>
+              <button
+                onClick={() => setDeleteModal({ isOpen: false, procedureId: null, procedureName: '' })}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50 w-full"
+              >
+                Annuler
               </button>
             </div>
           </div>

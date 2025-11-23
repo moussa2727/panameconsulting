@@ -1,21 +1,23 @@
+// AdminMessages.tsx - Version Mobile
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import AdminContactService, { Contact, ContactStats } from '../../api/admin/AdminContactService';
 import { toast } from 'react-toastify';
 
-// Icons (vous pouvez remplacer par vos propres icons)
-const Icon = {
-  Eye: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>,
-  Reply: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>,
-  Check: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
-  Trash: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
-  Search: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
-  Filter: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>,
-  Refresh: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
-  User: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
-  Email: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
-  Calendar: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-};
+// Icons Heroicons
+import {
+  EyeIcon,
+  CheckIcon,
+  TrashIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon,
+  ArrowPathIcon,
+  UserIcon,
+  EnvelopeIcon,
+  CalendarIcon,
+  XMarkIcon
+} from '@heroicons/react/24/outline';
+import { FiSend } from 'react-icons/fi';
 
 const AdminMessages: React.FC = () => {
   const { user } = useAuth();
@@ -27,6 +29,8 @@ const AdminMessages: React.FC = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isReplyModalOpen, setIsReplyModalOpen] = useState(false);
   const [replyMessage, setReplyMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   
   // États pour la pagination et filtres
   const [filters, setFilters] = useState({
@@ -36,16 +40,21 @@ const AdminMessages: React.FC = () => {
     isRead: undefined as boolean | undefined
   });
   
+  const [showFilters, setShowFilters] = useState(false);
   const [totalContacts, setTotalContacts] = useState(0);
 
   // Charger les contacts
   const loadContacts = async () => {
     try {
+      setLoading(true);
       const response = await contactService.getAllContacts(filters);
       setContacts(response.data);
       setTotalContacts(response.total);
     } catch (error) {
       console.error('Erreur lors du chargement des contacts:', error);
+      toast.error('Erreur lors du chargement des messages');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -67,12 +76,15 @@ const AdminMessages: React.FC = () => {
   // Gestionnaires d'actions
   const handleMarkAsRead = async (id: string) => {
     try {
+      setActionLoading(`read-${id}`);
       await contactService.markAsRead(id);
       await loadContacts();
       await loadStats();
       toast.success('Message marqué comme lu');
     } catch (error) {
       toast.error('Erreur lors du marquage du message');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -80,6 +92,7 @@ const AdminMessages: React.FC = () => {
     if (!selectedContact || !replyMessage.trim()) return;
     
     try {
+      setActionLoading('reply');
       await contactService.replyToMessage(selectedContact._id, replyMessage);
       await loadContacts();
       await loadStats();
@@ -88,6 +101,8 @@ const AdminMessages: React.FC = () => {
       toast.success('Réponse envoyée avec succès');
     } catch (error) {
       toast.error('Erreur lors de l\'envoi de la réponse');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -95,12 +110,15 @@ const AdminMessages: React.FC = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer ce message ?')) return;
     
     try {
+      setActionLoading(`delete-${id}`);
       await contactService.deleteContact(id);
       await loadContacts();
       await loadStats();
       toast.success('Message supprimé avec succès');
     } catch (error) {
       toast.error('Erreur lors de la suppression du message');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -130,260 +148,315 @@ const AdminMessages: React.FC = () => {
     });
   };
 
+  // Gestion des filtres
+  const handleFilterChange = (key: string, value: string | boolean | undefined) => {
+    setFilters(prev => ({ 
+      ...prev, 
+      [key]: value,
+      page: 1 
+    }));
+  };
+
+  const applyFilters = () => {
+    setShowFilters(false);
+    loadContacts();
+  };
+
+  const resetFilters = () => {
+    setFilters({ 
+      page: 1, 
+      limit: 10, 
+      search: '', 
+      isRead: undefined 
+    });
+    setShowFilters(false);
+  };
+
   // Pagination
   const totalPages = Math.ceil(totalContacts / filters.limit);
   const handlePageChange = (newPage: number) => {
     setFilters(prev => ({ ...prev, page: newPage }));
   };
 
+  // Rendu du statut
+  const renderStatusBadge = (isRead: boolean, hasResponse: boolean) => {
+    return (
+      <div className="flex flex-wrap gap-1">
+        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+          isRead 
+            ? 'bg-green-100 text-green-800' 
+            : 'bg-red-100 text-red-800'
+        }`}>
+          {isRead ? 'Lu' : 'Non lu'}
+        </span>
+        {hasResponse && (
+          <span className="inline-flex px-2 py-1 text-xs font-semibold bg-blue-100 text-blue-800 rounded-full">
+            Répondu
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  if (loading && contacts.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-3">
+        <div className="animate-pulse">
+          <div className="h-7 bg-blue-200 rounded w-2/5 mb-6"></div>
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-24 bg-white rounded-lg shadow"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen p-4">
+    <div className="min-h-screen bg-slate-50 p-3">
       {/* En-tête */}
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-blue-700 mb-2">
+      <div className="mb-4">
+        <h1 className="text-xl font-bold text-blue-600 mb-1">
           Gestion des Messages
         </h1>
-        <p className="text-blue-700">
+        <p className="text-slate-600 text-xs">
           Gérez les messages des utilisateurs et répondez à leurs demandes
         </p>
       </div>
 
+      {/* Bouton filtre mobile */}
+      <div className="mb-4">
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="w-full bg-white border border-slate-300 rounded-lg p-3 flex items-center justify-between shadow-sm"
+        >
+          <span className="text-sm font-medium text-slate-700">Filtres et recherche</span>
+          <FunnelIcon className="w-4 h-4 text-slate-500" />
+        </button>
+      </div>
+
+      {/* Filtres mobile */}
+      {showFilters && (
+        <div className="bg-white rounded-lg shadow p-4 mb-4 fixed inset-3 z-40 overflow-y-auto">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-lg font-medium text-slate-900">Filtres</h3>
+            <button
+              onClick={() => setShowFilters(false)}
+              className="p-1 rounded-full hover:bg-slate-100"
+            >
+              <XMarkIcon className="w-5 h-5 text-slate-500" />
+            </button>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Recherche
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Nom, email ou message..."
+                  value={filters.search}
+                  onChange={(e) => handleFilterChange('search', e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 text-sm"
+                />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <MagnifyingGlassIcon className="w-4 h-4 text-slate-400" />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Statut
+              </label>
+              <select
+                value={filters.isRead === undefined ? '' : filters.isRead.toString()}
+                onChange={(e) => handleFilterChange('isRead', e.target.value === '' ? undefined : e.target.value === 'true')}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 text-sm"
+              >
+                <option value="">Tous les statuts</option>
+                <option value="false">Non lus</option>
+                <option value="true">Lus</option>
+              </select>
+            </div>
+
+            <div className="flex space-x-2 pt-2">
+              <button
+                onClick={applyFilters}
+                className="flex-1 bg-blue-600 text-white px-3 py-2 text-sm rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center"
+              >
+                <MagnifyingGlassIcon className="w-4 h-4 inline mr-1" />
+                Appliquer
+              </button>
+              <button
+                onClick={resetFilters}
+                className="flex-1 px-3 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 transition-colors text-sm flex items-center justify-center"
+              >
+                <ArrowPathIcon className="w-4 h-4 inline mr-1" />
+                Réinitialiser
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Cartes de statistiques */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-blue-500">
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="bg-white rounded-lg shadow p-3 border-l-4 border-blue-500">
             <div className="flex items-center">
               <div className="bg-blue-100 p-2 rounded-lg">
-                <Icon.Email />
+                <EnvelopeIcon className="w-4 h-4 text-blue-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm text-blue-600">Total Messages</p>
-                <p className="text-2xl font-bold text-blue-900">{stats.total}</p>
+              <div className="ml-3">
+                <p className="text-xs text-blue-600">Total</p>
+                <p className="text-base font-bold text-blue-900">{stats.total}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-red-500">
+          <div className="bg-white rounded-lg shadow p-3 border-l-4 border-red-500">
             <div className="flex items-center">
               <div className="bg-red-100 p-2 rounded-lg">
-                <Icon.Email />
+                <EnvelopeIcon className="w-4 h-4 text-red-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm text-red-600">Non Lus</p>
-                <p className="text-2xl font-bold text-red-900">{stats.unread}</p>
+              <div className="ml-3">
+                <p className="text-xs text-red-600">Non Lus</p>
+                <p className="text-base font-bold text-red-900">{stats.unread}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-green-500">
+          <div className="bg-white rounded-lg shadow p-3 border-l-4 border-green-500">
             <div className="flex items-center">
               <div className="bg-green-100 p-2 rounded-lg">
-                <Icon.Check />
+                <CheckIcon className="w-4 h-4 text-green-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm text-green-600">Répondu</p>
-                <p className="text-2xl font-bold text-green-900">{stats.responded}</p>
+              <div className="ml-3">
+                <p className="text-xs text-green-600">Répondu</p>
+                <p className="text-base font-bold text-green-900">{stats.responded}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-purple-500">
+          <div className="bg-white rounded-lg shadow p-3 border-l-4 border-purple-500">
             <div className="flex items-center">
               <div className="bg-purple-100 p-2 rounded-lg">
-                <Icon.Calendar />
+                <CalendarIcon className="w-4 h-4 text-purple-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm text-purple-600">Ce Mois</p>
-                <p className="text-2xl font-bold text-purple-900">{stats.thisMonth}</p>
+              <div className="ml-3">
+                <p className="text-xs text-purple-600">Ce Mois</p>
+                <p className="text-base font-bold text-purple-900">{stats.thisMonth}</p>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Barre de filtres et recherche */}
-      <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          {/* Recherche */}
-          <div className="flex-1">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Rechercher par nom, email ou message..."
-                value={filters.search}
-                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }))}
-                className="w-full pl-10 pr-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Icon.Search />
+      {/* Liste des messages */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="px-4 py-3 bg-blue-600 text-white">
+          <h2 className="text-base font-semibold">Messages des Utilisateurs</h2>
+        </div>
+
+        <div className="divide-y divide-slate-200">
+          {contacts.map((contact) => (
+            <div 
+              key={contact._id} 
+              className={`p-3 hover:bg-slate-50 transition-colors ${
+                !contact.isRead ? 'bg-blue-25' : ''
+              }`}
+            >
+              <div className="flex justify-between items-start mb-2">
+                <div className="flex items-center flex-1 min-w-0">
+                  <div className="bg-blue-100 p-2 rounded-full flex-shrink-0">
+                    <UserIcon className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div className="ml-3 min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 truncate">
+                      {contact.firstName} {contact.lastName}
+                    </p>
+                    <p className="text-xs text-slate-600 truncate">{contact.email}</p>
+                  </div>
+                </div>
+                <div className="ml-2 flex-shrink-0">
+                  {renderStatusBadge(contact.isRead, !!contact.adminResponse)}
+                </div>
+              </div>
+              
+              <div className="mb-2">
+                <p className="text-sm text-slate-900 line-clamp-2">
+                  {contact.message}
+                </p>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <div className="text-xs text-slate-500">
+                  {formatDate(contact.createdAt)}
+                </div>
+                <div className="flex space-x-1">
+                  <button
+                    onClick={() => handleViewDetails(contact)}
+                    className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50 transition-colors"
+                    title="Voir les détails"
+                  >
+                    <EyeIcon className="w-4 h-4" />
+                  </button>
+                  
+                  <button
+                    onClick={() => handleOpenReply(contact)}
+                    className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50 transition-colors"
+                    title="Répondre"
+                  >
+                    <FiSend className="w-4 h-4" />
+                  </button>
+                  
+                  {!contact.isRead && (
+                    <button
+                      onClick={() => handleMarkAsRead(contact._id)}
+                      disabled={actionLoading === `read-${contact._id}`}
+                      className="text-gray-600 hover:text-gray-800 p-1 rounded hover:bg-gray-50 transition-colors disabled:opacity-50"
+                      title="Marquer comme lu"
+                    >
+                      <CheckIcon className="w-4 h-4" />
+                    </button>
+                  )}
+                  
+                  <button
+                    onClick={() => handleDelete(contact._id)}
+                    disabled={actionLoading === `delete-${contact._id}`}
+                    className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50"
+                    title="Supprimer"
+                  >
+                    <TrashIcon className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-
-          {/* Filtres */}
-          <div className="flex gap-2">
-            <select
-              value={filters.isRead === undefined ? '' : filters.isRead.toString()}
-              onChange={(e) => setFilters(prev => ({ 
-                ...prev, 
-                isRead: e.target.value === '' ? undefined : e.target.value === 'true',
-                page: 1 
-              }))}
-              className="px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-colors"
-            >
-              <option value="">Tous les statuts</option>
-              <option value="false">Non lus</option>
-              <option value="true">Lus</option>
-            </select>
-
-            <button
-              onClick={() => {
-                setFilters({ page: 1, limit: 10, search: '', isRead: undefined });
-              }}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-none focus:border-blue-500 transition-colors"
-            >
-              <Icon.Refresh />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Tableau des messages */}
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        {/* En-tête du tableau */}
-        <div className="px-4 py-3 bg-blue-500 text-white">
-          <h2 className="text-lg font-semibold">Messages des Utilisateurs</h2>
-        </div>
-
-        {/* Tableau */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-blue-100">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-blue-900 uppercase tracking-wider">
-                  Utilisateur
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-blue-900 uppercase tracking-wider">
-                  Message
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-blue-900 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-blue-900 uppercase tracking-wider">
-                  Statut
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-blue-900 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-blue-200">
-              {contacts.map((contact) => (
-                <tr 
-                  key={contact._id} 
-                  className={`hover:bg-blue-50 transition-colors ${
-                    !contact.isRead ? 'bg-blue-25' : ''
-                  }`}
-                >
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="bg-blue-100 p-2 rounded-full">
-                        <Icon.User />
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm font-medium text-blue-900">
-                          {contact.firstName} {contact.lastName}
-                        </p>
-                        <p className="text-sm text-blue-600">{contact.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <p className="text-sm text-blue-900 line-clamp-2">
-                      {contact.message}
-                    </p>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <p className="text-sm text-blue-600">
-                      {formatDate(contact.createdAt)}
-                    </p>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      contact.isRead 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {contact.isRead ? 'Lu' : 'Non lu'}
-                    </span>
-                    {contact.adminResponse && (
-                      <span className="ml-1 inline-flex px-2 py-1 text-xs font-semibold bg-blue-100 text-blue-800 rounded-full">
-                        Répondu
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleViewDetails(contact)}
-                        className="text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-none transition-colors"
-                        title="Voir les détails"
-                      >
-                        <Icon.Eye />
-                      </button>
-                      
-                      <button
-                        onClick={() => handleOpenReply(contact)}
-                        className="text-green-600 hover:text-green-900 focus:outline-none focus:ring-none transition-colors"
-                        title="Répondre"
-                      >
-                        <Icon.Reply />
-                      </button>
-                      
-                      {!contact.isRead && (
-                        <button
-                          onClick={() => handleMarkAsRead(contact._id)}
-                          className="text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-none transition-colors"
-                          title="Marquer comme lu"
-                        >
-                          <Icon.Check />
-                        </button>
-                      )}
-                      
-                      <button
-                        onClick={() => handleDelete(contact._id)}
-                        className="text-red-600 hover:text-red-900 focus:outline-none focus:ring-none transition-colors"
-                        title="Supprimer"
-                      >
-                        <Icon.Trash />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          ))}
         </div>
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="px-4 py-3 bg-blue-50 border-t border-blue-200">
-            <div className="flex flex-col sm:flex-row items-center justify-between">
-              <p className="text-sm text-blue-700 mb-2 sm:mb-0">
+          <div className="px-3 py-3 bg-slate-50 border-t border-slate-200">
+            <div className="flex flex-col items-center justify-between space-y-2">
+              <p className="text-xs text-slate-700">
                 Page {filters.page} sur {totalPages} • {totalContacts} messages
               </p>
-              <div className="flex space-x-1">
+              <div className="flex space-x-2">
                 <button
                   onClick={() => handlePageChange(filters.page - 1)}
                   disabled={filters.page === 1}
-                  className="px-3 py-1 rounded border border-blue-300 text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed text-xs transition-colors"
                 >
                   Précédent
                 </button>
                 <button
                   onClick={() => handlePageChange(filters.page + 1)}
                   disabled={filters.page === totalPages}
-                  className="px-3 py-1 rounded border border-blue-300 text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed text-xs transition-colors"
                 >
                   Suivant
                 </button>
@@ -391,42 +464,52 @@ const AdminMessages: React.FC = () => {
             </div>
           </div>
         )}
+
+        {contacts.length === 0 && !loading && (
+          <div className="text-center py-8">
+            <EnvelopeIcon className="mx-auto h-8 w-8 text-slate-400" />
+            <h3 className="mt-2 text-sm font-medium text-slate-900">Aucun message</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Aucun message ne correspond à vos critères de recherche.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Modal de détails */}
       {isDetailModalOpen && selectedContact && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 bg-blue-900 text-white">
-              <h3 className="text-lg font-semibold">Détails du Message</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 z-50">
+          <div className="bg-white rounded-lg w-full max-h-[85vh] overflow-y-auto">
+            <div className="px-4 py-3 bg-blue-600 text-white sticky top-0">
+              <h3 className="text-base font-semibold">Détails du Message</h3>
             </div>
             
-            <div className="p-6 space-y-4">
+            <div className="p-4 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-blue-700 mb-1">
+                <label className="block text-sm font-medium text-slate-700 mb-1">
                   De
                 </label>
-                <p className="text-blue-900">
+                <p className="text-slate-900 font-medium">
                   {selectedContact.firstName} {selectedContact.lastName}
                 </p>
-                <p className="text-blue-600 text-sm">{selectedContact.email}</p>
+                <p className="text-slate-600 text-sm">{selectedContact.email}</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-blue-700 mb-1">
+                <label className="block text-sm font-medium text-slate-700 mb-1">
                   Date d'envoi
                 </label>
-                <p className="text-blue-900">
+                <p className="text-slate-900">
                   {formatDate(selectedContact.createdAt)}
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-blue-700 mb-1">
+                <label className="block text-sm font-medium text-slate-700 mb-1">
                   Message
                 </label>
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <p className="text-blue-900 whitespace-pre-wrap">
+                <div className="bg-slate-50 p-3 rounded-lg">
+                  <p className="text-slate-900 whitespace-pre-wrap text-sm">
                     {selectedContact.message}
                   </p>
                 </div>
@@ -437,11 +520,11 @@ const AdminMessages: React.FC = () => {
                   <label className="block text-sm font-medium text-green-700 mb-1">
                     Votre réponse
                   </label>
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <p className="text-green-900 whitespace-pre-wrap">
+                  <div className="bg-green-50 p-3 rounded-lg">
+                    <p className="text-green-900 whitespace-pre-wrap text-sm">
                       {selectedContact.adminResponse}
                     </p>
-                    <p className="text-green-600 text-sm mt-2">
+                    <p className="text-green-600 text-xs mt-2">
                       Répondu le {formatDate(selectedContact.respondedAt!)}
                     </p>
                   </div>
@@ -449,24 +532,24 @@ const AdminMessages: React.FC = () => {
               )}
             </div>
 
-            <div className="px-6 py-4 bg-blue-50 border-t border-blue-200 flex justify-end space-x-2">
-              <button
-                onClick={() => setIsDetailModalOpen(false)}
-                className="px-4 py-2 text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-100 focus:outline-none focus:ring-none transition-colors"
-              >
-                Fermer
-              </button>
+            <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex flex-col space-y-2">
               {!selectedContact.adminResponse && (
                 <button
                   onClick={() => {
                     setIsDetailModalOpen(false);
                     handleOpenReply(selectedContact);
                   }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-none transition-colors"
+                  className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors w-full"
                 >
                   Répondre
                 </button>
               )}
+              <button
+                onClick={() => setIsDetailModalOpen(false)}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-100 transition-colors w-full"
+              >
+                Fermer
+              </button>
             </div>
           </div>
         </div>
@@ -474,50 +557,50 @@ const AdminMessages: React.FC = () => {
 
       {/* Modal de réponse */}
       {isReplyModalOpen && selectedContact && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
-            <div className="px-6 py-4 bg-blue-900 text-white">
-              <h3 className="text-lg font-semibold">Répondre au message</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 z-50">
+          <div className="bg-white rounded-lg w-full">
+            <div className="px-4 py-3 bg-blue-600 text-white">
+              <h3 className="text-base font-semibold">Répondre au message</h3>
             </div>
             
-            <div className="p-6 space-y-4">
+            <div className="p-4 space-y-4">
               <div>
-                <p className="text-blue-900 font-medium">
+                <p className="text-slate-900 font-medium text-sm">
                   À : {selectedContact.firstName} {selectedContact.lastName}
                 </p>
-                <p className="text-blue-600 text-sm">{selectedContact.email}</p>
+                <p className="text-slate-600 text-xs">{selectedContact.email}</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-blue-700 mb-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
                   Votre réponse
                 </label>
                 <textarea
                   value={replyMessage}
                   onChange={(e) => setReplyMessage(e.target.value)}
                   rows={6}
-                  className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 resize-none"
+                  className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:ring-none focus:border-blue-500 resize-none"
                   placeholder="Tapez votre réponse ici..."
                 />
               </div>
             </div>
 
-            <div className="px-6 py-4 bg-blue-50 border-t border-blue-200 flex justify-end space-x-2">
+            <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex flex-col space-y-2">
+              <button
+                onClick={handleReply}
+                disabled={!replyMessage.trim() || actionLoading === 'reply'}
+                className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors w-full"
+              >
+                {actionLoading === 'reply' ? 'Envoi...' : 'Envoyer la réponse'}
+              </button>
               <button
                 onClick={() => {
                   setIsReplyModalOpen(false);
                   setReplyMessage('');
                 }}
-                className="px-4 py-2 text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-100 focus:outline-none focus:ring-none transition-colors"
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-100 transition-colors w-full"
               >
                 Annuler
-              </button>
-              <button
-                onClick={handleReply}
-                disabled={!replyMessage.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-none transition-colors"
-              >
-                Envoyer la réponse
               </button>
             </div>
           </div>
