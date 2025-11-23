@@ -192,6 +192,25 @@ ProcedureSchema.pre('save', function(next) {
   const procedure = this as any;
   procedure.dateDerniereModification = new Date();
   
+  // ✅ GARANTIR LES 3 ÉTAPES OBLIGATOIRES
+  const requiredSteps = [
+    StepName.DEMANDE_ADMISSION,
+    StepName.DEMANDE_VISA, 
+    StepName.PREPARATIF_VOYAGE
+  ];
+  
+  requiredSteps.forEach(stepName => {
+    const existingStep = procedure.steps.find((step: Step) => step.nom === stepName);
+    if (!existingStep) {
+      procedure.steps.push({
+        nom: stepName,
+        statut: stepName === StepName.DEMANDE_ADMISSION ? StepStatus.IN_PROGRESS : StepStatus.PENDING,
+        dateCreation: new Date(),
+        dateMaj: new Date()
+      });
+    }
+  });
+  
   if (procedure.isModified('steps')) {
     procedure.updateGlobalStatus();
   }

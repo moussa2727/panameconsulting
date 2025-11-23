@@ -48,6 +48,15 @@ const AdminProcedures: React.FC = () => {
   const [rejectReason, setRejectReason] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [stats, setStats] = useState<any>(null);
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    procedureId: string | null;
+    procedureName: string;
+  }>({
+    isOpen: false,
+    procedureId: null,
+    procedureName: ''
+  });
 
   // Chargement initial
   useEffect(() => {
@@ -76,8 +85,17 @@ const AdminProcedures: React.FC = () => {
         totalPages: response.totalPages
       }));
     } catch (err: any) {
-      setError(err.message || 'Erreur lors du chargement des procédures');
-      toast.error('Erreur lors du chargement des procédures');
+      // Gestion spécifique des erreurs
+      if (err.message.includes('401')) {
+        setError('Session expirée - Veuillez vous reconnecter');
+        toast.error('Session expirée');
+      } else if (err.message.includes('403')) {
+        setError('Accès non autorisé');
+        toast.error('Droits insuffisants');
+      } else {
+        setError(err.message || 'Erreur lors du chargement des procédures');
+        toast.error('Erreur lors du chargement des procédures');
+      }
     } finally {
       setLoading(false);
     }
@@ -95,6 +113,12 @@ const AdminProcedures: React.FC = () => {
 
   // Mise à jour du statut d'une étape
   const handleUpdateStep = async (procedureId: string, stepName: StepName, newStatus: StepStatus, reason?: string) => {
+    // Validation frontend
+    if (newStatus === StepStatus.REJECTED && (!reason || reason.trim() === '')) {
+      toast.error('La raison du rejet est obligatoire');
+      return;
+    }
+
     try {
       setActionLoading(`${procedureId}-${stepName}`);
       
@@ -114,23 +138,30 @@ const AdminProcedures: React.FC = () => {
     }
   };
 
-  // Suppression d'une procédure
-  const handleDeleteProcedure = async (procedureId: string) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette procédure ?')) {
-      return;
-    }
+  // Gestion de la suppression
+  const handleDeleteClick = (procedure: Procedure) => {
+    setDeleteModal({
+      isOpen: true,
+      procedureId: procedure._id,
+      procedureName: `${procedure.prenom} ${procedure.nom}`
+    });
+  };
 
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal.procedureId) return;
+    
     try {
-      setActionLoading(`delete-${procedureId}`);
-      await deleteProcedure(procedureId, 'Supprimé par administrateur');
+      setActionLoading(`delete-${deleteModal.procedureId}`);
+      await deleteProcedure(deleteModal.procedureId, 'Supprimé par administrateur');
       
-      setProcedures(prev => prev.filter(p => p._id !== procedureId));
+      setProcedures(prev => prev.filter(p => p._id !== deleteModal.procedureId));
       toast.success('Procédure supprimée avec succès');
       loadStats();
     } catch (err: any) {
       toast.error(err.message || 'Erreur lors de la suppression');
     } finally {
       setActionLoading(null);
+      setDeleteModal({ isOpen: false, procedureId: null, procedureName: '' });
     }
   };
 
@@ -287,7 +318,7 @@ const AdminProcedures: React.FC = () => {
                 type="email"
                 value={filters.email}
                 onChange={(e) => handleFilterChange('email', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md  hover:bg-blue-700 focus:outline-none focus:ring-none focus:border-blue-500 focus:ring-offset-none transition-colors"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors"
                 placeholder="Filtrer par email..."
               />
             </div>
@@ -299,7 +330,7 @@ const AdminProcedures: React.FC = () => {
                 type="text"
                 value={filters.destination}
                 onChange={(e) => handleFilterChange('destination', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-none focus:border-blue-500 focus:ring-offset-none transition-colors"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors"
                 placeholder="Filtrer par destination..."
               />
             </div>
@@ -310,7 +341,7 @@ const AdminProcedures: React.FC = () => {
               <select
                 value={filters.statut}
                 onChange={(e) => handleFilterChange('statut', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors"
               >
                 <option value="">Tous les statuts</option>
                 {Object.values(ProcedureStatus).map(status => (
@@ -321,14 +352,16 @@ const AdminProcedures: React.FC = () => {
             <div className="flex items-end space-x-2">
               <button
                 onClick={applyFilters}
-                className="flex-1 bg-blue-600 text-white px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-none focus:border-blue-500 focus:ring-offset-none transition-colors"
+                className="flex-1 bg-blue-600 text-white px-2 py-0.5 text-sm rounded-md hover:bg-blue-700 
+                          focus:outline-none focus:ring-2 focus:ring-none focus:ring-offset-none transition-colors"
               >
-                <MagnifyingGlassIcon className="w-4 h-4 inline mr-2" />
+                <MagnifyingGlassIcon className="w-3 h-3 inline mr-1" />
                 Appliquer
               </button>
+
               <button
                 onClick={resetFilters}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 focus:outline-none focus:ring-none focus:ring-blue-500 focus:ring-offset-none transition-colors"
               >
                 Réinitialiser
               </button>
@@ -449,7 +482,7 @@ const AdminProcedures: React.FC = () => {
                           <EyeIcon className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDeleteProcedure(procedure._id)}
+                          onClick={() => handleDeleteClick(procedure)}
                           disabled={actionLoading === `delete-${procedure._id}`}
                           className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50"
                           title="Supprimer"
@@ -641,6 +674,40 @@ const AdminProcedures: React.FC = () => {
                 className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {actionLoading === `reject-${selectedProcedure._id}` ? 'Rejet...' : 'Confirmer le rejet'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de suppression */}
+      {deleteModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <div className="px-6 py-4 border-b border-slate-200">
+              <h3 className="text-lg font-medium text-slate-900">
+                Confirmer la suppression
+              </h3>
+            </div>
+            <div className="px-6 py-4">
+              <p className="text-sm text-slate-600">
+                Êtes-vous sûr de vouloir supprimer la procédure de <strong>{deleteModal.procedureName}</strong> ?
+                Cette action est irréversible.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-end space-x-2">
+              <button
+                onClick={() => setDeleteModal({ isOpen: false, procedureId: null, procedureName: '' })}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={actionLoading === `delete-${deleteModal.procedureId}`}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+              >
+                {actionLoading ? 'Suppression...' : 'Confirmer'}
               </button>
             </div>
           </div>

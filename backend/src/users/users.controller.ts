@@ -62,12 +62,13 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
-  @Get('stats')
+ @Get('stats')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   async getStats() {
     return this.usersService.getStats();
   }
+
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)

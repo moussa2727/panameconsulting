@@ -23,8 +23,8 @@ import { UpdateProcedureDto } from './dto/update-procedure.dto';
 import { UpdateStepDto } from './dto/update-step.dto';
 import { UserRole } from '../schemas/user.schema';
 
-@ApiTags('')
-@Controller('')
+@ApiTags('procedures')
+@Controller('procedures')
 @UseGuards(JwtAuthGuard)
 export class ProcedureController {
     private readonly logger = new Logger(ProcedureController.name);
@@ -33,7 +33,7 @@ export class ProcedureController {
 
     // ==================== ADMIN ONLY ====================
     
-    @Post('admin/procedures/create')
+    @Post('admin/create')
     @UseGuards(RolesGuard)
     @Roles(UserRole.ADMIN)
     @ApiOperation({ summary: 'Créer une procédure depuis un rendez-vous éligible' })
@@ -42,22 +42,25 @@ export class ProcedureController {
         return this.procedureService.createFromRendezvous(createDto);
     }
 
-    @Get('admin/procedures/all')
-@UseGuards(RolesGuard)
-@Roles(UserRole.ADMIN)
-@ApiOperation({ summary: 'Lister toutes les procédures non supprimées (Admin)' })
-async getAllProcedures(
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10
-) {
-    if (page < 1) throw new BadRequestException('Le numéro de page doit être supérieur à 0');
-    if (limit < 1 || limit > 100) throw new BadRequestException('La limite doit être entre 1 et 100');
+    @Get('admin/all')
+    @UseGuards(RolesGuard)
+    @Roles(UserRole.ADMIN)
+    @ApiOperation({ summary: 'Lister toutes les procédures non supprimées (Admin)' })
+    @ApiQuery({ name: 'page', required: false, type: Number })
+    @ApiQuery({ name: 'limit', required: false, type: Number })
+    async getAllProcedures(
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10
+    ) {
+        if (page < 1) throw new BadRequestException('Le numéro de page doit être supérieur à 0');
+        if (limit < 1 || limit > 100) throw new BadRequestException('La limite doit être entre 1 et 100');
+        
+        this.logger.log(`Liste procédures admin - Page: ${page}, Limit: ${limit}`);
+        return this.procedureService.getActiveProcedures(page, limit);
+    }
+
     
-    this.logger.log(`Liste procédures admin - Page: ${page}, Limit: ${limit}`);
-    return this.procedureService.getActiveProcedures(page, limit);
-}
-    
-    @Put('admin/procedures/:id/reject')
+    @Put('admin/:id/reject')
     @UseGuards(RolesGuard)
     @Roles(UserRole.ADMIN)
     @ApiOperation({ summary: 'Rejeter une procédure (Admin)' })
@@ -69,7 +72,7 @@ async getAllProcedures(
         return this.procedureService.rejectProcedure(id, reason);
     }
 
-    @Put('admin/procedures/:id')
+    @Put('admin/:id')
     @UseGuards(RolesGuard)
     @Roles(UserRole.ADMIN)
     @ApiOperation({ summary: 'Modifier une procédure (Admin)' })
@@ -81,7 +84,7 @@ async getAllProcedures(
         return this.procedureService.updateProcedure(id, updateDto);
     }
 
-    @Put('admin/procedures/:id/steps/:stepName')
+    @Put('admin/:id/steps/:stepName')
     @UseGuards(RolesGuard)
     @Roles(UserRole.ADMIN)
     @ApiOperation({ summary: 'Modifier une étape de procédure (Admin)' })
@@ -94,7 +97,7 @@ async getAllProcedures(
         return this.procedureService.updateStep(id, stepName, updateDto);
     }
 
-    @Delete('admin/procedures/:id')
+    @Delete('admin/:id')
     @UseGuards(RolesGuard)
     @Roles(UserRole.ADMIN)
     @ApiOperation({ summary: 'Supprimer une procédure (Soft Delete)' })
@@ -106,7 +109,7 @@ async getAllProcedures(
         return this.procedureService.softDelete(id, reason);
     }
 
-    @Get('admin/procedures/stats')
+    @Get('admin/stats')
     @UseGuards(RolesGuard)
     @Roles(UserRole.ADMIN)
     @ApiOperation({ summary: 'Statistiques générales des procédures' })
@@ -117,7 +120,7 @@ async getAllProcedures(
 
     // ==================== USER & ADMIN ====================
 
-    @Get('procedures/user')
+    @Get('user')
     @UseGuards(RolesGuard)
     @Roles(UserRole.USER, UserRole.ADMIN)
     @ApiOperation({ summary: 'Mes procédures' })
@@ -132,14 +135,13 @@ async getAllProcedures(
             throw new UnauthorizedException('Utilisateur non authentifié');
         }
 
-        // ✅ LOG SÉCURISÉ - Sans email
         const maskedEmail = this.maskEmail(req.user.email);
-        this.logger.log(`Liste procédures utilisateur - Page: ${page}, Limit: ${limit}`);
+        this.logger.log(`Liste procédures utilisateur - Page: ${page}, Limit: ${limit}, User: ${maskedEmail}`);
 
         return this.procedureService.getUserProcedures(req.user.email, page, limit);
     }
 
-    @Get('procedures/:id')
+    @Get(':id')
     @UseGuards(RolesGuard)
     @Roles(UserRole.USER, UserRole.ADMIN)
     @ApiOperation({ summary: 'Détails d\'une procédure' })
@@ -148,7 +150,7 @@ async getAllProcedures(
         return this.procedureService.getProcedureDetails(id, req.user);
     }
 
-    @Put('procedures/:id/cancel')
+    @Put(':id/cancel')
     @UseGuards(RolesGuard)
     @Roles(UserRole.USER)
     @ApiOperation({ summary: 'Annuler ma procédure' })

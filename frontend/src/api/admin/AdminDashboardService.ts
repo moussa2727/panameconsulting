@@ -70,8 +70,8 @@ class DashboardApiService {
       // Récupérer les statistiques utilisateurs
       const userStats = await this.request('/api/users/stats');
       
-      // Récupérer les statistiques des procédures
-      const procedureStats = await this.request('/api/admin/procedures/stats');
+      // ✅ CORRECTION : Bon endpoint pour les stats procédures
+      const procedureStats = await this.request('/api/procedures/admin/stats');
       
       // Récupérer les rendez-vous pour les statistiques
       const rendezvousResponse = await this.request('/api/rendezvous?limit=1000');
@@ -85,7 +85,7 @@ class DashboardApiService {
         cancelled: allRendezvous.filter((rdv: any) => rdv.status === 'Annulé').length,
       };
 
-      // Assurer que proceduresByStatus et proceduresByDestination existent
+      // ✅ CORRECTION : Structure cohérente avec le backend
       const safeProcedureStats = {
         proceduresByStatus: procedureStats.byStatus || [],
         proceduresByDestination: procedureStats.byDestination || [],
@@ -123,11 +123,11 @@ class DashboardApiService {
 
   async getRecentActivities(limit: number = 5): Promise<RecentActivity[]> {
     try {
-      // Récupérer les dernières procédures
-      const proceduresResponse = await this.request(`/api/admin/procedures/all?limit=${limit}`);
+      // ✅ CORRECTION : Bon endpoint pour les procédures
+      const proceduresResponse = await this.request(`/api/procedures/admin/all?limit=${limit}`);
       const procedures = proceduresResponse.data || [];
       
-      // Récupérer les derniers rendez-vous
+      // ✅ CORRECTION : Bon endpoint pour les rendez-vous
       const rendezvousResponse = await this.request(`/api/rendezvous?limit=${limit}`);
       const rendezvous = rendezvousResponse.data || [];
 
@@ -172,28 +172,31 @@ class DashboardApiService {
   // ==================== PROCÉDURES ====================
 
   async getProcedures(page: number = 1, limit: number = 10, email?: string) {
-    let url = `/api/admin/procedures/all?page=${page}&limit=${limit}`;
+    // ✅ CORRECTION : Bon endpoint
+    let url = `/api/procedures/admin/all?page=${page}&limit=${limit}`;
     if (email) url += `&email=${encodeURIComponent(email)}`;
     
     return this.request(url);
   }
 
   async updateProcedureStatus(id: string, status: string, reason?: string) {
+    // ✅ CORRECTION : Bon endpoint
     if (status === 'rejected') {
-      return this.request(`/api/admin/procedures/${id}/reject`, {
+      return this.request(`/api/procedures/admin/${id}/reject`, {
         method: 'PUT',
         body: JSON.stringify({ reason })
       });
     }
     
-    return this.request(`/api/admin/procedures/${id}`, {
+    return this.request(`/api/procedures/admin/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ statut: status })
     });
   }
 
   async updateProcedureStep(procedureId: string, stepName: string, updates: any) {
-    return this.request(`/api/admin/procedures/${procedureId}/steps/${stepName}`, {
+    // ✅ CORRECTION : Bon endpoint
+    return this.request(`/api/procedures/admin/${procedureId}/steps/${stepName}`, {
       method: 'PUT',
       body: JSON.stringify(updates)
     });
