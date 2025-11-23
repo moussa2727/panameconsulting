@@ -23,23 +23,22 @@ export class UsersService {
     @InjectModel(User.name) private userModel: Model<User>,
   ) { }
 
-    private normalizeTelephone(input?: string): string | undefined {
-      if (!input) return undefined;
-      
-      const trimmed = input.trim();
-      if (trimmed === '') return undefined;
-      
-      // Garder le + si présent, sinon ajouter +33 pour la France par défaut
-      const hasPlus = trimmed.startsWith('+');
-      let digits = trimmed.replace(/[^\d]/g, '');
-      
-      // Si pas de + et commence par 0, convertir en +33
-      if (!hasPlus && digits.startsWith('0')) {
-        digits = '33' + digits.substring(1);
-      }
-      
-      return hasPlus ? `+${digits}` : `+${digits}`;
+  private normalizeTelephone(input?: string): string | undefined {
+    if (!input) return undefined;
+    
+    const trimmed = input.trim();
+    if (trimmed === '') return undefined;
+    
+    // ✅ Extraire uniquement les chiffres SANS indicatif par défaut
+    const digitsOnly = trimmed.replace(/\D/g, '');
+    
+    // Validation minimale : au moins 5 chiffres
+    if (digitsOnly.length < 5) {
+      return undefined;
     }
+    
+    return digitsOnly; // ✅ Retourne uniquement les chiffres sans formatage
+  }
 
    
   async validateUser(email: string, password: string): Promise<User | null> {
@@ -104,18 +103,56 @@ export class UsersService {
   }
 
 
-  async create(createUserDto: RegisterDto): Promise<User> {
+ async create(createUserDto: RegisterDto): Promise<User> {
+  try {
+    // ✅ Vérifier seulement l'email (garder email unique)
+    const existingUserWithEmail = await this.findByEmail(createUserDto.email);
+    if (existingUserWithEmail) {
+      throw new BadRequestException('Cet email est déjà utilisé');
+    }
+
     const hashedPassword = await bcrypt.hash(createUserDto.password, AuthConstants.BCRYPT_SALT_ROUNDS);
     
-    const user = new this.userModel({
-      ...createUserDto,
+    // ✅ NORMALISATION DU TÉLÉPHONE (chiffres uniquement)
+    const normalizedTelephone = this.normalizeTelephone(createUserDto.telephone);
+    
+    const userData: any = {
+      firstName: createUserDto.firstName,
+      lastName: createUserDto.lastName,
+      email: createUserDto.email.toLowerCase().trim(),
       password: hashedPassword,
-      isActive: true, 
-    });
+      isActive: true,
+    };
 
-    return user.save();
+    // ✅ Ajouter le téléphone seulement s'il est valide
+    if (normalizedTelephone) {
+      userData.telephone = normalizedTelephone;
+    } else {
+      // Si le téléphone est requis, lancer une exception
+      throw new BadRequestException('Le numéro de téléphone est invalide');
+    }
+
+    const user = new this.userModel(userData);
+    return await user.save();
+    
+  } catch (error: any) {
+    // ✅ Gestion des erreurs MongoDB
+    if (error?.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      if (field === 'email') {
+        throw new BadRequestException('Cet email est déjà utilisé');
+      }
+    }
+    
+    // ✅ Propager les erreurs métier existantes
+    if (error instanceof BadRequestException) {
+      throw error;
+    }
+    
+    this.logger.error(`Erreur lors de la création utilisateur: ${error.message}`);
+    throw new BadRequestException('Erreur lors de la création du compte');
   }
-
+}
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
     console.log('🔄 Mise à jour utilisateur.');

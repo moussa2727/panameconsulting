@@ -56,20 +56,24 @@ const renderApp = () => {
             <AuthProvider>
               <App />
               {/* ✅ TOASTCONTAINER AJOUTÉ ICI */}
-              <ToastContainer
-                position="top-right"
-                autoClose={5000}
+             <ToastContainer
+                position="top-right" 
+                autoClose={4000} 
                 hideProgressBar={false}
-                newestOnTop={false}
-                closeOnClick
+                newestOnTop={true}
+                closeOnClick={true}
                 rtl={false}
-                pauseOnFocusLoss
-                draggable
-                pauseOnHover
+                pauseOnFocusLoss={false} 
+                draggable={false}
+                pauseOnHover={false} 
                 theme="light"
-                style={{
+                style={{ 
                   zIndex: 9999,
+                  marginTop: '50px' 
                 }}
+                limit={1} 
+                stacked={false} 
+                loop={false}
               />
             </AuthProvider>
           </BrowserRouter>

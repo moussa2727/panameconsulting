@@ -25,30 +25,48 @@ const Register: React.FC = () => {
     if (error) setError('');
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError('');
+  
+  if (formData.password !== formData.confirmPassword) {
+    setError('Les mots de passe ne correspondent pas');
+    toast.error('Les mots de passe ne correspondent pas', { 
+      toastId: 'password-mismatch' 
+    });
+    return;
+  }
+  
+  if (formData.password.length < 8) {
+    setError('Le mot de passe doit contenir au moins 8 caractères');
+    toast.error('Le mot de passe doit contenir au moins 8 caractères', {
+      toastId: 'password-length'
+    });
+    return;
+  }
+
+  try {
+    await register(formData);
+    // ✅ Toast de succès avec ID unique
+    toast.success('Compte créé avec succès!', { 
+      toastId: 'register-success' 
+    });
+  } catch (err: any) {
+    let message = 'Une erreur est survenue lors de la création du compte';
     
-    // Validation côté client
-    if (formData.password !== formData.confirmPassword) {
-      setError('Les mots de passe ne correspondent pas');
-      return;
+    if (err.message) {
+      message = err.message;
     }
     
-    if (formData.password.length < 8) {
-      setError('Le mot de passe doit contenir au moins 8 caractères');
-      return;
-    }
+    setError(message);
     
-    try {
-      await register(formData);
-      toast.success('Compte créé avec succès!');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Une erreur est survenue lors de la création du compte';
-      setError(message);
-      toast.error(message);
-    }
-  };
+    // ✅ Toast d'erreur avec ID unique basé sur le message
+    const errorToastId = `register-error-${message.substring(0, 20)}`;
+    toast.error(message, { 
+      toastId: errorToastId 
+    });
+  }
+};
 
   return (
     <div className="flex items-center justify-center p-4 min-h-screen bg-sky-50">
@@ -157,7 +175,7 @@ const Register: React.FC = () => {
                     value={formData.phone}
                     onChange={handleChange}
                     className="pl-9 w-full px-3 py-2 rounded bg-gray-50 border border-gray-300 hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500"
-                    placeholder="+33 6 12 34 56 78"
+                    placeholder="Votre numéro avec ou sans format" 
                     required
                     disabled={isLoading}
                     autoComplete="tel"

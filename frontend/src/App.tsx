@@ -116,7 +116,7 @@ function App() {
     return <Loader />;
   }
 
-  // ✅ Fonction utilitaire pour déterminer si l'utilisateur est admin
+  // Fonction utilitaire pour déterminer si l'utilisateur est admin
   const isAdminUser = user?.role === 'admin' || user?.isAdmin;
 
   return (

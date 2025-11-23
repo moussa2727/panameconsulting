@@ -83,7 +83,7 @@ async login(
     });
 }
 
-   @Post('refresh')
+  @Post('refresh')
 @ApiOperation({ summary: 'Rafraîchir le token' })
 @ApiResponse({ status: 200, description: 'Token rafraîchi' })
 @ApiResponse({ status: 401, description: 'Refresh token invalide' })
@@ -95,26 +95,59 @@ async refresh(@Req() req: CustomRequest, @Body() body: any, @Res() res: Response
   
   if (!refreshToken) {
     console.warn('❌ Refresh token manquant');
-    return res.status(401).json({ message: 'Refresh token manquant' });
-  }
-
-  console.log('🔐 Refresh token trouvé, longueur:', refreshToken.length);
-
-  try {
-    const result = await this.authService.refresh(refreshToken);
-
-    if ((result as any)?.sessionExpired) {
-      console.log('🔒 Session expirée - nettoyage cookies');
-      res.clearCookie('refresh_token');
-      res.clearCookie('access_token');
-      return res.json({ loggedOut: true });
-    }
-
+    
+    // ✅ Nettoyer les cookies même si le token est manquant
     const cookieOptions: any = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
+      domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined,
+      path: '/'
+    };
+
+    res.clearCookie('refresh_token', cookieOptions);
+    res.clearCookie('access_token', cookieOptions);
+    
+    return res.status(401).json({ 
+      message: 'Refresh token manquant',
+      loggedOut: true 
+    });
+  }
+
+  console.log('🔍 Refresh token trouvé, longueur:', refreshToken.length);
+
+  try {
+    const result = await this.authService.refresh(refreshToken);
+
+    // ✅ Si session expirée, nettoyer les cookies AVANT de retourner la réponse
+    if ((result as any)?.sessionExpired) {
+      console.log('🔒 Session expirée - nettoyage cookies côté serveur');
+      
+      const cookieOptions: any = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined,
+        path: '/'
+      };
+
+      res.clearCookie('refresh_token', cookieOptions);
+      res.clearCookie('access_token', cookieOptions);
+      
+      return res.status(401).json({ 
+        loggedOut: true, 
+        sessionExpired: true,
+        message: 'Session expirée après 25 minutes'
+      });
+    }
+
+    // ✅ Configuration des cookies pour les tokens valides
+    const cookieOptions: any = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined,
+      path: '/'
     };
 
     // ✅ Mettre à jour le refresh token si un nouveau est fourni
@@ -144,25 +177,48 @@ async refresh(@Req() req: CustomRequest, @Body() body: any, @Res() res: Response
     console.error('❌ Erreur rafraîchissement:', error.message);
     
     // ✅ Nettoyer les cookies en cas d'erreur
-    res.clearCookie('refresh_token');
-    res.clearCookie('access_token');
+    const cookieOptions: any = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined,
+      path: '/'
+    };
+
+    res.clearCookie('refresh_token', cookieOptions);
+    res.clearCookie('access_token', cookieOptions);
     
     return res.status(401).json({ 
       message: 'Refresh token invalide',
-      loggedOut: true 
+      loggedOut: true,
+      error: error.message
     });
   }
 }
 
 
-
-    @Post('register')
-    @ApiOperation({ summary: 'Inscription utilisateur' })
-    @ApiResponse({ status: 201, description: 'Utilisateur créé' })
-    @ApiResponse({ status: 400, description: 'Données invalides' })
-    async register(@Body() registerDto: RegisterDto) {
-        return this.authService.register(registerDto);
+   @Post('register')
+@ApiOperation({ summary: 'Inscription utilisateur' })
+@ApiResponse({ status: 201, description: 'Utilisateur créé' })
+@ApiResponse({ status: 400, description: 'Données invalides' })
+async register(@Body() registerDto: RegisterDto) {
+  try {
+    return await this.authService.register(registerDto);
+  } catch (error: any) {
+    // ✅ Logger l'erreur pour le debug
+    console.log(`Erreur inscription: ${error.message}`, error.stack);
+    
+    // ✅ Renvoyer directement l'erreur métier
+    if (error instanceof BadRequestException) {
+      throw error;
     }
+    
+    // ✅ Gérer les erreurs inattendues
+    throw new BadRequestException(
+      error.message || 'Une erreur est survenue lors de l\'inscription'
+    );
+  }
+}
 
     @Post('logout')
     @UseGuards(JwtAuthGuard)

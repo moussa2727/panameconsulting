@@ -308,126 +308,198 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
-    if (refreshInFlightRef.current) {
-      return refreshInFlightRef.current;
-    }
+ const refreshTokenFunction = useCallback(async (): Promise<boolean> => {
+  if (refreshInFlightRef.current) {
+    return refreshInFlightRef.current;
+  }
 
-    const refreshPromise = (async (): Promise<boolean> => {
-      try {
-        let refreshToken: string | null = getCookie('refresh_token');
-        
-        if (!refreshToken) {
-          await logout('/', true);
-          return false;
-        }
-
-        const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ refreshToken })
-        });
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            const data = await response.json();
-            if (data.sessionExpired) {
-              await logout('/', true);
-              return false;
-            }
-            await logout('/', true);
-            return false;
-          }
-          throw new Error(`Erreur ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        if (data.loggedOut || data.sessionExpired) {
-          await logout('/', true);
-          return false;
-        }
-
-        if (!data.accessToken) {
-          await logout('/', true);
-          return false;
-        }
-
-        const decoded = jwtDecode<JwtPayload>(data.accessToken);
-        
-        if (isSessionExpired(decoded)) {
-          await logout('/', true);
-          return false;
-        }
-        
-        localStorage.setItem('token', data.accessToken);
-        setToken(data.accessToken);
-        
-        await fetchUserData(data.accessToken);
-        setupTokenRefresh(decoded.exp);
-        
-        return true;
-      } catch {
+  const refreshPromise = (async (): Promise<boolean> => {
+    try {
+      let refreshToken: string | null = getCookie('refresh_token');
+      
+      if (!refreshToken) {
+        console.warn('❌ Refresh token absent, déconnexion');
         await logout('/', true);
         return false;
       }
-    })();
 
-    refreshInFlightRef.current = refreshPromise;
-    
-    try {
-      return await refreshPromise;
-    } finally {
-      refreshInFlightRef.current = null;
-    }
-  }, [VITE_API_URL, fetchUserData, setupTokenRefresh, getCookie, isSessionExpired]);
+      console.log('🔄 Tentative de rafraîchissement du token');
 
-  const logout = useCallback(async (redirectPath?: string, silent?: boolean): Promise<void> => {
-    if (refreshTimeoutRef.current) {
-      window.clearTimeout(refreshTimeoutRef.current);
-      refreshTimeoutRef.current = null;
-    }
-    if (sessionCheckRef.current) {
-      window.clearInterval(sessionCheckRef.current);
-      sessionCheckRef.current = null;
-    }
-
-    const ALL_TOKENS = ['token', 'access_token', 'refresh_token', 'auth_token'];
-    ALL_TOKENS.forEach(tokenName => {
-      localStorage.removeItem(tokenName);
-    });
-
-    clearSession();
-
-    const cookiesToClear = ['refresh_token', 'access_token', 'token'];
-    cookiesToClear.forEach(cookieName => {
-      document.cookie = `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
-    });
-
-    setToken(null);
-    setUser(null);
-    setError(null);
-
-    const finalRedirectPath = redirectPath || '/connexion';
-    
-    setTimeout(() => {
-      navigate(finalRedirectPath, { 
-        replace: true,
-        state: { from: 'logout', timestamp: Date.now() }
+      const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include', // ✅ Important : envoie automatiquement les cookies
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refreshToken })
       });
+
+      if (!response.ok) {
+        console.warn('❌ Échec du rafraîchissement, statut:', response.status);
+        
+        if (response.status === 401) {
+          const data = await response.json();
+          
+          // ✅ Le backend a détecté une session expirée
+          if (data.sessionExpired) {
+            console.log('🔒 Session expirée détectée par le backend');
+            toast.info('Votre session a expiré après 25 minutes');
+            await logout('/', true);
+            return false;
+          }
+          
+          // ✅ Le backend a déjà déconnecté l'utilisateur
+          if (data.loggedOut) {
+            console.log('🔒 Utilisateur déjà déconnecté côté serveur');
+            await logout('/', true);
+            return false;
+          }
+        }
+        
+        // Autre erreur
+        console.error('❌ Erreur de rafraîchissement non gérée');
+        await logout('/', true);
+        return false;
+      }
+
+      const data = await response.json();
       
-      if (!silent) {
-        toast.info('Vous avez été déconnecté avec succès');
+      // ✅ Vérifier à nouveau si le backend signale une déconnexion
+      if (data.loggedOut || data.sessionExpired) {
+        console.log('🔒 Déconnexion signalée dans la réponse du backend');
+        await logout('/', true);
+        return false;
+      }
+
+      if (!data.accessToken) {
+        console.error('❌ Access token manquant dans la réponse');
+        await logout('/', true);
+        return false;
+      }
+
+      const decoded = jwtDecode<JwtPayload>(data.accessToken);
+      
+      // ✅ Vérification côté client de l'âge de la session
+      if (isSessionExpired(decoded)) {
+        console.log('🔒 Session expirée détectée côté client');
+        toast.info('Votre session a expiré après 25 minutes');
+        await logout('/', true);
+        return false;
       }
       
-      setTimeout(() => {
-        window.location.reload();
-      }, 100);
-    }, 150);
-  }, [navigate, clearSession]);
+      console.log('✅ Tokens rafraîchis avec succès');
+      
+      // Mettre à jour le token local
+      localStorage.setItem('token', data.accessToken);
+      setToken(data.accessToken);
+      
+      // Mettre à jour les données utilisateur
+      await fetchUserData(data.accessToken);
+      
+      // Configurer le prochain rafraîchissement
+      setupTokenRefresh(decoded.exp);
+      
+      return true;
+      
+    } catch (error: any) {
+      console.error('❌ Erreur lors du rafraîchissement:', error.message);
+      await logout('/', true);
+      return false;
+    }
+  })();
+
+  refreshInFlightRef.current = refreshPromise;
+  
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshInFlightRef.current = null;
+  }
+}, [VITE_API_URL, fetchUserData, setupTokenRefresh, getCookie, isSessionExpired]);
+
+
+  const logout = useCallback(async (redirectPath?: string, silent?: boolean): Promise<void> => {
+  // Nettoyer les timers
+  if (refreshTimeoutRef.current) {
+    window.clearTimeout(refreshTimeoutRef.current);
+    refreshTimeoutRef.current = null;
+  }
+  if (sessionCheckRef.current) {
+    window.clearInterval(sessionCheckRef.current);
+    sessionCheckRef.current = null;
+  }
+
+  // ✅ Appeler le backend pour nettoyer les cookies httpOnly
+  if (token) {
+    try {
+      console.log('🔄 Appel backend pour nettoyage des cookies httpOnly');
+      const response = await fetch(`${VITE_API_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // ✅ Important pour envoyer les cookies
+      });
+
+      if (response.ok) {
+        console.log('✅ Cookies httpOnly nettoyés côté serveur');
+      } else {
+        console.warn('⚠️ Échec du nettoyage côté serveur, statut:', response.status);
+      }
+    } catch (error) {
+      console.warn('⚠️ Erreur lors du logout backend:', error);
+    }
+  }
+
+  // Nettoyer localStorage
+  const ALL_TOKENS = ['token', 'access_token', 'refresh_token', 'auth_token'];
+  ALL_TOKENS.forEach(tokenName => {
+    localStorage.removeItem(tokenName);
+  });
+
+  clearSession();
+
+  // ✅ Tentative de nettoyage des cookies côté client (pour les non-httpOnly)
+  const cookiesToClear = ['refresh_token', 'access_token', 'token'];
+  const hostname = window.location.hostname;
+  
+  cookiesToClear.forEach(cookieName => {
+    // Essayer plusieurs combinaisons pour s'assurer de la suppression
+    document.cookie = `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+    document.cookie = `${cookieName}=; Path=/; Domain=${hostname}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+    
+    // Si on est sur un sous-domaine, essayer aussi avec le domaine principal
+    if (hostname.includes('.')) {
+      const mainDomain = hostname.split('.').slice(-2).join('.');
+      document.cookie = `${cookieName}=; Path=/; Domain=.${mainDomain}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+    }
+  });
+
+  console.log('✅ Tentative de nettoyage des cookies côté client effectuée');
+
+  setToken(null);
+  setUser(null);
+  setError(null);
+
+  const finalRedirectPath = redirectPath || '/';
+  
+  setTimeout(() => {
+    navigate(finalRedirectPath, { 
+      replace: true,
+      state: { from: 'logout', timestamp: Date.now() }
+    });
+    
+    if (!silent) {
+      toast.info('Vous avez été déconnecté avec succès');
+    }
+    
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  }, 150);
+}, [navigate, clearSession, token, VITE_API_URL]);
+
 
   const logoutAll = useCallback(async (): Promise<void> => {
     if (!token || !user?.isAdmin) {
@@ -671,7 +743,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await fetchUserData(token);
     } catch {
-      // Silence
     }
   }, [token, fetchUserData]);
 
