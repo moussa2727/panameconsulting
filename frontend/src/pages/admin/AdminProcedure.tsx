@@ -252,7 +252,7 @@ const AdminProcedures: React.FC = () => {
   if (loading && procedures.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50 p-4">
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-3xl mx-auto w-full">
           <div className="animate-pulse">
             <div className="h-8 bg-blue-200 rounded w-1/4 mb-6"></div>
             <div className="space-y-3">
@@ -268,39 +268,40 @@ const AdminProcedures: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 p-4">
-      <div className="max-w-7xl mx-auto">
+      {/* Container principal adapté tablette */}
+      <div className="max-w-3xl mx-auto w-full">
         {/* En-tête */}
-        <div className="mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-blue-600 mb-2">
+        <div className="mb-6">
+          <h1 className="text-xl md:text-2xl font-bold text-blue-600 mb-2">
             Gestion des Procédures
           </h1>
-          <p className="text-slate-600">
+          <p className="text-slate-600 text-sm">
             Consultez et gérez toutes les procédures des étudiants
           </p>
         </div>
 
         {/* Statistiques */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
-              <div className="text-sm text-slate-600">Total</div>
-              <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="bg-white rounded-lg shadow p-3 border-l-4 border-blue-500">
+              <div className="text-xs text-slate-600">Total</div>
+              <div className="text-lg font-bold text-blue-600">{stats.total}</div>
             </div>
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-400">
-              <div className="text-sm text-slate-600">En cours</div>
-              <div className="text-2xl font-bold text-blue-500">
+            <div className="bg-white rounded-lg shadow p-3 border-l-4 border-blue-400">
+              <div className="text-xs text-slate-600">En cours</div>
+              <div className="text-lg font-bold text-blue-500">
                 {stats.byStatus?.find((s: any) => s._id === ProcedureStatus.IN_PROGRESS)?.count || 0}
               </div>
             </div>
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
-              <div className="text-sm text-slate-600">Terminées</div>
-              <div className="text-2xl font-bold text-green-600">
+            <div className="bg-white rounded-lg shadow p-3 border-l-4 border-green-500">
+              <div className="text-xs text-slate-600">Terminées</div>
+              <div className="text-lg font-bold text-green-600">
                 {stats.byStatus?.find((s: any) => s._id === ProcedureStatus.COMPLETED)?.count || 0}
               </div>
             </div>
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
-              <div className="text-sm text-slate-600">Rejetées</div>
-              <div className="text-2xl font-bold text-red-600">
+            <div className="bg-white rounded-lg shadow p-3 border-l-4 border-red-500">
+              <div className="text-xs text-slate-600">Rejetées</div>
+              <div className="text-lg font-bold text-red-600">
                 {stats.byStatus?.find((s: any) => s._id === ProcedureStatus.REJECTED)?.count || 0}
               </div>
             </div>
@@ -309,7 +310,7 @@ const AdminProcedures: React.FC = () => {
 
         {/* Filtres */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Email
@@ -318,7 +319,7 @@ const AdminProcedures: React.FC = () => {
                 type="email"
                 value={filters.email}
                 onChange={(e) => handleFilterChange('email', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors text-sm"
                 placeholder="Filtrer par email..."
               />
             </div>
@@ -330,7 +331,7 @@ const AdminProcedures: React.FC = () => {
                 type="text"
                 value={filters.destination}
                 onChange={(e) => handleFilterChange('destination', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors text-sm"
                 placeholder="Filtrer par destination..."
               />
             </div>
@@ -341,7 +342,7 @@ const AdminProcedures: React.FC = () => {
               <select
                 value={filters.statut}
                 onChange={(e) => handleFilterChange('statut', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-colors text-sm"
               >
                 <option value="">Tous les statuts</option>
                 {Object.values(ProcedureStatus).map(status => (
@@ -349,19 +350,18 @@ const AdminProcedures: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div className="flex items-end space-x-2">
+            <div className="flex space-x-2 pt-2">
               <button
                 onClick={applyFilters}
-                className="flex-1 bg-blue-600 text-white px-2 py-0.5 text-sm rounded-md hover:bg-blue-700 
-                          focus:outline-none focus:ring-2 focus:ring-none focus:ring-offset-none transition-colors"
+                className="flex-1 bg-blue-600 text-white px-3 py-2 text-sm rounded-md hover:bg-blue-700 
+                          focus:outline-none focus:ring-none focus:border-blue-500 transition-colors flex items-center justify-center"
               >
-                <MagnifyingGlassIcon className="w-3 h-3 inline mr-1" />
+                <MagnifyingGlassIcon className="w-4 h-4 inline mr-1" />
                 Appliquer
               </button>
-
               <button
                 onClick={resetFilters}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 focus:outline-none focus:ring-none focus:ring-blue-500 focus:ring-offset-none transition-colors"
+                className="px-3 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 focus:outline-none focus:ring-none focus:border-blue-500 transition-colors text-sm"
               >
                 Réinitialiser
               </button>
@@ -372,10 +372,10 @@ const AdminProcedures: React.FC = () => {
         {/* Tableau des procédures */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {error && (
-            <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
+            <div className="bg-red-50 border-l-4 border-red-400 p-3 mb-4">
               <div className="flex">
-                <ExclamationTriangleIcon className="h-5 w-5 text-red-400 mr-2" />
-                <p className="text-red-700">{error}</p>
+                <ExclamationTriangleIcon className="h-4 w-4 text-red-400 mr-2 mt-0.5" />
+                <p className="text-red-700 text-sm">{error}</p>
               </div>
             </div>
           )}
@@ -384,22 +384,16 @@ const AdminProcedures: React.FC = () => {
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Étudiant
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Destination
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Statut
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Étapes
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -407,70 +401,33 @@ const AdminProcedures: React.FC = () => {
               <tbody className="bg-white divide-y divide-slate-200">
                 {procedures.map((procedure) => (
                   <tr key={procedure._id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-4 whitespace-nowrap">
+                    <td className="px-3 py-3">
                       <div>
                         <div className="text-sm font-medium text-slate-900">
                           {procedure.prenom} {procedure.nom}
                         </div>
-                        <div className="text-sm text-slate-500">{procedure.email}</div>
+                        <div className="text-xs text-slate-500 truncate max-w-[120px]">{procedure.email}</div>
                         {procedure.telephone && (
-                          <div className="text-sm text-slate-500">{procedure.telephone}</div>
+                          <div className="text-xs text-slate-500">{procedure.telephone}</div>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="text-sm text-slate-900">{procedure.destination}</div>
+                    <td className="px-3 py-3">
+                      <div className="text-sm text-slate-900 truncate max-w-[100px]">{procedure.destination}</div>
                       {procedure.filiere && (
-                        <div className="text-sm text-slate-500">{procedure.filiere}</div>
+                        <div className="text-xs text-slate-500 truncate max-w-[100px]">{procedure.filiere}</div>
                       )}
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      {renderStatusBadge(procedure.statut)}
-                    </td>
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-3">
                       <div className="space-y-1">
-                        {procedure.steps.map((step, index) => (
-                          <div key={step.nom} className="flex items-center justify-between">
-                            <span className="text-xs text-slate-600 flex-1">
-                              {step.nom.split('_').join(' ')}
-                            </span>
-                            <div className="ml-2">
-                              {renderStepStatus(step.statut)}
-                            </div>
-                            {/* Actions rapides pour les étapes */}
-                            <div className="ml-2 flex space-x-1">
-                              {step.statut === StepStatus.IN_PROGRESS && (
-                                <button
-                                  onClick={() => handleUpdateStep(procedure._id, step.nom, StepStatus.COMPLETED)}
-                                  disabled={actionLoading === `${procedure._id}-${step.nom}`}
-                                  className="text-green-600 hover:text-green-800 disabled:opacity-50"
-                                  title="Marquer comme terminé"
-                                >
-                                  <CheckCircleIcon className="w-4 h-4" />
-                                </button>
-                              )}
-                              {[StepStatus.PENDING, StepStatus.IN_PROGRESS].includes(step.statut) && (
-                                <button
-                                  onClick={() => {
-                                    setSelectedProcedure(procedure);
-                                    setShowRejectModal(true);
-                                  }}
-                                  className="text-red-600 hover:text-red-800"
-                                  title="Rejeter"
-                                >
-                                  <XCircleIcon className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                        {renderStatusBadge(procedure.statut)}
+                        <div className="text-xs text-slate-500">
+                          {new Date(procedure.createdAt).toLocaleDateString('fr-FR')}
+                        </div>
                       </div>
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">
-                      {new Date(procedure.createdAt).toLocaleDateString('fr-FR')}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end space-x-2">
+                    <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex justify-end space-x-1">
                         <button
                           onClick={() => {
                             setSelectedProcedure(procedure);
@@ -499,32 +456,25 @@ const AdminProcedures: React.FC = () => {
 
           {/* Pagination */}
           {pagination.totalPages > 1 && (
-            <div className="bg-slate-50 px-4 py-3 flex items-center justify-between border-t border-slate-200">
+            <div className="bg-slate-50 px-3 py-3 flex items-center justify-between border-t border-slate-200">
               <div className="flex-1 flex justify-between items-center">
                 <div>
-                  <p className="text-sm text-slate-700">
-                    Affichage de <span className="font-medium">{(pagination.page - 1) * pagination.limit + 1}</span> à{' '}
-                    <span className="font-medium">
-                      {Math.min(pagination.page * pagination.limit, pagination.total)}
-                    </span>{' '}
-                    sur <span className="font-medium">{pagination.total}</span> résultats
+                  <p className="text-xs text-slate-700">
+                    Page {pagination.page} sur {pagination.totalPages}
                   </p>
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex space-x-1">
                   <button
                     onClick={() => handlePageChange(pagination.page - 1)}
                     disabled={pagination.page === 1}
-                    className="px-3 py-1 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-2 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
                   >
                     Précédent
                   </button>
-                  <span className="px-3 py-1 text-sm text-slate-700">
-                    Page {pagination.page} sur {pagination.totalPages}
-                  </span>
                   <button
                     onClick={() => handlePageChange(pagination.page + 1)}
                     disabled={pagination.page === pagination.totalPages}
-                    className="px-3 py-1 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-2 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
                   >
                     Suivant
                   </button>
@@ -534,10 +484,10 @@ const AdminProcedures: React.FC = () => {
           )}
 
           {procedures.length === 0 && !loading && (
-            <div className="text-center py-12">
-              <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-slate-400" />
+            <div className="text-center py-8">
+              <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-slate-400" />
               <h3 className="mt-2 text-sm font-medium text-slate-900">Aucune procédure</h3>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-xs text-slate-500">
                 Aucune procédure ne correspond à vos critères de recherche.
               </p>
             </div>
@@ -548,51 +498,61 @@ const AdminProcedures: React.FC = () => {
       {/* Modal de détail */}
       {showDetailModal && selectedProcedure && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 border-b border-slate-200">
-              <h3 className="text-lg font-medium text-slate-900">
-                Détails de la procédure - {selectedProcedure.prenom} {selectedProcedure.nom}
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-4 py-3 border-b border-slate-200">
+              <h3 className="text-base font-medium text-slate-900">
+                Détails de la procédure
               </h3>
             </div>
-            <div className="px-6 py-4 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="px-4 py-3 space-y-3">
+              <div className="grid grid-cols-1 gap-2">
                 <div>
-                  <label className="text-sm font-medium text-slate-700">Email</label>
+                  <label className="text-xs font-medium text-slate-700">Étudiant</label>
+                  <p className="text-sm text-slate-900">{selectedProcedure.prenom} {selectedProcedure.nom}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700">Email</label>
                   <p className="text-sm text-slate-900">{selectedProcedure.email}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700">Téléphone</label>
+                  <label className="text-xs font-medium text-slate-700">Téléphone</label>
                   <p className="text-sm text-slate-900">{selectedProcedure.telephone || 'Non renseigné'}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700">Destination</label>
+                  <label className="text-xs font-medium text-slate-700">Destination</label>
                   <p className="text-sm text-slate-900">{selectedProcedure.destination}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700">Filière</label>
+                  <label className="text-xs font-medium text-slate-700">Filière</label>
                   <p className="text-sm text-slate-900">{selectedProcedure.filiere || 'Non renseigné'}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700">Statut global</label>
+                  <div className="mt-1">
+                    {renderStatusBadge(selectedProcedure.statut)}
+                  </div>
                 </div>
               </div>
               
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-2 block">Étapes</label>
+                <label className="text-xs font-medium text-slate-700 mb-2 block">Étapes</label>
                 <div className="space-y-2">
                   {selectedProcedure.steps.map((step) => (
-                    <div key={step.nom} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                      <div>
-                        <div className="font-medium text-slate-900">
+                    <div key={step.nom} className="flex items-center justify-between p-2 bg-slate-50 rounded">
+                      <div className="flex-1">
+                        <div className="font-medium text-slate-900 text-xs">
                           {step.nom.split('_').join(' ')}
                         </div>
-                        <div className="text-sm text-slate-600">
-                          Dernière mise à jour: {new Date(step.dateMaj).toLocaleDateString('fr-FR')}
+                        <div className="text-xs text-slate-600">
+                          {new Date(step.dateMaj).toLocaleDateString('fr-FR')}
                         </div>
                         {step.raisonRefus && (
-                          <div className="text-sm text-red-600 mt-1">
+                          <div className="text-xs text-red-600 mt-1">
                             Raison: {step.raisonRefus}
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-1 ml-2">
                         {renderStepStatus(step.statut)}
                         <div className="flex space-x-1">
                           {step.statut === StepStatus.IN_PROGRESS && (
@@ -601,20 +561,23 @@ const AdminProcedures: React.FC = () => {
                                 handleUpdateStep(selectedProcedure._id, step.nom, StepStatus.COMPLETED);
                                 setShowDetailModal(false);
                               }}
-                              className="text-green-600 hover:text-green-800 p-1"
+                              className="text-green-600 hover:text-green-800 p-0.5"
+                              title="Marquer comme terminé"
                             >
-                              <CheckCircleIcon className="w-5 h-5" />
+                              <CheckCircleIcon className="w-4 h-4" />
                             </button>
                           )}
                           {[StepStatus.PENDING, StepStatus.IN_PROGRESS].includes(step.statut) && (
                             <button
                               onClick={() => {
                                 setShowDetailModal(false);
+                                setSelectedProcedure(selectedProcedure);
                                 setShowRejectModal(true);
                               }}
-                              className="text-red-600 hover:text-red-800 p-1"
+                              className="text-red-600 hover:text-red-800 p-0.5"
+                              title="Rejeter"
                             >
-                              <XCircleIcon className="w-5 h-5" />
+                              <XCircleIcon className="w-4 h-4" />
                             </button>
                           )}
                         </div>
@@ -624,10 +587,10 @@ const AdminProcedures: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-slate-200 flex justify-end">
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end">
               <button
                 onClick={() => setShowDetailModal(false)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 focus:outline-none focus:ring-none focus:border-blue-500"
               >
                 Fermer
               </button>
@@ -639,41 +602,40 @@ const AdminProcedures: React.FC = () => {
       {/* Modal de rejet */}
       {showRejectModal && selectedProcedure && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full">
-            <div className="px-6 py-4 border-b border-slate-200">
-              <h3 className="text-lg font-medium text-slate-900">
+          <div className="bg-white rounded-lg max-w-sm w-full">
+            <div className="px-4 py-3 border-b border-slate-200">
+              <h3 className="text-base font-medium text-slate-900">
                 Rejeter la procédure
               </h3>
             </div>
-            <div className="px-6 py-4">
-              <p className="text-sm text-slate-600 mb-4">
-                Vous êtes sur le point de rejeter la procédure de {selectedProcedure.prenom} {selectedProcedure.nom}.
-                Veuillez indiquer la raison du rejet.
+            <div className="px-4 py-3">
+              <p className="text-xs text-slate-600 mb-3">
+                Raison du rejet pour {selectedProcedure.prenom} {selectedProcedure.nom}:
               </p>
               <textarea
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 placeholder="Raison du rejet..."
-                rows={4}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                rows={3}
+                className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-none focus:border-blue-500"
               />
             </div>
-            <div className="px-6 py-4 border-t border-slate-200 flex justify-end space-x-2">
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end space-x-2">
               <button
                 onClick={() => {
                   setShowRejectModal(false);
                   setRejectReason('');
                 }}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50"
+                className="px-3 py-1.5 border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50 focus:outline-none focus:ring-none focus:border-blue-500"
               >
                 Annuler
               </button>
               <button
                 onClick={handleRejectProcedure}
                 disabled={!rejectReason.trim() || actionLoading === `reject-${selectedProcedure._id}`}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-none focus:border-blue-500"
               >
-                {actionLoading === `reject-${selectedProcedure._id}` ? 'Rejet...' : 'Confirmer le rejet'}
+                {actionLoading === `reject-${selectedProcedure._id}` ? 'Rejet...' : 'Confirmer'}
               </button>
             </div>
           </div>
@@ -683,29 +645,29 @@ const AdminProcedures: React.FC = () => {
       {/* Modal de suppression */}
       {deleteModal.isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full">
-            <div className="px-6 py-4 border-b border-slate-200">
-              <h3 className="text-lg font-medium text-slate-900">
+          <div className="bg-white rounded-lg max-w-sm w-full">
+            <div className="px-4 py-3 border-b border-slate-200">
+              <h3 className="text-base font-medium text-slate-900">
                 Confirmer la suppression
               </h3>
             </div>
-            <div className="px-6 py-4">
+            <div className="px-4 py-3">
               <p className="text-sm text-slate-600">
-                Êtes-vous sûr de vouloir supprimer la procédure de <strong>{deleteModal.procedureName}</strong> ?
+                Supprimer la procédure de <strong>{deleteModal.procedureName}</strong> ?
                 Cette action est irréversible.
               </p>
             </div>
-            <div className="px-6 py-4 border-t border-slate-200 flex justify-end space-x-2">
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end space-x-2">
               <button
                 onClick={() => setDeleteModal({ isOpen: false, procedureId: null, procedureName: '' })}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50"
+                className="px-3 py-1.5 border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50 focus:outline-none focus:ring-none focus:border-blue-500"
               >
                 Annuler
               </button>
               <button
                 onClick={handleDeleteConfirm}
                 disabled={actionLoading === `delete-${deleteModal.procedureId}`}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+                className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50 focus:outline-none focus:ring-none focus:border-blue-500"
               >
                 {actionLoading ? 'Suppression...' : 'Confirmer'}
               </button>

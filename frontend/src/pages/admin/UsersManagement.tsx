@@ -10,15 +10,21 @@ import {
   XCircle,
   X,
   Shield,
-  ShieldOff,
   AlertTriangle,
   RefreshCw,
   User,
   Eye,
   EyeOff,
   Key,
+  Info,
+  MoreVertical,
+  Filter,
   Calendar,
-  Info
+  ShieldCheck,
+  UserCheck,
+  UserX,
+  Users,
+  Settings
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import AdminUserService, { User as UserType, UserStats, CreateUserDto, UpdateUserDto } from '../../api/admin/AdminUserService';
@@ -39,6 +45,8 @@ const UsersManagement: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [showMobileMenu, setShowMobileMenu] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
   
   const [newUser, setNewUser] = useState<CreateUserDto>({ 
     firstName: '', 
@@ -58,31 +66,20 @@ const UsersManagement: React.FC = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // États pour la validation en temps réel
+  // États pour la validation
   const [profileErrors, setProfileErrors] = useState<{ [key: string]: string }>({});
   const [profileTouched, setProfileTouched] = useState<{ [key: string]: boolean }>({});
 
-  // Charger les utilisateurs avec gestion d'erreur
+  // Charger les utilisateurs
   const loadUsers = async () => {
     try {
       setIsLoading(true);
       const usersData = await userService.getAllUsers();
       setUsers(usersData);
-      
       toast.success(`✅ ${usersData.length} utilisateurs chargés`);
     } catch (error: any) {
-      console.error('❌ Erreur chargement utilisateurs:', error);
-      
       const errorMessage = error.message || 'Erreur lors du chargement des utilisateurs';
-      
-      if (errorMessage.includes('Session expirée') || errorMessage.includes('401')) {
-        toast.error('🔒 Session expirée - Redirection...');
-        setTimeout(() => logout('/', true), 2000);
-      } else if (errorMessage.includes('403')) {
-        toast.error('🚫 Accès refusé - Droits administrateur requis');
-      } else {
-        toast.error(`❌ ${errorMessage}`);
-      }
+      toast.error(`❌ ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -94,8 +91,7 @@ const UsersManagement: React.FC = () => {
       const statsData = await userService.getUserStats();
       setStats(statsData);
     } catch (error: any) {
-      console.error('❌ Erreur statistiques:', error);
-      toast.warning('⚠️ Statistiques partielles');
+      console.error('Erreur statistiques:', error);
     }
   };
 
@@ -116,12 +112,7 @@ const UsersManagement: React.FC = () => {
     return phoneRegex.test(phone.replace(/\s/g, ''));
   };
 
-  // Validation mot de passe
-  const validatePassword = (password: string): boolean => {
-    return password.length >= 8;
-  };
-
-  // Validation en temps réel pour le profil
+  // Validation en temps réel
   const validateProfileField = (name: string, value: string) => {
     let error = '';
 
@@ -141,7 +132,7 @@ const UsersManagement: React.FC = () => {
     return !error;
   };
 
-  // Gestion des changements de profil dans le modal d'édition
+  // Gestion des changements de profil
   const handleProfileChange = (field: keyof UpdateUserDto, value: string) => {
     const newData = {
       ...editUser,
@@ -150,12 +141,10 @@ const UsersManagement: React.FC = () => {
     
     setEditUser(newData);
     setProfileTouched(prev => ({ ...prev, [field]: true }));
-    
-    // Validation en temps réel
     validateProfileField(field, value);
   };
 
-  // Validation finale avant soumission
+  // Validation finale
   const validateProfileBeforeSubmit = (): boolean => {
     const errors: { [key: string]: string } = {};
 
@@ -188,7 +177,7 @@ const UsersManagement: React.FC = () => {
       return;
     }
 
-    if (!newUser.password || !validatePassword(newUser.password)) {
+    if (!newUser.password || newUser.password.length < 8) {
       toast.error('❌ Le mot de passe doit contenir au moins 8 caractères');
       return;
     }
@@ -212,13 +201,7 @@ const UsersManagement: React.FC = () => {
       toast.success('✅ Utilisateur créé avec succès');
 
     } catch (error: any) {
-      console.error('❌ Erreur création utilisateur:', error);
-      
-      if (error.message?.includes('déjà utilisé')) {
-        toast.error('❌ Cet email ou téléphone est déjà utilisé');
-      } else {
-        toast.error(`❌ ${error.message || 'Erreur lors de la création'}`);
-      }
+      toast.error(`❌ ${error.message || 'Erreur lors de la création'}`);
     }
   };
 
@@ -229,13 +212,11 @@ const UsersManagement: React.FC = () => {
       return;
     }
 
-    // Validation finale avant soumission
     if (!validateProfileBeforeSubmit()) {
       toast.error('❌ Veuillez corriger les erreurs dans le formulaire');
       return;
     }
 
-    // Vérifier qu'au moins un champ a été modifié
     const hasChanges = (editUser.email && editUser.email !== selectedUser.email) || 
                       (editUser.telephone && editUser.telephone !== selectedUser.telephone);
 
@@ -243,13 +224,6 @@ const UsersManagement: React.FC = () => {
       toast.error('❌ Aucune modification détectée');
       return;
     }
-
-    console.log('🔄 Début modification utilisateur:', {
-      userId: selectedUser._id,
-      currentEmail: selectedUser.email,
-      currentTelephone: selectedUser.telephone,
-      newData: editUser
-    });
 
     try {
       const updateData: UpdateUserDto = {};
@@ -262,20 +236,13 @@ const UsersManagement: React.FC = () => {
         updateData.telephone = editUser.telephone;
       }
 
-      console.log('📤 Données à envoyer pour mise à jour:', updateData);
-      
       const updatedUser = await userService.updateUser(selectedUser._id, updateData);
       
-      console.log('✅ Utilisateur modifié avec succès:', updatedUser);
-      
-      // Mettre à jour la liste localement
       setUsers(prev => prev.map(user => 
         user._id === selectedUser._id ? { ...user, ...updatedUser } : user
       ));
 
       await loadStats();
-
-      // Réinitialiser les états
       setEditUser({});
       setProfileErrors({});
       setProfileTouched({});
@@ -285,34 +252,18 @@ const UsersManagement: React.FC = () => {
       toast.success('✅ Utilisateur modifié avec succès');
 
     } catch (error: any) {
-      console.error('❌ Erreur détaillée modification:', error);
-      
-      const errorMessage = error.message || 'Erreur lors de la modification';
-      
-      if (errorMessage.includes('non trouvé')) {
-        toast.error('❌ Utilisateur introuvable - rechargement de la liste...');
-        await loadUsers();
-      } else if (errorMessage.includes('déjà utilisé')) {
-        toast.error('❌ Cet email ou téléphone est déjà utilisé');
-      } else if (errorMessage.includes('401') || errorMessage.includes('403')) {
-        toast.error('🔒 Session expirée - Reconnexion nécessaire');
-        setTimeout(() => logout('/', true), 2000);
-      } else if (errorMessage.includes('Aucune donnée utilisateur')) {
-        toast.error('❌ Réponse invalide du serveur');
-      } else {
-        toast.error(`❌ ${errorMessage}`);
-      }
+      toast.error(`❌ ${error.message || 'Erreur lors de la modification'}`);
     }
   };
 
-  // Réinitialisation du mot de passe par l'admin
+  // Réinitialisation du mot de passe
   const handleAdminResetPassword = async () => {
     if (!selectedUser) {
       toast.error('❌ Données manquantes');
       return;
     }
 
-    if (!passwordData.newPassword || !validatePassword(passwordData.newPassword)) {
+    if (!passwordData.newPassword || passwordData.newPassword.length < 8) {
       toast.error('❌ Le mot de passe doit contenir au moins 8 caractères');
       return;
     }
@@ -338,18 +289,7 @@ const UsersManagement: React.FC = () => {
       toast.success('✅ Mot de passe réinitialisé avec succès');
 
     } catch (error: any) {
-      console.error('❌ Erreur réinitialisation mot de passe:', error);
-      
-      const errorMessage = error.message || 'Erreur lors de la réinitialisation du mot de passe';
-      
-      if (errorMessage.includes('Session expirée') || errorMessage.includes('401')) {
-        toast.error('🔒 Session expirée - Veuillez vous reconnecter');
-        setTimeout(() => logout('/', true), 2000);
-      } else if (errorMessage.includes('403')) {
-        toast.error('🚫 Accès refusé - Droits administrateur requis');
-      } else {
-        toast.error(`❌ ${errorMessage}`);
-      }
+      toast.error(`❌ ${error.message || 'Erreur lors de la réinitialisation'}`);
     }
   };
 
@@ -378,7 +318,6 @@ const UsersManagement: React.FC = () => {
       toast.success('✅ Utilisateur supprimé avec succès');
 
     } catch (error: any) {
-      console.error('❌ Erreur suppression utilisateur:', error);
       toast.error(`❌ ${error.message || 'Erreur lors de la suppression'}`);
     }
   };
@@ -398,11 +337,9 @@ const UsersManagement: React.FC = () => {
       ));
 
       await loadStats();
-
       toast.success(`✅ Utilisateur ${!user.isActive ? 'activé' : 'désactivé'} avec succès`);
 
     } catch (error: any) {
-      console.error('❌ Erreur changement statut:', error);
       toast.error(`❌ ${error.message || 'Erreur lors du changement de statut'}`);
     }
   };
@@ -416,6 +353,7 @@ const UsersManagement: React.FC = () => {
     setProfileErrors({});
     setProfileTouched({});
     setIsEditModalOpen(true);
+    setShowMobileMenu(null);
   };
 
   const openPasswordModal = (user: User) => {
@@ -425,11 +363,13 @@ const UsersManagement: React.FC = () => {
       confirmNewPassword: ''
     });
     setIsPasswordModalOpen(true);
+    setShowMobileMenu(null);
   };
 
   const openDeleteModal = (user: User) => {
     setSelectedUser(user);
     setIsDeleteModalOpen(true);
+    setShowMobileMenu(null);
   };
 
   // Réinitialiser le formulaire d'édition
@@ -444,14 +384,14 @@ const UsersManagement: React.FC = () => {
     setProfileTouched({});
   };
 
-  // Vérifier si le formulaire d'édition a des modifications
+  // Vérifier les modifications
   const hasEditChanges = () => {
     if (!selectedUser) return false;
     return (editUser.email && editUser.email !== selectedUser.email) || 
            (editUser.telephone && editUser.telephone !== selectedUser.telephone);
   };
 
-  // Filtrage sécurisé des utilisateurs
+  // Filtrage des utilisateurs
   const filteredUsers = users.filter(user => {
     const searchLower = searchTerm.toLowerCase();
     return (
@@ -465,8 +405,8 @@ const UsersManagement: React.FC = () => {
   // Icônes et couleurs pour les statuts
   const getStatusIcon = (isActive: boolean) => {
     return isActive ? 
-      <CheckCircle className="w-4 h-4 text-emerald-500" /> : 
-      <XCircle className="w-4 h-4 text-rose-500" />;
+      <UserCheck className="w-3 h-3 text-emerald-500" /> : 
+      <UserX className="w-3 h-3 text-rose-500" />;
   };
 
   const getStatusText = (isActive: boolean) => {
@@ -481,8 +421,8 @@ const UsersManagement: React.FC = () => {
 
   const getRoleIcon = (role: string) => {
     return role === 'admin' ? 
-      <Shield className="w-4 h-4 text-blue-500" /> : 
-      <User className="w-4 h-4 text-gray-500" />;
+      <ShieldCheck className="w-3 h-3 text-blue-500" /> : 
+      <User className="w-3 h-3 text-gray-500" />;
   };
 
   const getRoleText = (role: string) => {
@@ -495,90 +435,80 @@ const UsersManagement: React.FC = () => {
       'bg-gray-50 text-gray-700 border-gray-200';
   };
 
-  // Masquage partiel des données sensibles
-  const maskEmail = (email: string): string => {
-    const [name, domain] = email.split('@');
-    if (name.length <= 2) return email;
-    return `${name.substring(0, 2)}***@${domain}`;
-  };
-
-  const maskPhone = (phone: string): string => {
-    if (phone.length <= 4) return phone;
-    return `${phone.substring(0, phone.length - 4)}****`;
-  };
-
   return (
-    <div className="min-h-screen p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 max-w-[1024px] mx-auto overflow-x-hidden">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
-          <Shield className="w-8 h-8 inline-block mr-2 text-blue-500" />
-          Gestion des Utilisateurs - Admin
-        </h1>
-        <p className="text-gray-600">
-          Interface d'administration pour gérer les utilisateurs du système
-        </p>
+      <div className="mb-4 px-4">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="p-2 bg-blue-500 rounded-lg">
+            <Users className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">Gestion des Utilisateurs</h1>
+            <p className="text-slate-600 text-sm">Administrez les comptes utilisateurs</p>
+          </div>
+        </div>
       </div>
 
-      {/* Cartes de statistiques */}
+      {/* Cartes de statistiques compactes */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-4 px-4">
+          <div className="bg-white rounded-xl border border-slate-200/60 p-3 shadow-sm">
             <div className="flex items-center">
-              <div className="bg-blue-500 p-2 rounded-lg">
-                <User className="w-5 h-5 text-white" />
+              <div className="p-2 bg-blue-500 rounded-lg">
+                <Users className="w-4 h-4 text-white" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm text-gray-600">Total Utilisateurs</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
+              <div className="ml-2">
+                <p className="text-xs text-slate-600">Total</p>
+                <p className="text-lg font-bold text-slate-800">{stats.totalUsers}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <div className="bg-white rounded-xl border border-slate-200/60 p-3 shadow-sm">
             <div className="flex items-center">
-              <div className="bg-emerald-500 p-2 rounded-lg">
-                <CheckCircle className="w-5 h-5 text-white" />
+              <div className="p-2 bg-emerald-500 rounded-lg">
+                <UserCheck className="w-4 h-4 text-white" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm text-gray-600">Utilisateurs Actifs</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.activeUsers}</p>
+              <div className="ml-2">
+                <p className="text-xs text-slate-600">Actifs</p>
+                <p className="text-lg font-bold text-slate-800">{stats.activeUsers}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <div className="bg-white rounded-xl border border-slate-200/60 p-3 shadow-sm">
             <div className="flex items-center">
-              <div className="bg-rose-500 p-2 rounded-lg">
-                <XCircle className="w-5 h-5 text-white" />
+              <div className="p-2 bg-rose-500 rounded-lg">
+                <UserX className="w-4 h-4 text-white" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm text-gray-600">Utilisateurs Inactifs</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.inactiveUsers}</p>
+              <div className="ml-2">
+                <p className="text-xs text-slate-600">Inactifs</p>
+                <p className="text-lg font-bold text-slate-800">{stats.inactiveUsers}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <div className="bg-white rounded-xl border border-slate-200/60 p-3 shadow-sm">
             <div className="flex items-center">
-              <div className="bg-purple-500 p-2 rounded-lg">
-                <Shield className="w-5 h-5 text-white" />
+              <div className="p-2 bg-purple-500 rounded-lg">
+                <ShieldCheck className="w-4 h-4 text-white" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm text-gray-600">Administrateurs</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.adminUsers}</p>
+              <div className="ml-2">
+                <p className="text-xs text-slate-600">Admins</p>
+                <p className="text-lg font-bold text-slate-800">{stats.adminUsers}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <div className="bg-white rounded-xl border border-slate-200/60 p-3 shadow-sm">
             <div className="flex items-center">
-              <div className="bg-gray-500 p-2 rounded-lg">
-                <User className="w-5 h-5 text-white" />
+              <div className="p-2 bg-slate-500 rounded-lg">
+                <User className="w-4 h-4 text-white" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm text-gray-600">Utilisateurs Réguliers</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.regularUsers}</p>
+              <div className="ml-2">
+                <p className="text-xs text-slate-600">Utilisateurs</p>
+                <p className="text-lg font-bold text-slate-800">{stats.regularUsers}</p>
               </div>
             </div>
           </div>
@@ -586,22 +516,20 @@ const UsersManagement: React.FC = () => {
       )}
 
       {/* Barre de recherche et actions */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6 shadow-sm">
-        <div className="flex flex-col md:flex-row gap-4">
-          {/* Recherche */}
-          <div className="flex-1">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Rechercher un utilisateur..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-none hover:border-blue-600 focus:border-blue-500 transition-all duration-200"
-              />
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="w-5 h-5 text-gray-400" />
-              </div>
+      <div className="bg-white rounded-xl border border-slate-200/60 p-3 mb-4 shadow-sm mx-4">
+        <div className="flex flex-col space-y-3">
+          {/* Recherche avec icône */}
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="w-4 h-4 text-slate-400" />
             </div>
+            <input
+              type="text"
+              placeholder="Rechercher un utilisateur..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
+            />
           </div>
 
           {/* Actions */}
@@ -610,101 +538,210 @@ const UsersManagement: React.FC = () => {
               onClick={() => {
                 loadUsers();
                 loadStats();
-                toast.info('🔄 Actualisation en cours...');
+                toast.info('🔄 Actualisation...');
               }}
-              className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 focus:outline-none focus:ring-none transition-all duration-200 flex items-center gap-2"
+              className="flex-1 px-3 py-2.5 bg-slate-500 text-white rounded-lg hover:bg-slate-600 focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200 flex items-center justify-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
-              <span className="hidden sm:block">Actualiser</span>
+              <span className="text-sm">Actualiser</span>
             </button>
 
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200 flex items-center gap-2"
+              className="flex-1 px-3 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200 flex items-center justify-center gap-2"
             >
               <Plus className="w-4 h-4" />
-              <span className="hidden sm:block">Nouvel utilisateur</span>
+              <span className="text-sm">Nouveau</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Tableau des utilisateurs */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-        {/* En-tête du tableau */}
+      {/* Liste des utilisateurs */}
+      <div className="bg-white rounded-xl border border-slate-200/60 overflow-hidden shadow-sm mx-4">
+        {/* En-tête */}
         <div className="px-4 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-          <h2 className="text-lg font-semibold flex items-center">
-            <User className="w-5 h-5 mr-2" />
-            Liste des Utilisateurs
-            <span className="ml-2 text-blue-200 text-sm font-normal">
-              ({filteredUsers.length} résultat{filteredUsers.length > 1 ? 's' : ''})
-            </span>
-          </h2>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <User className="w-4 h-4" />
+              <h2 className="text-base font-semibold">Liste des Utilisateurs</h2>
+              <span className="bg-blue-400 text-blue-100 px-2 py-0.5 rounded-full text-xs">
+                {filteredUsers.length}
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Tableau */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
+        {/* Version tablette - Cartes améliorées */}
+        <div className="lg:hidden">
+          {isLoading ? (
+            <div className="p-4 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+              <p className="text-slate-600 mt-2 text-sm">Chargement sécurisé...</p>
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="p-6 text-center text-slate-500">
+              <User className="w-12 h-12 mx-auto mb-2 text-slate-400" />
+              <p className="text-slate-500">Aucun utilisateur trouvé</p>
+              {searchTerm && (
+                <p className="text-slate-400 text-sm mt-1">
+                  Aucun résultat pour "{searchTerm}"
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-200">
+              {filteredUsers.map((user) => (
+                <div key={user._id} className="p-4 hover:bg-slate-50 transition-colors">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-center flex-1 min-w-0">
+                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <User className="w-6 h-6 text-white" />
+                      </div>
+                      <div className="ml-3 flex-1 min-w-0">
+                        <h3 className="font-semibold text-slate-800 truncate">
+                          {user.firstName} {user.lastName}
+                        </h3>
+                        <div className="flex items-center gap-1 mt-1">
+                          <Mail className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                          <p className="text-xs text-slate-600 truncate">
+                            {user.email}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="relative flex-shrink-0">
+                      <button
+                        onClick={() => setShowMobileMenu(showMobileMenu === user._id ? null : user._id)}
+                        className="p-2 hover:bg-slate-100 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200"
+                      >
+                        <MoreVertical className="w-4 h-4 text-slate-500" />
+                      </button>
+                      
+                      {showMobileMenu === user._id && (
+                        <div className="absolute right-0 top-10 bg-white border border-slate-200 rounded-lg shadow-lg z-10 min-w-[180px]">
+                          <button
+                            onClick={() => openEditModal(user)}
+                            className="w-full px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-2 border-b border-slate-200 focus:outline-none focus:ring-none"
+                          >
+                            <Edit className="w-4 h-4" />
+                            Modifier
+                          </button>
+                          <button
+                            onClick={() => openPasswordModal(user)}
+                            className="w-full px-4 py-2.5 text-sm text-green-600 hover:bg-green-50 flex items-center gap-2 border-b border-slate-200 focus:outline-none focus:ring-none"
+                          >
+                            <Key className="w-4 h-4" />
+                            Réinit. MDP
+                          </button>
+                          <button
+                            onClick={() => handleToggleStatus(user)}
+                            disabled={user._id === currentUser?.id}
+                            className="w-full px-4 py-2.5 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2 border-b border-slate-200 disabled:opacity-50 focus:outline-none focus:ring-none"
+                          >
+                            {user.isActive ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            {user.isActive ? 'Désactiver' : 'Activer'}
+                          </button>
+                          <button
+                            onClick={() => openDeleteModal(user)}
+                            disabled={user._id === currentUser?.id}
+                            className="w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-50 focus:outline-none focus:ring-none"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Supprimer
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${getRoleColor(user.role)}`}>
+                      {getRoleIcon(user.role)}
+                      <span className="ml-1.5">{getRoleText(user.role)}</span>
+                    </span>
+                    <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(user.isActive)}`}>
+                      {getStatusIcon(user.isActive)}
+                      <span className="ml-1.5">{getStatusText(user.isActive)}</span>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm text-slate-600 mb-2">
+                    <Phone className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    <span className="truncate">{user.telephone}</span>
+                  </div>
+
+                  <div className="text-xs text-slate-500 truncate">
+                    ID: {user._id}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Version desktop - Tableau */}
+        <div className="hidden lg:block overflow-x-auto">
+          <table className="w-full min-w-[800px]">
+            <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
-                  <User className="w-4 h-4 inline mr-1" />
-                  Utilisateur
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    Utilisateur
+                  </div>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
-                  <Mail className="w-4 h-4 inline mr-1" />
-                  Contact
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4" />
+                    Contact
+                  </div>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
-                  <Shield className="w-4 h-4 inline mr-1" />
-                  Rôle
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4" />
+                    Rôle
+                  </div>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                   Statut
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white divide-y divide-slate-200">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center">
+                  <td colSpan={5} className="px-4 py-8 text-center">
                     <div className="flex justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
                     </div>
-                    <p className="text-gray-600 mt-2">Chargement sécurisé des utilisateurs...</p>
+                    <p className="text-slate-600 mt-2 text-sm">Chargement sécurisé...</p>
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center">
-                    <User className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                    <p className="text-gray-500">Aucun utilisateur trouvé</p>
-                    {searchTerm && (
-                      <p className="text-gray-400 text-sm mt-1">
-                        Aucun résultat pour "{searchTerm}"
-                      </p>
-                    )}
+                  <td colSpan={5} className="px-4 py-8 text-center">
+                    <User className="w-16 h-16 mx-auto mb-4 text-slate-400" />
+                    <p className="text-slate-500">Aucun utilisateur trouvé</p>
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((user) => (
-                  <tr 
-                    key={user._id} 
-                    className="hover:bg-gray-50 transition-colors duration-150"
-                  >
-                    <td className="px-4 py-4 whitespace-nowrap">
+                  <tr key={user._id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-4">
                       <div className="flex items-center">
                         <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
                           <User className="w-5 h-5 text-white" />
                         </div>
                         <div className="ml-3">
-                          <p className="text-sm font-medium text-gray-900">
+                          <p className="text-sm font-medium text-slate-800">
                             {user.firstName} {user.lastName}
                           </p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-slate-500">
                             ID: {user._id.substring(0, 8)}...
                           </p>
                         </div>
@@ -713,40 +750,36 @@ const UsersManagement: React.FC = () => {
                     
                     <td className="px-4 py-4">
                       <div className="space-y-1">
-                        <div className="flex items-center space-x-2 text-gray-700">
-                          <Mail className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm" title={user.email}>
-                            {maskEmail(user.email)}
-                          </span>
+                        <div className="flex items-center gap-2 text-sm text-slate-700">
+                          <Mail className="w-4 h-4 text-slate-400" />
+                          <span>{user.email}</span>
                         </div>
-                        <div className="flex items-center space-x-2 text-gray-700">
-                          <Phone className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm" title={user.telephone}>
-                            {maskPhone(user.telephone)}
-                          </span>
+                        <div className="flex items-center gap-2 text-sm text-slate-700">
+                          <Phone className="w-4 h-4 text-slate-400" />
+                          <span>{user.telephone}</span>
                         </div>
                       </div>
                     </td>
                     
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getRoleColor(user.role)}`}>
+                    <td className="px-4 py-4">
+                      <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium border ${getRoleColor(user.role)}`}>
                         {getRoleIcon(user.role)}
                         <span className="ml-1.5">{getRoleText(user.role)}</span>
                       </span>
                     </td>
 
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(user.isActive)}`}>
+                    <td className="px-4 py-4">
+                      <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium border ${getStatusColor(user.isActive)}`}>
                         {getStatusIcon(user.isActive)}
                         <span className="ml-1.5">{getStatusText(user.isActive)}</span>
                       </span>
                     </td>
                     
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex space-x-1">
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-1">
                         <button
                           onClick={() => openEditModal(user)}
-                          className="text-blue-500 hover:text-blue-600 hover:bg-blue-50 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 border border-transparent p-2 rounded-lg transition-all duration-200"
+                          className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200"
                           title="Modifier l'utilisateur"
                         >
                           <Edit className="w-4 h-4" />
@@ -754,44 +787,38 @@ const UsersManagement: React.FC = () => {
 
                         <button
                           onClick={() => openPasswordModal(user)}
-                          className="text-green-500 hover:text-green-600 hover:bg-green-50 hover:border-green-600 focus:ring-none focus:outline-none focus:border-green-500 border border-transparent p-2 rounded-lg transition-all duration-200"
+                          className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200"
                           title="Réinitialiser le mot de passe"
                         >
                           <Key className="w-4 h-4" />
                         </button>
                         
                         <button
-                          onClick={() => openDeleteModal(user)}
+                          onClick={() => handleToggleStatus(user)}
                           disabled={user._id === currentUser?.id}
-                          className={`p-2 rounded-lg transition-all duration-200 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 border border-transparent ${
+                          className={`p-2 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200 ${
                             user._id === currentUser?.id
-                              ? 'text-gray-400 cursor-not-allowed'
-                              : 'text-rose-500 hover:text-rose-600 hover:bg-rose-50 focus:border-rose-500'
+                              ? 'text-slate-400 cursor-not-allowed'
+                              : user.isActive
+                              ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-50'
+                              : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
                           }`}
-                          title={user._id === currentUser?.id ? "Impossible de supprimer votre compte" : "Supprimer l'utilisateur"}
+                          title={user._id === currentUser?.id ? "Impossible de modifier votre statut" : user.isActive ? "Désactiver" : "Activer"}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {user.isActive ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                         
                         <button
-                          onClick={() => handleToggleStatus(user)}
+                          onClick={() => openDeleteModal(user)}
                           disabled={user._id === currentUser?.id}
-                          className={`p-2 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 border border-transparent ${
+                          className={`p-2 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200 ${
                             user._id === currentUser?.id
-                              ? 'text-gray-400 cursor-not-allowed'
-                              : user.isActive
-                              ? 'text-rose-500 hover:text-rose-600 hover:bg-rose-50 focus:ring-rose-500'
-                              : 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 focus:ring-emerald-500'
+                              ? 'text-slate-400 cursor-not-allowed'
+                              : 'text-red-600 hover:text-red-700 hover:bg-red-50'
                           }`}
-                          title={
-                            user._id === currentUser?.id 
-                              ? "Impossible de modifier votre statut" 
-                              : user.isActive 
-                                ? "Désactiver l'utilisateur" 
-                                : "Activer l'utilisateur"
-                          }
+                          title={user._id === currentUser?.id ? "Impossible de supprimer votre compte" : "Supprimer"}
                         >
-                          {user.isActive ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -805,26 +832,26 @@ const UsersManagement: React.FC = () => {
 
       {/* Modal d'ajout d'utilisateur */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg border border-gray-300 max-w-md w-full shadow-xl max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 sticky top-0 bg-white">
-              <h2 className="text-lg font-bold text-gray-900 flex items-center">
-                <User className="w-5 h-5 mr-2 text-blue-500" />
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-slate-200/60 max-w-md w-full max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200 sticky top-0 bg-white">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <User className="w-5 h-5 text-blue-500" />
                 Nouvel Utilisateur
               </h2>
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-1 hover:bg-gray-100 rounded-lg transition-colors duration-200 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 border border-transparent"
+                className="p-1.5 hover:bg-slate-100 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200"
               >
-                <X className="w-5 h-5 text-gray-500" />
+                <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
             
-            <div className="p-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-700 flex items-center">
-                    <User className="w-3 h-3 mr-1 text-gray-400" />
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                    <User className="w-4 h-4 text-slate-400" />
                     Prénom *
                   </label>
                   <input
@@ -832,13 +859,13 @@ const UsersManagement: React.FC = () => {
                     value={newUser.firstName}
                     onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })}
                     placeholder="Jean"
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
                   />
                 </div>
                 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-700 flex items-center">
-                    <User className="w-3 h-3 mr-1 text-gray-400" />
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                    <User className="w-4 h-4 text-slate-400" />
                     Nom *
                   </label>
                   <input
@@ -846,14 +873,14 @@ const UsersManagement: React.FC = () => {
                     value={newUser.lastName}
                     onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
                     placeholder="Dupont"
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
                   />
                 </div>
               </div>
               
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700 flex items-center">
-                  <Mail className="w-3 h-3 mr-1 text-gray-400" />
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-slate-400" />
                   Email *
                 </label>
                 <input
@@ -861,13 +888,13 @@ const UsersManagement: React.FC = () => {
                   value={newUser.email}
                   onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                   placeholder="jean.dupont@example.com"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200"
+                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
                 />
               </div>
               
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700 flex items-center">
-                  <Phone className="w-3 h-3 mr-1 text-gray-400" />
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-slate-400" />
                   Téléphone *
                 </label>
                 <input
@@ -875,13 +902,13 @@ const UsersManagement: React.FC = () => {
                   value={newUser.telephone}
                   onChange={(e) => setNewUser({ ...newUser, telephone: e.target.value })}
                   placeholder="+33 1 23 45 67 89"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200"
+                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700 flex items-center">
-                  <Key className="w-3 h-3 mr-1 text-gray-400" />
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-slate-400" />
                   Mot de passe *
                 </label>
                 <div className="relative">
@@ -890,30 +917,30 @@ const UsersManagement: React.FC = () => {
                     value={newUser.password}
                     onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
                     placeholder="Minimum 8 caractères"
-                    className="w-full px-3 py-2 pr-10 text-sm border border-gray-300 rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-3 py-2.5 pr-10 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 rounded-r-lg"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-none"
                   >
-                    {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-slate-500">
                   Doit contenir au moins 8 caractères
                 </p>
               </div>
               
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700 flex items-center">
-                  <Shield className="w-3 h-3 mr-1 text-gray-400" />
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-slate-400" />
                   Rôle
                 </label>
                 <select
                   value={newUser.role}
                   onChange={(e) => setNewUser({ ...newUser, role: e.target.value as 'admin' | 'user' })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200"
+                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
                 >
                   <option value="user">Utilisateur</option>
                   <option value="admin">Administrateur</option>
@@ -921,18 +948,18 @@ const UsersManagement: React.FC = () => {
               </div>
             </div>
             
-            <div className="flex space-x-2 p-4 border-t border-gray-200 sticky bottom-0 bg-white">
+            <div className="flex gap-3 p-4 border-t border-slate-200 sticky bottom-0 bg-white">
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="flex-1 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200"
+                className="flex-1 px-4 py-2.5 text-sm text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
               >
                 Annuler
               </button>
               <button
                 onClick={handleAddUser}
-                className="flex-1 px-3 py-2 text-sm bg-blue-500 text-white rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200 flex items-center justify-center gap-1"
+                className="flex-1 px-4 py-2.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200 flex items-center justify-center gap-2"
               >
-                <User className="w-3 h-3" />
+                <User className="w-4 h-4" />
                 Créer
               </button>
             </div>
@@ -942,150 +969,145 @@ const UsersManagement: React.FC = () => {
 
       {/* Modal de modification d'utilisateur */}
       {isEditModalOpen && selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg border border-gray-300 max-w-md w-full shadow-xl max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 sticky top-0 bg-white">
-              <h2 className="text-lg font-bold text-gray-900 flex items-center">
-                <Edit className="w-5 h-5 mr-2 text-blue-500" />
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-slate-200/60 max-w-md w-full max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200 sticky top-0 bg-white">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Edit className="w-5 h-5 text-blue-500" />
                 Modifier l'utilisateur
               </h2>
-              <div className="flex items-center gap-2">
-                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                  Email et téléphone modifiables
-                </span>
-                <button
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors duration-200 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 border border-transparent"
-                >
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
             </div>
             
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-4">
               {/* Informations utilisateur */}
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-sm font-medium text-gray-700">
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-sm font-medium text-slate-700">
                   Modification de: <span className="font-semibold">{selectedUser.firstName} {selectedUser.lastName}</span>
                 </p>
-                <p className="text-xs text-gray-500 mt-1">ID: {selectedUser._id}</p>
+                <p className="text-xs text-slate-500 mt-1">ID: {selectedUser._id}</p>
               </div>
 
-              {/* ❌ CHAMPS NON MODIFIABLES - Affichage lecture seule */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-700 flex items-center">
-                    <User className="w-3 h-3 mr-1 text-gray-400" />
+              {/* Champs non modifiables */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                    <User className="w-4 h-4 text-slate-400" />
                     Prénom
                   </label>
                   <input
                     type="text"
                     value={selectedUser.firstName}
                     disabled
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
+                    className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-500 cursor-not-allowed"
                   />
-                  <p className="text-xs text-gray-500">Non modifiable</p>
+                  <p className="text-xs text-slate-500">Non modifiable</p>
                 </div>
                 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-700 flex items-center">
-                    <User className="w-3 h-3 mr-1 text-gray-400" />
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                    <User className="w-4 h-4 text-slate-400" />
                     Nom
                   </label>
                   <input
                     type="text"
                     value={selectedUser.lastName}
                     disabled
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
+                    className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-500 cursor-not-allowed"
                   />
-                  <p className="text-xs text-gray-500">Non modifiable</p>
+                  <p className="text-xs text-slate-500">Non modifiable</p>
                 </div>
               </div>
               
-              {/* ✅ CHAMP MODIFIABLE - Email */}
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700 flex items-center">
-                  <Mail className="w-3 h-3 mr-1 text-gray-400" />
+              {/* Email modifiable */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-slate-400" />
                   Email
                 </label>
                 <input
                   type="email"
                   value={editUser.email || ''}
                   onChange={(e) => handleProfileChange('email', e.target.value)}
-                  className={`w-full px-3 py-2 text-sm border rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200 ${
-                    profileErrors.email ? 'border-red-300' : 'border-gray-300'
+                  className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200 ${
+                    profileErrors.email ? 'border-red-300' : 'border-slate-300'
                   }`}
                   placeholder="nouvel@email.com"
                 />
                 {profileTouched.email && profileErrors.email && (
-                  <p className="text-xs text-red-600 flex items-center gap-1">
+                  <p className="text-xs text-red-600 flex items-center gap-2">
                     <XCircle className="w-3 h-3" />
                     {profileErrors.email}
                   </p>
                 )}
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-slate-500">
                   Actuel: {selectedUser.email}
                 </p>
               </div>
               
-              {/* ✅ CHAMP MODIFIABLE - Téléphone */}
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700 flex items-center">
-                  <Phone className="w-3 h-3 mr-1 text-gray-400" />
+              {/* Téléphone modifiable */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-slate-400" />
                   Téléphone
                 </label>
                 <input
                   type="tel"
                   value={editUser.telephone || ''}
                   onChange={(e) => handleProfileChange('telephone', e.target.value)}
-                  className={`w-full px-3 py-2 text-sm border rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200 ${
-                    profileErrors.telephone ? 'border-red-300' : 'border-gray-300'
+                  className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200 ${
+                    profileErrors.telephone ? 'border-red-300' : 'border-slate-300'
                   }`}
                   placeholder="+33 1 23 45 67 89"
                 />
                 {profileTouched.telephone && profileErrors.telephone && (
-                  <p className="text-xs text-red-600 flex items-center gap-1">
+                  <p className="text-xs text-red-600 flex items-center gap-2">
                     <XCircle className="w-3 h-3" />
                     {profileErrors.telephone}
                   </p>
                 )}
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-slate-500">
                   Actuel: {selectedUser.telephone}
                 </p>
               </div>
 
-              {/* ℹ️ Message d'information */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+              {/* Information */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <div className="flex items-start">
-                  <Info className="w-3 h-3 text-blue-500 mt-0.5 mr-1 flex-shrink-0" />
+                  <Info className="w-4 h-4 text-blue-500 mt-0.5 mr-2 flex-shrink-0" />
                   <div>
                     <p className="text-xs text-blue-800 font-medium">Informations</p>
                     <p className="text-xs text-blue-600 mt-0.5">
-                      Seuls l'email et le téléphone peuvent être modifiés. Pour changer le statut, utilisez le bouton Activer/Désactiver.
+                      Seuls l'email et le téléphone peuvent être modifiés.
                     </p>
                   </div>
                 </div>
               </div>
             </div>
             
-            <div className="flex space-x-2 p-4 border-t border-gray-200 sticky bottom-0 bg-white">
+            <div className="flex gap-3 p-4 border-t border-slate-200 sticky bottom-0 bg-white">
               <button
                 onClick={resetEditForm}
                 disabled={!hasEditChanges()}
-                className="flex-1 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2.5 text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Annuler
               </button>
               <button
                 onClick={handleEditUser}
                 disabled={!hasEditChanges() || Object.keys(profileErrors).some(key => profileErrors[key])}
-                className={`flex-1 px-3 py-2 text-sm rounded-lg transition-all duration-200 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 border border-transparent flex items-center justify-center gap-1 ${
+                className={`flex-1 px-4 py-2.5 text-sm rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200 flex items-center justify-center gap-2 ${
                   !hasEditChanges() || Object.keys(profileErrors).some(key => profileErrors[key])
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-500 text-white hover:bg-blue-600 focus:border-blue-500'
+                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                    : 'bg-blue-500 text-white hover:bg-blue-600'
                 }`}
               >
-                <Edit className="w-3 h-3" />
+                <Edit className="w-4 h-4" />
                 Modifier
               </button>
             </div>
@@ -1095,38 +1117,37 @@ const UsersManagement: React.FC = () => {
 
       {/* Modal de réinitialisation du mot de passe */}
       {isPasswordModalOpen && selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg border border-gray-300 max-w-md w-full shadow-xl">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-lg font-bold text-gray-900 flex items-center">
-                <Key className="w-5 h-5 mr-2 text-green-500" />
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-slate-200/60 max-w-md w-full">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Key className="w-5 h-5 text-green-500" />
                 Réinitialiser le mot de passe
               </h2>
               <button
                 onClick={() => setIsPasswordModalOpen(false)}
-                className="p-1 hover:bg-gray-100 rounded-lg transition-colors duration-200 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 border border-transparent"
+                className="p-1.5 hover:bg-slate-100 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200"
               >
-                <X className="w-5 h-5 text-gray-500" />
+                <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
             
-            <div className="p-4 space-y-3">
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+            <div className="p-4 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <div className="flex items-start">
-                  <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" />
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 mr-2 flex-shrink-0" />
                   <div>
-                    <p className="text-sm font-medium text-yellow-800">Réinitialisation du mot de passe</p>
-                    <p className="text-xs text-yellow-700 mt-1">
-                      Vous êtes sur le point de modifier le mot de passe de <strong>{selectedUser.firstName} {selectedUser.lastName}</strong>.
-                      En tant qu'administrateur, vous n'avez pas besoin du mot de passe actuel.
+                    <p className="text-sm font-medium text-amber-800">Réinitialisation</p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      Modification du mot de passe de <strong>{selectedUser.firstName} {selectedUser.lastName}</strong>.
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700 flex items-center">
-                  <Key className="w-3 h-3 mr-1 text-gray-400" />
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-slate-400" />
                   Nouveau mot de passe *
                 </label>
                 <div className="relative">
@@ -1135,24 +1156,24 @@ const UsersManagement: React.FC = () => {
                     value={passwordData.newPassword}
                     onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
                     placeholder="Minimum 8 caractères"
-                    className="w-full px-3 py-2 pr-10 text-sm border border-gray-300 rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-3 py-2.5 pr-10 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
                   />
                   <button
                     type="button"
                     onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 rounded-r-lg"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-none"
                   >
-                    {showNewPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-slate-500">
                   Doit contenir au moins 8 caractères
                 </p>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700 flex items-center">
-                  <Key className="w-3 h-3 mr-1 text-gray-400" />
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-slate-400" />
                   Confirmer le mot de passe *
                 </label>
                 <div className="relative">
@@ -1161,36 +1182,36 @@ const UsersManagement: React.FC = () => {
                     value={passwordData.confirmNewPassword}
                     onChange={(e) => setPasswordData({ ...passwordData, confirmNewPassword: e.target.value })}
                     placeholder="Confirmer le mot de passe"
-                    className="w-full px-3 py-2 pr-10 text-sm border border-gray-300 rounded-lg hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-3 py-2.5 pr-10 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 rounded-r-lg"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-none"
                   >
-                    {showConfirmPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
             </div>
             
-            <div className="flex space-x-2 p-4 border-t border-gray-200">
+            <div className="flex gap-3 p-4 border-t border-slate-200">
               <button
                 onClick={() => setIsPasswordModalOpen(false)}
-                className="flex-1 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200"
+                className="flex-1 px-4 py-2.5 text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
               >
                 Annuler
               </button>
               <button
                 onClick={handleAdminResetPassword}
                 disabled={!passwordData.newPassword || !passwordData.confirmNewPassword || passwordData.newPassword !== passwordData.confirmNewPassword}
-                className={`flex-1 px-3 py-2 text-sm rounded-lg transition-all duration-200 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 border border-transparent flex items-center justify-center gap-1 ${
+                className={`flex-1 px-4 py-2.5 text-sm rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200 flex items-center justify-center gap-2 ${
                   !passwordData.newPassword || !passwordData.confirmNewPassword || passwordData.newPassword !== passwordData.confirmNewPassword
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-green-500 text-white hover:bg-green-600 focus:border-green-500'
+                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                    : 'bg-green-500 text-white hover:bg-green-600'
                 }`}
               >
-                <Key className="w-3 h-3" />
+                <Key className="w-4 h-4" />
                 Réinitialiser
               </button>
             </div>
@@ -1200,52 +1221,52 @@ const UsersManagement: React.FC = () => {
 
       {/* Modal de confirmation de suppression */}
       {isDeleteModalOpen && selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg border border-gray-300 max-w-md w-full shadow-xl">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-slate-200/60 max-w-md w-full">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5 text-rose-500" />
-                <h2 className="text-lg font-bold text-gray-900">Confirmation de suppression</h2>
+                <h2 className="text-lg font-bold text-slate-800">Confirmation</h2>
               </div>
               <button
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="p-1 hover:bg-gray-100 rounded-lg transition-colors duration-200 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 border border-transparent"
+                className="p-1.5 hover:bg-slate-100 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200"
               >
-                <X className="w-5 h-5 text-gray-500" />
+                <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
             
             <div className="p-4">
-              <p className="text-sm text-gray-600 text-center">
-                Êtes-vous sûr de vouloir supprimer définitivement <span className="font-semibold text-gray-900">{selectedUser.firstName} {selectedUser.lastName}</span> ?
+              <p className="text-sm text-slate-600 text-center">
+                Supprimer <span className="font-semibold text-slate-800">{selectedUser.firstName} {selectedUser.lastName}</span> ?
               </p>
-              <p className="text-xs text-gray-500 text-center mt-1">
-                Cette action est irréversible et supprimera toutes les données associées.
+              <p className="text-xs text-slate-500 text-center mt-1">
+                Cette action est irréversible.
               </p>
               {selectedUser._id === currentUser?.id && (
                 <p className="text-rose-600 text-xs text-center mt-2 bg-rose-50 p-2 rounded border border-rose-200">
-                  ⚠️ Vous ne pouvez pas supprimer votre propre compte
+                  ⚠️ Vous ne pouvez pas supprimer votre compte
                 </p>
               )}
             </div>
             
-            <div className="flex space-x-2 p-4 border-t border-gray-200">
+            <div className="flex gap-3 p-4 border-t border-slate-200">
               <button
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="flex-1 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 transition-all duration-200"
+                className="flex-1 px-4 py-2.5 text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
               >
                 Annuler
               </button>
               <button
                 onClick={handleDeleteUser}
                 disabled={selectedUser._id === currentUser?.id}
-                className={`flex-1 px-3 py-2 text-sm rounded-lg transition-all duration-200 hover:border-blue-600 focus:ring-none focus:outline-none focus:border-blue-500 border border-transparent flex items-center justify-center gap-1 ${
+                className={`flex-1 px-4 py-2.5 text-sm rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200 flex items-center justify-center gap-2 ${
                   selectedUser._id === currentUser?.id
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-rose-500 text-white hover:bg-rose-600 focus:border-rose-500'
+                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                    : 'bg-rose-500 text-white hover:bg-rose-600'
                 }`}
               >
-                <Trash2 className="w-3 h-3" />
+                <Trash2 className="w-4 h-4" />
                 Supprimer
               </button>
             </div>
