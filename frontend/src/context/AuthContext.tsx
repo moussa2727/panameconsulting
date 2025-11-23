@@ -318,16 +318,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       let refreshToken: string | null = getCookie('refresh_token');
       
       if (!refreshToken) {
-        console.warn('❌ Refresh token absent, déconnexion');
         await logout('/', true);
         return false;
       }
 
-      console.log('🔄 Tentative de rafraîchissement du token');
-
       const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
         method: 'POST',
-        credentials: 'include', // ✅ Important : envoie automatiquement les cookies
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -335,74 +332,55 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (!response.ok) {
-        console.warn('❌ Échec du rafraîchissement, statut:', response.status);
-        
         if (response.status === 401) {
           const data = await response.json();
           
-          // ✅ Le backend a détecté une session expirée
           if (data.sessionExpired) {
-            console.log('🔒 Session expirée détectée par le backend');
             toast.info('Votre session a expiré après 25 minutes');
             await logout('/', true);
             return false;
           }
           
-          // ✅ Le backend a déjà déconnecté l'utilisateur
           if (data.loggedOut) {
-            console.log('🔒 Utilisateur déjà déconnecté côté serveur');
             await logout('/', true);
             return false;
           }
         }
         
-        // Autre erreur
-        console.error('❌ Erreur de rafraîchissement non gérée');
         await logout('/', true);
         return false;
       }
 
       const data = await response.json();
       
-      // ✅ Vérifier à nouveau si le backend signale une déconnexion
       if (data.loggedOut || data.sessionExpired) {
-        console.log('🔒 Déconnexion signalée dans la réponse du backend');
         await logout('/', true);
         return false;
       }
 
       if (!data.accessToken) {
-        console.error('❌ Access token manquant dans la réponse');
         await logout('/', true);
         return false;
       }
 
       const decoded = jwtDecode<JwtPayload>(data.accessToken);
       
-      // ✅ Vérification côté client de l'âge de la session
       if (isSessionExpired(decoded)) {
-        console.log('🔒 Session expirée détectée côté client');
         toast.info('Votre session a expiré après 25 minutes');
         await logout('/', true);
         return false;
       }
       
-      console.log('✅ Tokens rafraîchis avec succès');
-      
-      // Mettre à jour le token local
       localStorage.setItem('token', data.accessToken);
       setToken(data.accessToken);
       
-      // Mettre à jour les données utilisateur
       await fetchUserData(data.accessToken);
       
-      // Configurer le prochain rafraîchissement
       setupTokenRefresh(decoded.exp);
       
       return true;
       
     } catch (error: any) {
-      console.error('❌ Erreur lors du rafraîchissement:', error.message);
       await logout('/', true);
       return false;
     }
@@ -419,7 +397,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 
   const logout = useCallback(async (redirectPath?: string, silent?: boolean): Promise<void> => {
-  // Nettoyer les timers
   if (refreshTimeoutRef.current) {
     window.clearTimeout(refreshTimeoutRef.current);
     refreshTimeoutRef.current = null;
@@ -429,30 +406,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     sessionCheckRef.current = null;
   }
 
-  // ✅ Appeler le backend pour nettoyer les cookies httpOnly
   if (token) {
     try {
-      console.log('🔄 Appel backend pour nettoyage des cookies httpOnly');
-      const response = await fetch(`${VITE_API_URL}/api/auth/logout`, {
+      await fetch(`${VITE_API_URL}/api/auth/logout`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        credentials: 'include', // ✅ Important pour envoyer les cookies
+        credentials: 'include',
       });
-
-      if (response.ok) {
-        console.log('✅ Cookies httpOnly nettoyés côté serveur');
-      } else {
-        console.warn('⚠️ Échec du nettoyage côté serveur, statut:', response.status);
-      }
     } catch (error) {
-      console.warn('⚠️ Erreur lors du logout backend:', error);
+      // Silence
     }
   }
 
-  // Nettoyer localStorage
   const ALL_TOKENS = ['token', 'access_token', 'refresh_token', 'auth_token'];
   ALL_TOKENS.forEach(tokenName => {
     localStorage.removeItem(tokenName);
@@ -460,23 +428,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   clearSession();
 
-  // ✅ Tentative de nettoyage des cookies côté client (pour les non-httpOnly)
   const cookiesToClear = ['refresh_token', 'access_token', 'token'];
   const hostname = window.location.hostname;
   
   cookiesToClear.forEach(cookieName => {
-    // Essayer plusieurs combinaisons pour s'assurer de la suppression
     document.cookie = `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
     document.cookie = `${cookieName}=; Path=/; Domain=${hostname}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
     
-    // Si on est sur un sous-domaine, essayer aussi avec le domaine principal
     if (hostname.includes('.')) {
       const mainDomain = hostname.split('.').slice(-2).join('.');
       document.cookie = `${cookieName}=; Path=/; Domain=.${mainDomain}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
     }
   });
-
-  console.log('✅ Tentative de nettoyage des cookies côté client effectuée');
 
   setToken(null);
   setUser(null);
@@ -559,28 +522,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     if (!response.ok) {
-      // TEMPORAIRE : Ignorer l'erreur "compte désactivé" pour debug
-      console.log('🔍 Debug login - Status:', response.status);
-      const errorText = await response.text();
-      console.log('🔍 Debug login - Response:', errorText);
-      
       let errorMessage = 'Erreur de connexion';
       try {
-        const errorData = JSON.parse(errorText);
+        const errorData = await response.json();
         errorMessage = errorData.message || errorMessage;
       } catch {
-        errorMessage = errorText || `Erreur ${response.status}`;
+        errorMessage = `Erreur ${response.status}`;
       }
       
       throw new Error(errorMessage);
     }
 
     const data = await response.json();
-    console.log('✅ Login successful - User data:', data.user);
 
     const userWithRole: User = {
       ...data.user,
-      isActive: true, // Override temporaire
+      isActive: true,
       isAdmin: data.user.role === 'admin' || data.user.isAdmin === true
     };
 
@@ -625,48 +582,55 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [getSessionTimeLeft, logout]);
 
   const register = useCallback(async (formData: RegisterFormData): Promise<void> => {
-    setIsLoading(true);
-    setError(null);
+  setIsLoading(true);
+  setError(null);
 
-    try {
-      if (formData.password !== formData.confirmPassword) {
-        throw new Error('Les mots de passe ne correspondent pas');
-      }
-
-      const response = await fetch(`${VITE_API_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          firstName: formData.firstName.trim(),
-          lastName: formData.lastName.trim(),
-          email: formData.email.toLowerCase().trim(),
-          telephone: formData.phone.trim(),
-          password: formData.password,
-        }),
-        credentials: 'include',
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        const errorMsg = data.message || "Erreur lors de l'inscription";
-        throw new Error(errorMsg);
-      }
-
-      await login(formData.email, formData.password);
-      toast.success('Inscription réussie ! Bienvenue !');
-      
-    } catch (err: any) {
-      const errorMessage = err.message || "Erreur lors de l'inscription";
-      toast.error(errorMessage);
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setIsLoading(false);
+  try {
+    if (formData.password !== formData.confirmPassword) {
+      const errorMsg = 'Les mots de passe ne correspondent pas';
+      toast.error(errorMsg, { toastId: 'password-mismatch' });
+      throw new Error(errorMsg);
     }
-  }, [VITE_API_URL, login]);
+
+    const response = await fetch(`${VITE_API_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.toLowerCase().trim(),
+        telephone: formData.phone.trim(),
+        password: formData.password,
+      }),
+      credentials: 'include',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      const errorMsg = data.message || "Erreur lors de l'inscription";
+      toast.error(errorMsg, { toastId: 'register-error' });
+      throw new Error(errorMsg);
+    }
+
+    await login(formData.email, formData.password);
+    toast.success('Inscription réussie ! Bienvenue !', { toastId: 'register-success' });
+    
+  } catch (err: any) {
+    const errorMessage = err.message || "Erreur lors de l'inscription";
+    
+    if (!err.message?.includes('Les mots de passe ne correspondent pas')) {
+      toast.error(errorMessage, { toastId: 'register-error' });
+    }
+    
+    setError(errorMessage);
+    throw err;
+  } finally {
+    setIsLoading(false);
+  }
+}, [VITE_API_URL, login]);
 
   const forgotPassword = useCallback(async (email: string): Promise<void> => {
     setIsLoading(true);

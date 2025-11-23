@@ -109,7 +109,85 @@ export class ProcedureService {
         return procedure;
     }
 
-    // procedure.service.ts - CORRECTION DE LA MÉTHODE updateStep
+
+    private validateStepOrder(procedure: Procedure, stepName: StepName, newStatus: StepStatus): void {
+        const steps = procedure.steps;
+        
+        // ✅ Récupérer l'étape actuelle
+        const currentStep = steps.find(s => s.nom === stepName);
+        if (!currentStep) {
+            throw new BadRequestException('Étape non trouvée dans la procédure');
+        }
+
+        // ❌ IMPOSSIBLE DE MODIFIER UNE ÉTAPE DÉJÀ FINALISÉE
+        if ([StepStatus.COMPLETED, StepStatus.CANCELLED, StepStatus.REJECTED].includes(currentStep.statut) && 
+            currentStep.statut !== newStatus) {
+            throw new BadRequestException(`Impossible de modifier une étape ${currentStep.statut.toLowerCase()}`);
+        }
+
+        // VALIDATION STRICTE DE L'ORDRE DES ÉTAPES
+
+        // 1. DEMANDE VISA → VÉRIFIER QUE L'ADMISSION EST TERMINÉE
+        if (stepName === StepName.DEMANDE_VISA) {
+            const admissionStep = steps.find(s => s.nom === StepName.DEMANDE_ADMISSION);
+            
+            if (!admissionStep) {
+                throw new BadRequestException('Étape d\'admission non trouvée');
+            }
+
+            if (admissionStep.statut !== StepStatus.COMPLETED) {
+                throw new BadRequestException('La demande d\'admission doit être terminée avant de pouvoir modifier la demande de visa');
+            }
+
+            // ✅ VÉRIFICATION SUPPLÉMENTAIRE : Si on veut passer Visa à "En cours", Admission doit être "Terminé"
+            if (newStatus === StepStatus.IN_PROGRESS && admissionStep.statut !== StepStatus.COMPLETED) {
+                throw new BadRequestException('Impossible de démarrer la demande de visa tant que l\'admission n\'est pas terminée');
+            }
+        }
+
+        // 2. PRÉPARATIFS VOYAGE → VÉRIFIER QUE LE VISA EST TERMINÉ
+        if (stepName === StepName.PREPARATIF_VOYAGE) {
+            const visaStep = steps.find(s => s.nom === StepName.DEMANDE_VISA);
+            
+            if (!visaStep) {
+                throw new BadRequestException('Étape de demande de visa non trouvée');
+            }
+
+            if (visaStep.statut !== StepStatus.COMPLETED) {
+                throw new BadRequestException('La demande de visa doit être terminée avant de pouvoir modifier les préparatifs de voyage');
+            }
+
+            // VÉRIFICATION SUPPLÉMENTAIRE : Si on veut passer Préparatifs à "En cours", Visa doit être "Terminé"
+            if (newStatus === StepStatus.IN_PROGRESS && visaStep.statut !== StepStatus.COMPLETED) {
+                throw new BadRequestException('Impossible de démarrer les préparatifs de voyage tant que le visa n\'est pas obtenu');
+            }
+        }
+
+        // 3. VALIDATION SPÉCIFIQUE POUR L'ADMISSION
+        if (stepName === StepName.DEMANDE_ADMISSION) {
+            // Aucune validation particulière pour l'admission (première étape)
+            // Mais on peut ajouter des validations métier si nécessaire
+        }
+
+        // VALIDATION : RAISON OBLIGATOIRE POUR LES REJETS
+        // (Cette validation est déjà faite dans updateStep, mais on peut la répéter ici pour plus de robustesse)
+        if (newStatus === StepStatus.REJECTED) {
+            // La raison sera validée dans la méthode appelante avec le DTO
+        }
+
+        // VALIDATION : IMPOSSIBLE DE REVENIR EN ARRIÈRE
+        if (currentStep.statut === StepStatus.COMPLETED && newStatus !== StepStatus.COMPLETED) {
+            throw new BadRequestException('Impossible de modifier le statut d\'une étape déjà terminée');
+        }
+
+        // VALIDATION : IMPOSSIBLE DE REPRENDRE UNE ÉTAPE REJETÉE/ANNULÉE
+        if ([StepStatus.REJECTED, StepStatus.CANCELLED].includes(currentStep.statut) && 
+            [StepStatus.IN_PROGRESS, StepStatus.PENDING].includes(newStatus)) {
+            throw new BadRequestException(`Impossible de reprendre une étape ${currentStep.statut.toLowerCase()}`);
+        }
+    }
+
+  // procedure.service.ts - VERSION CORRIGÉE
 async updateStep(
     id: string, 
     stepName: string, 
@@ -118,7 +196,7 @@ async updateStep(
     try {
         this.logger.log(`🔄 Début mise à jour étape - ID: ${id}, Étape: ${stepName}`);
         
-        // ✅ DÉCODAGE SÉCURISÉ
+        // DÉCODAGE SÉCURISÉ
         let decodedStepName: string;
         try {
             decodedStepName = decodeURIComponent(stepName);
@@ -127,7 +205,7 @@ async updateStep(
             throw new BadRequestException(`Nom d'étape mal formé: ${stepName}`);
         }
         
-        // ✅ VALIDATION DU NOM D'ÉTAPE
+        // VALIDATION DU NOM D'ÉTAPE
         const validStepNames = Object.values(StepName);
         if (!validStepNames.includes(decodedStepName as StepName)) {
             this.logger.error(`❌ Nom d'étape invalide: "${decodedStepName}". Valides: ${validStepNames.join(', ')}`);
@@ -137,46 +215,45 @@ async updateStep(
             );
         }
 
-        // ✅ RECHERCHE DE LA PROCÉDURE
+        // RECHERCHE DE LA PROCÉDURE
         const procedure = await this.procedureModel.findById(id).exec();
         if (!procedure) {
             this.logger.error(`❌ Procédure non trouvée: ${id}`);
             throw new NotFoundException('Procédure non trouvée');
         }
 
-        // ✅ RECHERCHE DE L'ÉTAPE
+        // RECHERCHE DE L'ÉTAPE
         const stepIndex = procedure.steps.findIndex((step: Step) => step.nom === decodedStepName);
         if (stepIndex === -1) {
             this.logger.error(`❌ Étape non trouvée: "${decodedStepName}" dans la procédure ${id}`);
             throw new NotFoundException(`Étape "${decodedStepName}" non trouvée dans cette procédure`);
         }
 
-        // ✅ VALIDATION DES DONNÉES DE MISE À JOUR
-        if (updateDto.statut === StepStatus.REJECTED && !updateDto.raisonRefus) {
+        // ✅ CORRECTION : Validation améliorée des données
+        if (updateDto.statut === StepStatus.REJECTED && (!updateDto.raisonRefus || updateDto.raisonRefus.trim() === '')) {
             throw new BadRequestException('La raison du refus est obligatoire lorsque le statut est "Rejeté"');
+        }
+
+        // ✅ VALIDATION DE L'ORDRE DES ÉTAPES
+        if (updateDto.statut) {
+            this.validateStepOrder(procedure, decodedStepName as StepName, updateDto.statut);
         }
 
         const now = new Date();
 
-        // ✅ CORRECTION CRITIQUE: PRÉSERVER TOUTES LES PROPRIÉTÉS EXISTANTES
+        // ✅ CORRECTION : Construction robuste de l'étape mise à jour
         const existingStep = procedure.steps[stepIndex];
         
-        // Construction de l'étape mise à jour en préservant toutes les propriétés
+        // Créer un nouvel objet étape avec seulement les champs autorisés
         const updatedStep: Step = {
-            ...existingStep, // ✅ GARDE toutes les propriétés existantes
-            dateMaj: now
+            nom: existingStep.nom, // ✅ GARDER le nom original
+            statut: updateDto.statut !== undefined ? updateDto.statut : existingStep.statut,
+            raisonRefus: updateDto.raisonRefus !== undefined ? updateDto.raisonRefus : existingStep.raisonRefus,
+            dateCreation: existingStep.dateCreation, // ✅ PRÉSERVER la date de création
+            dateMaj: now // ✅ Mettre à jour la date de modification
         };
 
-        // Mettre à jour seulement les champs fournis
-        if (updateDto.statut !== undefined) {
-            updatedStep.statut = updateDto.statut;
-        }
-
-        if (updateDto.raisonRefus !== undefined) {
-            updatedStep.raisonRefus = updateDto.raisonRefus;
-        }
-
-        // ✅ MISE À JOUR SÉCURISÉE
+        // ✅ CORRECTION : Mise à jour propre de l'étape
         procedure.steps[stepIndex] = updatedStep;
 
         // ✅ MISE À JOUR DU STATUT GLOBAL
@@ -185,10 +262,11 @@ async updateStep(
         // ✅ SAUVEGARDE
         const savedProcedure = await procedure.save();
 
-        // ✅ GESTION DE L'ÉTAPE SUIVANTE (si étape terminée)
+        // ✅ GESTION AUTOMATIQUE DE L'ÉTAPE SUIVANTE
         if (updateDto.statut === StepStatus.COMPLETED && stepIndex < procedure.steps.length - 1) {
             const nextStep = procedure.steps[stepIndex + 1];
             if (nextStep.statut === StepStatus.PENDING) {
+                this.logger.log(`🔄 Activation automatique backend de l'étape suivante: ${nextStep.nom}`);
                 nextStep.statut = StepStatus.IN_PROGRESS;
                 nextStep.dateMaj = now;
                 await procedure.save();
@@ -212,10 +290,12 @@ async updateStep(
             throw error;
         }
         
-        throw new InternalServerErrorException(`Erreur lors de la mise à jour de l'étape: ${error.message}`);
+        // ✅ CORRECTION : Meilleur message d'erreur pour le frontend
+        throw new InternalServerErrorException(
+            `Erreur lors de la mise à jour de l'étape: ${error.message}`
+        );
     }
 }
-
     async findByEmail(email: string): Promise<Procedure[]> {
         if (!email) {
             throw new BadRequestException('Email est requis');

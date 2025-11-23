@@ -8,9 +8,6 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "vercel": "vercel --prod",
-    
-
-
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --max-warnings 0",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
@@ -22,6 +19,7 @@
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
     "@headlessui/react": "^2.2.9",
+    "@heroicons/react": "2.2.0",
     "@mantine/core": "^7.14.0",
     "@mantine/hooks": "^7.14.0",
     "@radix-ui/react-toast": "1.2.15",

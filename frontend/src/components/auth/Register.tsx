@@ -2,7 +2,6 @@ import { useAuth } from '../../context/AuthContext';
 import React, { useState } from 'react';
 import { FiEye, FiEyeOff, FiLock, FiMail, FiPhone, FiUser, FiAlertCircle } from 'react-icons/fi';
 import { Link, useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -25,48 +24,36 @@ const Register: React.FC = () => {
     if (error) setError('');
   };
 
- const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError('');
-  
-  if (formData.password !== formData.confirmPassword) {
-    setError('Les mots de passe ne correspondent pas');
-    toast.error('Les mots de passe ne correspondent pas', { 
-      toastId: 'password-mismatch' 
-    });
-    return;
-  }
-  
-  if (formData.password.length < 8) {
-    setError('Le mot de passe doit contenir au moins 8 caractères');
-    toast.error('Le mot de passe doit contenir au moins 8 caractères', {
-      toastId: 'password-length'
-    });
-    return;
-  }
-
-  try {
-    await register(formData);
-    // ✅ Toast de succès avec ID unique
-    toast.success('Compte créé avec succès!', { 
-      toastId: 'register-success' 
-    });
-  } catch (err: any) {
-    let message = 'Une erreur est survenue lors de la création du compte';
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
     
-    if (err.message) {
-      message = err.message;
+    // Validation côté client uniquement (sans toast)
+    if (formData.password !== formData.confirmPassword) {
+      setError('Les mots de passe ne correspondent pas');
+      return;
     }
     
-    setError(message);
-    
-    // ✅ Toast d'erreur avec ID unique basé sur le message
-    const errorToastId = `register-error-${message.substring(0, 20)}`;
-    toast.error(message, { 
-      toastId: errorToastId 
-    });
-  }
-};
+    if (formData.password.length < 8) {
+      setError('Le mot de passe doit contenir au moins 8 caractères');
+      return;
+    }
+
+    try {
+      // ✅ DÉLÉGATION COMPLETE : AuthContext gère tous les toasts
+      await register(formData);
+      // Plus de toast ici - tout est géré dans l'AuthContext
+    } catch (err: any) {
+      let message = 'Une erreur est survenue lors de la création du compte';
+      
+      if (err.message) {
+        message = err.message;
+      }
+      
+      setError(message);
+      // Plus de toast ici - l'erreur est déjà gérée dans l'AuthContext
+    }
+  };
 
   return (
     <div className="flex items-center justify-center p-4 min-h-screen bg-sky-50">
@@ -175,7 +162,7 @@ const Register: React.FC = () => {
                     value={formData.phone}
                     onChange={handleChange}
                     className="pl-9 w-full px-3 py-2 rounded bg-gray-50 border border-gray-300 hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500"
-                    placeholder="Votre numéro avec ou sans format" 
+                    placeholder="Votre numéro avec ou sans format"
                     required
                     disabled={isLoading}
                     autoComplete="tel"

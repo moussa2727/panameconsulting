@@ -1,3 +1,4 @@
+// UserProcedure.tsx - VERSION CORRIGÉE POUR GESTION ERREUR 401
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -7,7 +8,16 @@ import {
   Procedure,
   ProcedureStatus,
   StepStatus,
-  StepName
+  StepName,
+  ProcedureStep,
+  getStepDisplayName,
+  getStepDisplayStatus,
+  getProcedureDisplayStatus,
+  getProcedureStatusColor,
+  getStepStatusColor,
+  canCancelProcedure,
+  getProgressStatus,
+  formatProcedureDate
 } from '../../api/user/procedures/ProcedureService';
 import { 
   Home, 
@@ -19,80 +29,15 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  MoreVertical,
   RefreshCw,
   Plus,
   Search,
-  Filter,
-  Info
+  Filter
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
-// === TYPES LOCAUX ===
-interface Step {
-  nom: StepName;
-  statut: StepStatus;
-  raisonRefus?: string;
-  dateMaj: string;
-  dateCreation: string;
-}
-
-// === FONCTIONS D'AFFICHAGE ===
-const getProcedureDisplayStatus = (status: ProcedureStatus): string => {
-  const statusMap = {
-    [ProcedureStatus.IN_PROGRESS]: 'En cours',
-    [ProcedureStatus.COMPLETED]: 'Terminée',
-    [ProcedureStatus.REJECTED]: 'Refusée',
-    [ProcedureStatus.CANCELLED]: 'Annulée'
-  };
-  return statusMap[status] || status.toString();
-};
-
-const getStepDisplayStatus = (status: StepStatus): string => {
-  const statusMap = {
-    [StepStatus.PENDING]: 'En attente',
-    [StepStatus.IN_PROGRESS]: 'En cours',
-    [StepStatus.COMPLETED]: 'Terminée',
-    [StepStatus.REJECTED]: 'Rejetée',
-    [StepStatus.CANCELLED]: 'Annulée'
-  };
-  return statusMap[status] || status.toString();
-};
-
-// === FONCTIONS DE COULEUR ===
-const getProcedureStatusColor = (statut: ProcedureStatus) => {
-  switch (statut) {
-    case ProcedureStatus.IN_PROGRESS:
-      return 'bg-blue-50 text-blue-700 border-blue-200';
-    case ProcedureStatus.COMPLETED:
-      return 'bg-green-50 text-green-700 border-green-200';
-    case ProcedureStatus.CANCELLED:
-      return 'bg-red-50 text-red-700 border-red-200';
-    case ProcedureStatus.REJECTED:
-      return 'bg-orange-50 text-orange-700 border-orange-200';
-    default: 
-      return 'bg-gray-50 text-gray-700 border-gray-200';
-  }
-};
-
-const getStepStatusColor = (statut: StepStatus) => {
-  switch (statut) {
-    case StepStatus.PENDING: 
-      return 'bg-yellow-50 text-yellow-700 border-yellow-200';
-    case StepStatus.IN_PROGRESS:
-      return 'bg-blue-50 text-blue-700 border-blue-200';
-    case StepStatus.COMPLETED: 
-      return 'bg-green-50 text-green-700 border-green-200';
-    case StepStatus.CANCELLED: 
-      return 'bg-red-50 text-red-700 border-red-200';
-    case StepStatus.REJECTED: 
-      return 'bg-orange-50 text-orange-700 border-orange-200';
-    default: 
-      return 'bg-gray-50 text-gray-700 border-gray-200';
-  }
-};
-
-const getStepStatusIcon = (statut: StepStatus) => {
+// === FONCTION D'ICÔNES LOCALE ===
+const getStepStatusIcon = (statut: StepStatus): JSX.Element => {
   switch (statut) {
     case StepStatus.COMPLETED:
       return <CheckCircle className="w-4 h-4 text-green-600" />;
@@ -108,18 +53,18 @@ const getStepStatusIcon = (statut: StepStatus) => {
 };
 
 // === COMPOSANT PRINCIPAL ===
-const UserProcedure = () => {
+const UserProcedure = (): JSX.Element => {
   const { user, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null);
-  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState<boolean>(false);
   const [procedureToCancel, setProcedureToCancel] = useState<Procedure | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [cancelReason, setCancelReason] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<ProcedureStatus | 'ALL'>('ALL');
-  const [showFilters, setShowFilters] = useState(false);
-  const [showMobileDetails, setShowMobileDetails] = useState(false);
+  const [showFilters, setShowFilters] = useState<boolean>(false);
+  const [showMobileDetails, setShowMobileDetails] = useState<boolean>(false);
 
   const limit = 8;
 
@@ -143,27 +88,35 @@ const UserProcedure = () => {
     loading: cancelLoading 
   } = useCancelProcedure();
 
-  // === EFFETS ===
+  // === EFFETS - Gestion centralisée des sessions expirées ===
   useEffect(() => {
-    if (proceduresError && proceduresError.includes('Session expirée')) {
-      logout();
-    }
-  }, [proceduresError, logout]);
+    // ✅ CORRECTION: Vérifier si une erreur contient SESSION_EXPIRED
+    const checkSessionExpired = (error: string | null) => {
+      if (error === 'SESSION_EXPIRED') {
+        console.log('🔐 Session expirée détectée dans UserProcedure - Déconnexion...');
+        logout();
+        return true;
+      }
+      return false;
+    };
 
-  useEffect(() => {
-    if (detailsError && detailsError.includes('Session expirée')) {
-      logout();
+    if (proceduresError && checkSessionExpired(proceduresError)) {
+      return;
     }
-  }, [detailsError, logout]);
+
+    if (detailsError && checkSessionExpired(detailsError)) {
+      return;
+    }
+  }, [proceduresError, detailsError, logout]);
 
   // === GESTION DE LA SÉLECTION ===
-  const handleSelectProcedure = async (procedure: Procedure) => {
+  const handleSelectProcedure = (procedure: Procedure): void => {
     setSelectedProcedure(procedure);
     setShowMobileDetails(true);
   };
 
   // === ANNULATION DE PROCÉDURE ===
-  const handleCancelProcedure = async () => {
+  const handleCancelProcedure = async (): Promise<void> => {
     if (!procedureToCancel) return;
 
     try {
@@ -184,57 +137,13 @@ const UserProcedure = () => {
   };
 
   // === FILTRES ET RECHERCHE ===
-  const filteredProcedures = (paginatedProcedures?.data || []).filter(procedure => {
+  const filteredProcedures = (paginatedProcedures?.data || []).filter((procedure: Procedure) => {
     const matchesSearch = procedure.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          procedure.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          procedure.prenom.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || procedure.statut === statusFilter;
     return matchesSearch && matchesStatus;
   });
-
-  const canCancelProcedure = (procedure: Procedure): boolean => {
-    if (procedure.statut !== ProcedureStatus.IN_PROGRESS) return false;
-    const hasCompletedSteps = procedure.steps.some(step => 
-      step.statut === StepStatus.COMPLETED
-    );
-    return !hasCompletedSteps && !procedure.isDeleted;
-  };
-
-  // === FONCTIONS UTILITAIRES ===
-  const getStepDisplayName = (stepName: StepName): string => {
-    const stepNames = {
-      [StepName.DEMANDE_ADMISSION]: 'Demande d\'admission',
-      [StepName.DEMANDE_VISA]: 'Demande de visa',
-      [StepName.PREPARATIF_VOYAGE]: 'Préparatifs de voyage'
-    };
-    return stepNames[stepName] || stepName.toString();
-  };
-
-  const getProgressStatus = (procedure: Procedure) => {
-    const totalSteps = procedure.steps.length;
-    const completedSteps = procedure.steps.filter(step => 
-      step.statut === StepStatus.COMPLETED
-    ).length;
-    
-    return {
-      percentage: totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0,
-      completed: completedSteps,
-      total: totalSteps
-    };
-  };
-
-  const formatDate = (dateString: string | Date) => {
-    try {
-      const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
-      return date.toLocaleDateString('fr-FR', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
-      });
-    } catch {
-      return 'Date invalide';
-    }
-  };
 
   // === RENDU ===
   if (!user || !isAuthenticated) {
@@ -252,6 +161,27 @@ const UserProcedure = () => {
           >
             Se connecter
           </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ CORRECTION: Si session expirée, afficher un message spécifique
+  if (proceduresError === 'SESSION_EXPIRED' || detailsError === 'SESSION_EXPIRED') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
+        <div className="text-center max-w-sm">
+          <div className="w-20 h-20 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="w-10 h-10 text-orange-500" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-800 mb-3">Session expirée</h2>
+          <p className="text-slate-600 mb-6">Votre session a expiré. Veuillez vous reconnecter.</p>
+          <button 
+            onClick={() => logout()}
+            className="inline-flex items-center px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all duration-200 font-medium shadow-lg hover:shadow-xl"
+          >
+            Se reconnecter
+          </button>
         </div>
       </div>
     );
@@ -323,7 +253,7 @@ const UserProcedure = () => {
                 {['ALL', ...Object.values(ProcedureStatus)].map((status) => (
                   <button
                     key={status}
-                    onClick={() => setStatusFilter(status as any)}
+                    onClick={() => setStatusFilter(status as ProcedureStatus | 'ALL')}
                     className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                       statusFilter === status
                         ? 'bg-blue-500 text-white shadow-lg'
@@ -375,20 +305,29 @@ const UserProcedure = () => {
             <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="w-8 h-8 text-red-500" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-800 mb-2">Erreur de chargement</h3>
-            <p className="text-slate-600 mb-4">{proceduresError}</p>
-            <button 
-              onClick={() => refetchProcedures()}
-              className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-medium"
-            >
-              Réessayer
-            </button>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">
+              {proceduresError === 'SESSION_EXPIRED' ? 'Session expirée' : 'Erreur de chargement'}
+            </h3>
+            <p className="text-slate-600 mb-4">
+              {proceduresError === 'SESSION_EXPIRED'
+                ? 'Votre session a expiré. Veuillez vous reconnecter.'
+                : proceduresError
+              }
+            </p>
+            {proceduresError !== 'SESSION_EXPIRED' && (
+              <button 
+                onClick={() => refetchProcedures()}
+                className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-medium"
+              >
+                Réessayer
+              </button>
+            )}
           </div>
         ) : filteredProcedures.length > 0 ? (
           <div className="lg:grid lg:grid-cols-3 lg:gap-6">
             {/* Liste des procédures */}
             <div className={`lg:col-span-2 space-y-4 ${showMobileDetails ? 'hidden lg:block' : 'block'}`}>
-              {filteredProcedures.map((procedure) => {
+              {filteredProcedures.map((procedure: Procedure) => {
                 const progress = getProgressStatus(procedure);
                 const canCancel = canCancelProcedure(procedure);
                 
@@ -411,7 +350,7 @@ const UserProcedure = () => {
                         
                         <div className="text-slate-600 text-sm space-y-1">
                           <p className="truncate">{procedure.prenom} {procedure.nom}</p>
-                          <p className="text-xs">Créée le {formatDate(procedure.createdAt)}</p>
+                          <p className="text-xs">Créée le {formatProcedureDate(procedure.createdAt)}</p>
                         </div>
                       </div>
                       
@@ -434,7 +373,7 @@ const UserProcedure = () => {
 
                     {/* Étapes compactes */}
                     <div className="space-y-2">
-                      {procedure.steps.slice(0, 3).map((step, index) => (
+                      {procedure.steps.slice(0, 3).map((step: ProcedureStep) => (
                         <div key={step.nom} className="flex items-center gap-2 text-xs">
                           {getStepStatusIcon(step.statut)}
                           <span className="text-slate-700 flex-1 truncate">
@@ -507,7 +446,6 @@ const UserProcedure = () => {
             <div className={`hidden lg:block lg:col-span-1 ${!selectedProcedure && 'lg:hidden'}`}>
               {selectedProcedure && (
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sticky top-6">
-                  {/* Détails similaires à la version précédente mais optimisés */}
                   <div className="space-y-6">
                     <div className="flex items-start justify-between">
                       <h3 className="text-lg font-semibold text-slate-800">
@@ -521,233 +459,229 @@ const UserProcedure = () => {
                       </button>
                     </div>
                     
-                    {/* Contenu des détails... */}
-
                     <div className="space-y-6">
-  {/* En-tête */}
-  <div className="flex items-start justify-between">
-    <div>
-      <h3 className="text-xl font-semibold text-slate-800 mb-2">
-        {selectedProcedure.destination}
-      </h3>
-      <div className="flex items-center gap-3">
-        <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getProcedureStatusColor(selectedProcedure.statut)}`}>
-          {getProcedureDisplayStatus(selectedProcedure.statut)}
-        </span>
-        <span className="text-slate-500 text-sm">
-          Créée le {formatDate(selectedProcedure.createdAt)}
-        </span>
-      </div>
-    </div>
-    {canCancelProcedure(selectedProcedure) && (
-      <button
-        onClick={() => {
-          setProcedureToCancel(selectedProcedure);
-          setShowCancelModal(true);
-        }}
-        className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors duration-200 font-medium flex items-center gap-2"
-      >
-        <XCircle className="w-4 h-4" />
-        Annuler
-      </button>
-    )}
-  </div>
+                      {/* En-tête */}
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="text-xl font-semibold text-slate-800 mb-2">
+                            {selectedProcedure.destination}
+                          </h3>
+                          <div className="flex items-center gap-3">
+                            <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getProcedureStatusColor(selectedProcedure.statut)}`}>
+                              {getProcedureDisplayStatus(selectedProcedure.statut)}
+                            </span>
+                            <span className="text-slate-500 text-sm">
+                              Créée le {formatProcedureDate(selectedProcedure.createdAt)}
+                            </span>
+                          </div>
+                        </div>
+                        {canCancelProcedure(selectedProcedure) && (
+                          <button
+                            onClick={() => {
+                              setProcedureToCancel(selectedProcedure);
+                              setShowCancelModal(true);
+                            }}
+                            className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors duration-200 font-medium flex items-center gap-2"
+                          >
+                            <XCircle className="w-4 h-4" />
+                            Annuler
+                          </button>
+                        )}
+                      </div>
 
-  {/* Progression */}
-  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-5 border border-blue-100">
-    <div className="flex justify-between items-center mb-3">
-      <span className="text-sm font-medium text-slate-700">Progression globale</span>
-      <span className="text-sm text-slate-600 font-medium">
-        {getProgressStatus(selectedProcedure).completed}/
-        {getProgressStatus(selectedProcedure).total} étapes
-      </span>
-    </div>
-    <div className="w-full bg-blue-200 rounded-full h-2.5 mb-2">
-      <div 
-        className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2.5 rounded-full transition-all duration-700"
-        style={{ width: `${getProgressStatus(selectedProcedure).percentage}%` }}
-      ></div>
-    </div>
-    <p className="text-xs text-slate-500 text-center">
-      {getProgressStatus(selectedProcedure).percentage === 100 
-        ? 'Procédure terminée !' 
-        : 'Votre procédure avance...'
-      }
-    </p>
-  </div>
+                      {/* Progression */}
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-5 border border-blue-100">
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-sm font-medium text-slate-700">Progression globale</span>
+                          <span className="text-sm text-slate-600 font-medium">
+                            {getProgressStatus(selectedProcedure).completed}/
+                            {getProgressStatus(selectedProcedure).total} étapes
+                          </span>
+                        </div>
+                        <div className="w-full bg-blue-200 rounded-full h-2.5 mb-2">
+                          <div 
+                            className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2.5 rounded-full transition-all duration-700"
+                            style={{ width: `${getProgressStatus(selectedProcedure).percentage}%` }}
+                          ></div>
+                        </div>
+                        <p className="text-xs text-slate-500 text-center">
+                          {getProgressStatus(selectedProcedure).percentage === 100 
+                            ? 'Procédure terminée !' 
+                            : 'Votre procédure avance...'
+                          }
+                        </p>
+                      </div>
 
-  {/* Étapes détaillées */}
-  <div>
-    <h4 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">
-      ÉTAPES DE LA PROCÉDURE
-    </h4>
-    <div className="space-y-2">
-      {selectedProcedure.steps.map((step, index) => (
-        <div
-          key={step.nom}
-          className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors group"
-        >
-          <div className="flex-shrink-0">
-            {getStepStatusIcon(step.statut)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between">
-              <h5 className="font-medium text-slate-800 text-sm group-hover:text-slate-900">
-                {getStepDisplayName(step.nom)}
-              </h5>
-              <span className={`px-2 py-1 rounded text-xs font-medium ${getStepStatusColor(step.statut)}`}>
-                {getStepDisplayStatus(step.statut)}
-              </span>
-            </div>
-            <div className="text-xs text-slate-500 mt-1">
-              <span>Démarrée le {formatDate(step.dateCreation)}</span>
-              {step.dateMaj && step.statut !== StepStatus.PENDING && (
-                <span> • Mise à jour le {formatDate(step.dateMaj)}</span>
-              )}
-            </div>
-            {step.raisonRefus && (
-              <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
-                <p className="text-orange-700 text-xs">
-                  <strong>Raison du rejet :</strong> {step.raisonRefus}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
+                      {/* Étapes détaillées */}
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">
+                          ÉTAPES DE LA PROCÉDURE
+                        </h4>
+                        <div className="space-y-2">
+                          {selectedProcedure.steps.map((step: ProcedureStep) => (
+                            <div
+                              key={step.nom}
+                              className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors group"
+                            >
+                              <div className="flex-shrink-0">
+                                {getStepStatusIcon(step.statut)}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between">
+                                  <h5 className="font-medium text-slate-800 text-sm group-hover:text-slate-900">
+                                    {getStepDisplayName(step.nom)}
+                                  </h5>
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${getStepStatusColor(step.statut)}`}>
+                                    {getStepDisplayStatus(step.statut)}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-slate-500 mt-1">
+                                  <span>Démarrée le {formatProcedureDate(step.dateCreation)}</span>
+                                  {step.dateMaj && step.statut !== StepStatus.PENDING && (
+                                    <span> • Mise à jour le {formatProcedureDate(step.dateMaj)}</span>
+                                  )}
+                                </div>
+                                {step.raisonRefus && (
+                                  <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+                                    <p className="text-orange-700 text-xs">
+                                      <strong>Raison du rejet :</strong> {step.raisonRefus}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
 
-  {/* Informations regroupées */}
-  <div className="grid grid-cols-1 gap-4">
-    {/* Informations personnelles */}
-    <div className="bg-slate-50 rounded-xl p-4">
-      <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-        <User className="w-4 h-4 text-slate-500" />
-        INFORMATIONS PERSONNELLES
-      </h4>
-      <div className="grid grid-cols-1 gap-2 text-sm">
-        <div className="flex justify-between py-1">
-          <span className="text-slate-500">Nom complet</span>
-          <span className="text-slate-800 font-medium">
-            {selectedProcedure.prenom} {selectedProcedure.nom}
-          </span>
-        </div>
-        <div className="flex justify-between py-1">
-          <span className="text-slate-500">Email</span>
-          <span className="text-slate-800 font-medium">{selectedProcedure.email}</span>
-        </div>
-        {selectedProcedure.telephone && (
-          <div className="flex justify-between py-1">
-            <span className="text-slate-500">Téléphone</span>
-            <span className="text-slate-800 font-medium">{selectedProcedure.telephone}</span>
-          </div>
-        )}
-      </div>
-    </div>
+                      {/* Informations regroupées */}
+                      <div className="grid grid-cols-1 gap-4">
+                        {/* Informations personnelles */}
+                        <div className="bg-slate-50 rounded-xl p-4">
+                          <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                            <User className="w-4 h-4 text-slate-500" />
+                            INFORMATIONS PERSONNELLES
+                          </h4>
+                          <div className="grid grid-cols-1 gap-2 text-sm">
+                            <div className="flex justify-between py-1">
+                              <span className="text-slate-500">Nom complet</span>
+                              <span className="text-slate-800 font-medium">
+                                {selectedProcedure.prenom} {selectedProcedure.nom}
+                              </span>
+                            </div>
+                            <div className="flex justify-between py-1">
+                              <span className="text-slate-500">Email</span>
+                              <span className="text-slate-800 font-medium">{selectedProcedure.email}</span>
+                            </div>
+                            {selectedProcedure.telephone && (
+                              <div className="flex justify-between py-1">
+                                <span className="text-slate-500">Téléphone</span>
+                                <span className="text-slate-800 font-medium">{selectedProcedure.telephone}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
-    {/* Informations académiques */}
-    <div className="bg-slate-50 rounded-xl p-4">
-      <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-        <FileText className="w-4 h-4 text-slate-500" />
-        INFORMATIONS ACADÉMIQUES
-      </h4>
-      <div className="grid grid-cols-1 gap-2 text-sm">
-        <div className="flex justify-between py-1">
-          <span className="text-slate-500">Destination</span>
-          <span className="text-slate-800 font-medium">{selectedProcedure.destination}</span>
-        </div>
-        {selectedProcedure.niveauEtude && (
-          <div className="flex justify-between py-1">
-            <span className="text-slate-500">Niveau d'étude</span>
-            <span className="text-slate-800 font-medium">{selectedProcedure.niveauEtude}</span>
-          </div>
-        )}
-        {selectedProcedure.filiere && (
-          <div className="flex justify-between py-1">
-            <span className="text-slate-500">Filière</span>
-            <span className="text-slate-800 font-medium">{selectedProcedure.filiere}</span>
-          </div>
-        )}
-      </div>
-    </div>
+                        {/* Informations académiques */}
+                        <div className="bg-slate-50 rounded-xl p-4">
+                          <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-slate-500" />
+                            INFORMATIONS ACADÉMIQUES
+                          </h4>
+                          <div className="grid grid-cols-1 gap-2 text-sm">
+                            <div className="flex justify-between py-1">
+                              <span className="text-slate-500">Destination</span>
+                              <span className="text-slate-800 font-medium">{selectedProcedure.destination}</span>
+                            </div>
+                            {selectedProcedure.niveauEtude && (
+                              <div className="flex justify-between py-1">
+                                <span className="text-slate-500">Niveau d'étude</span>
+                                <span className="text-slate-800 font-medium">{selectedProcedure.niveauEtude}</span>
+                              </div>
+                            )}
+                            {selectedProcedure.filiere && (
+                              <div className="flex justify-between py-1">
+                                <span className="text-slate-500">Filière</span>
+                                <span className="text-slate-800 font-medium">{selectedProcedure.filiere}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
-    {/* Dates importantes */}
-    <div className="bg-slate-50 rounded-xl p-4">
-      <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-        <Calendar className="w-4 h-4 text-slate-500" />
-        DATES IMPORTANTES
-      </h4>
-      <div className="space-y-2 text-sm">
-        <div className="flex justify-between py-1">
-          <span className="text-slate-500">Création</span>
-          <span className="text-slate-800 font-medium">
-            {formatDate(selectedProcedure.createdAt)}
-          </span>
-        </div>
-        {selectedProcedure.dateCompletion && (
-          <div className="flex justify-between py-1">
-            <span className="text-slate-500">Terminaison</span>
-            <span className="text-slate-800 font-medium">
-              {formatDate(selectedProcedure.dateCompletion)}
-            </span>
-          </div>
-        )}
-        {selectedProcedure.updatedAt && (
-          <div className="flex justify-between py-1">
-            <span className="text-slate-500">Dernière mise à jour</span>
-            <span className="text-slate-800 font-medium">
-              {formatDate(selectedProcedure.updatedAt)}
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
-  </div>
+                        {/* Dates importantes */}
+                        <div className="bg-slate-50 rounded-xl p-4">
+                          <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-slate-500" />
+                            DATES IMPORTANTES
+                          </h4>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between py-1">
+                              <span className="text-slate-500">Création</span>
+                              <span className="text-slate-800 font-medium">
+                                {formatProcedureDate(selectedProcedure.createdAt)}
+                              </span>
+                            </div>
+                            {selectedProcedure.dateCompletion && (
+                              <div className="flex justify-between py-1">
+                                <span className="text-slate-500">Terminaison</span>
+                                <span className="text-slate-800 font-medium">
+                                  {formatProcedureDate(selectedProcedure.dateCompletion)}
+                                </span>
+                              </div>
+                            )}
+                            {selectedProcedure.updatedAt && (
+                              <div className="flex justify-between py-1">
+                                <span className="text-slate-500">Dernière mise à jour</span>
+                                <span className="text-slate-800 font-medium">
+                                  {formatProcedureDate(selectedProcedure.updatedAt)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
 
-  {/* Rendez-vous associé */}
-  {selectedProcedure.rendezVousId && typeof selectedProcedure.rendezVousId !== 'string' && (
-    <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-      <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-        <Calendar className="w-4 h-4 text-blue-500" />
-        RENDEZ-VOUS ASSOCIÉ
-      </h4>
-      <div className="space-y-2 text-sm">
-        <div className="flex justify-between py-1">
-          <span className="text-slate-500">Consultant</span>
-          <span className="text-slate-800 font-medium">
-            {selectedProcedure.rendezVousId.firstName} {selectedProcedure.rendezVousId.lastName}
-          </span>
-        </div>
-        <div className="flex justify-between py-1">
-          <span className="text-slate-500">Date</span>
-          <span className="text-slate-800 font-medium">
-            {formatDate(selectedProcedure.rendezVousId.date)}
-          </span>
-        </div>
-        <div className="flex justify-between py-1">
-          <span className="text-slate-500">Statut</span>
-          <span className="text-slate-800 font-medium capitalize">
-            {selectedProcedure.rendezVousId.status}
-          </span>
-        </div>
-      </div>
-    </div>
-  )}
+                      {/* Rendez-vous associé */}
+                      {selectedProcedure.rendezVousId && typeof selectedProcedure.rendezVousId !== 'string' && (
+                        <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                          <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-blue-500" />
+                            RENDEZ-VOUS ASSOCIÉ
+                          </h4>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between py-1">
+                              <span className="text-slate-500">Consultant</span>
+                              <span className="text-slate-800 font-medium">
+                                {selectedProcedure.rendezVousId.firstName} {selectedProcedure.rendezVousId.lastName}
+                              </span>
+                            </div>
+                            <div className="flex justify-between py-1">
+                              <span className="text-slate-500">Date</span>
+                              <span className="text-slate-800 font-medium">
+                                {formatProcedureDate(selectedProcedure.rendezVousId.date)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between py-1">
+                              <span className="text-slate-500">Statut</span>
+                              <span className="text-slate-800 font-medium capitalize">
+                                {selectedProcedure.rendezVousId.status}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
-  {/* Raison du rejet global */}
-  {selectedProcedure.raisonRejet && (
-    <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-      <h4 className="text-sm font-semibold text-orange-800 mb-2 flex items-center gap-2">
-        <AlertCircle className="w-4 h-4" />
-        RAISON DU REJET
-      </h4>
-      <p className="text-orange-700 text-sm">{selectedProcedure.raisonRejet}</p>
-    </div>
-  )}
-</div>
-
-
+                      {/* Raison du rejet global */}
+                      {selectedProcedure.raisonRejet && (
+                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                          <h4 className="text-sm font-semibold text-orange-800 mb-2 flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4" />
+                            RAISON DU REJET
+                          </h4>
+                          <p className="text-orange-700 text-sm">{selectedProcedure.raisonRejet}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -806,243 +740,115 @@ const UserProcedure = () => {
           </div>
           
           <div className="p-4">
-            {/* Contenu des détails mobile... */}
             <div className="p-4">
-  {/* En-tête avec statut */}
-  <div className="flex items-center justify-between mb-6">
-    <div>
-      <h1 className="text-2xl font-bold text-slate-800 mb-1">
-        {selectedProcedure.destination}
-      </h1>
-      <div className="flex items-center gap-2">
-        <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getProcedureStatusColor(selectedProcedure.statut)}`}>
-          {getProcedureDisplayStatus(selectedProcedure.statut)}
-        </span>
-        <span className="text-slate-500 text-sm">
-          {formatDate(selectedProcedure.createdAt)}
-        </span>
-      </div>
-    </div>
-    {canCancelProcedure(selectedProcedure) && (
-      <button
-        onClick={() => {
-          setProcedureToCancel(selectedProcedure);
-          setShowCancelModal(true);
-        }}
-        className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
-      >
-        <XCircle className="w-6 h-6" />
-      </button>
-    )}
-  </div>
-
-  {/* Barre de progression */}
-  <div className="bg-blue-50 rounded-2xl p-4 mb-6">
-    <div className="flex justify-between items-center mb-3">
-      <span className="text-sm font-medium text-slate-700">Progression globale</span>
-      <span className="text-sm text-slate-600">
-        {getProgressStatus(selectedProcedure).completed}/
-        {getProgressStatus(selectedProcedure).total} étapes
-      </span>
-    </div>
-    <div className="w-full bg-blue-200 rounded-full h-3">
-      <div 
-        className="bg-blue-500 h-3 rounded-full transition-all duration-500"
-        style={{ width: `${getProgressStatus(selectedProcedure).percentage}%` }}
-      ></div>
-    </div>
-  </div>
-
-  {/* Étapes détaillées */}
-  <section className="mb-8">
-    <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-      <FileText className="w-5 h-5 text-blue-500" />
-      Étapes de la procédure
-    </h2>
-    <div className="space-y-3">
-      {selectedProcedure.steps.map((step, index) => (
-        <div
-          key={step.nom}
-          className="bg-white border border-slate-200 rounded-2xl p-4 transition-all hover:shadow-sm"
-        >
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 mt-1">
-              {getStepStatusIcon(step.statut)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-medium text-slate-800 text-sm">
-                  {getStepDisplayName(step.nom)}
-                </h3>
-                <span className={`px-2 py-1 rounded text-xs font-medium ${getStepStatusColor(step.statut)}`}>
-                  {getStepDisplayStatus(step.statut)}
-                </span>
-              </div>
-              
-              <div className="text-xs text-slate-500 space-y-1">
-                <p>Démarrée le {formatDate(step.dateCreation)}</p>
-                {step.dateMaj && step.statut !== StepStatus.PENDING && (
-                  <p>Mise à jour le {formatDate(step.dateMaj)}</p>
+              {/* En-tête avec statut */}
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h1 className="text-2xl font-bold text-slate-800 mb-1">
+                    {selectedProcedure.destination}
+                  </h1>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getProcedureStatusColor(selectedProcedure.statut)}`}>
+                      {getProcedureDisplayStatus(selectedProcedure.statut)}
+                    </span>
+                    <span className="text-slate-500 text-sm">
+                      {formatProcedureDate(selectedProcedure.createdAt)}
+                    </span>
+                  </div>
+                </div>
+                {canCancelProcedure(selectedProcedure) && (
+                  <button
+                    onClick={() => {
+                      setProcedureToCancel(selectedProcedure);
+                      setShowCancelModal(true);
+                    }}
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                  >
+                    <XCircle className="w-6 h-6" />
+                  </button>
                 )}
               </div>
 
-              {step.raisonRefus && (
-                <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
-                  <p className="text-orange-700 text-xs">
-                    <strong>Raison :</strong> {step.raisonRefus}
-                  </p>
+              {/* Barre de progression */}
+              <div className="bg-blue-50 rounded-2xl p-4 mb-6">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-sm font-medium text-slate-700">Progression globale</span>
+                  <span className="text-sm text-slate-600">
+                    {getProgressStatus(selectedProcedure).completed}/
+                    {getProgressStatus(selectedProcedure).total} étapes
+                  </span>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-3">
+                  <div 
+                    className="bg-blue-500 h-3 rounded-full transition-all duration-500"
+                    style={{ width: `${getProgressStatus(selectedProcedure).percentage}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Étapes détaillées */}
+              <section className="mb-8">
+                <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-500" />
+                  Étapes de la procédure
+                </h2>
+                <div className="space-y-3">
+                  {selectedProcedure.steps.map((step: ProcedureStep) => (
+                    <div
+                      key={step.nom}
+                      className="bg-white border border-slate-200 rounded-2xl p-4 transition-all hover:shadow-sm"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 mt-1">
+                          {getStepStatusIcon(step.statut)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-medium text-slate-800 text-sm">
+                              {getStepDisplayName(step.nom)}
+                            </h3>
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${getStepStatusColor(step.statut)}`}>
+                              {getStepDisplayStatus(step.statut)}
+                            </span>
+                          </div>
+                          
+                          <div className="text-xs text-slate-500 space-y-1">
+                            <p>Démarrée le {formatProcedureDate(step.dateCreation)}</p>
+                            {step.dateMaj && step.statut !== StepStatus.PENDING && (
+                              <p>Mise à jour le {formatProcedureDate(step.dateMaj)}</p>
+                            )}
+                          </div>
+
+                          {step.raisonRefus && (
+                            <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+                              <p className="text-orange-700 text-xs">
+                                <strong>Raison :</strong> {step.raisonRefus}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Bouton d'annulation */}
+              {canCancelProcedure(selectedProcedure) && (
+                <div className="sticky bottom-6 bg-white border border-slate-200 rounded-2xl p-4 shadow-lg">
+                  <button
+                    onClick={() => {
+                      setProcedureToCancel(selectedProcedure);
+                      setShowCancelModal(true);
+                    }}
+                    className="w-full px-6 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 font-medium flex items-center justify-center gap-2 active:scale-95"
+                  >
+                    <XCircle className="w-5 h-5" />
+                    Annuler cette procédure
+                  </button>
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  </section>
-
-  {/* Informations personnelles */}
-  <section className="mb-8">
-    <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-      <User className="w-5 h-5 text-blue-500" />
-      Informations personnelles
-    </h2>
-    <div className="bg-white border border-slate-200 rounded-2xl p-4">
-      <div className="grid grid-cols-1 gap-3 text-sm">
-        <div>
-          <label className="text-slate-500 font-medium">Nom complet</label>
-          <p className="text-slate-800 mt-1">
-            {selectedProcedure.prenom} {selectedProcedure.nom}
-          </p>
-        </div>
-        <div>
-          <label className="text-slate-500 font-medium">Email</label>
-          <p className="text-slate-800 mt-1">{selectedProcedure.email}</p>
-        </div>
-        {selectedProcedure.telephone && (
-          <div>
-            <label className="text-slate-500 font-medium">Téléphone</label>
-            <p className="text-slate-800 mt-1">{selectedProcedure.telephone}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  </section>
-
-  {/* Informations académiques */}
-  <section className="mb-8">
-    <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-      <FileText className="w-5 h-5 text-blue-500" />
-      Informations académiques
-    </h2>
-    <div className="bg-white border border-slate-200 rounded-2xl p-4">
-      <div className="grid grid-cols-1 gap-3 text-sm">
-        <div>
-          <label className="text-slate-500 font-medium">Destination</label>
-          <p className="text-slate-800 mt-1 font-medium">
-            {selectedProcedure.destination}
-          </p>
-        </div>
-        {selectedProcedure.niveauEtude && (
-          <div>
-            <label className="text-slate-500 font-medium">Niveau d'étude</label>
-            <p className="text-slate-800 mt-1">{selectedProcedure.niveauEtude}</p>
-          </div>
-        )}
-        {selectedProcedure.filiere && (
-          <div>
-            <label className="text-slate-500 font-medium">Filière</label>
-            <p className="text-slate-800 mt-1">{selectedProcedure.filiere}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  </section>
-
-  {/* Dates importantes */}
-  <section className="mb-8">
-    <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-      <Calendar className="w-5 h-5 text-blue-500" />
-      Dates importantes
-    </h2>
-    <div className="bg-white border border-slate-200 rounded-2xl p-4">
-      <div className="space-y-3 text-sm">
-        <div className="flex justify-between items-center py-2 border-b border-slate-100">
-          <span className="text-slate-500">Date de création</span>
-          <span className="text-slate-800 font-medium">
-            {formatDate(selectedProcedure.createdAt)}
-          </span>
-        </div>
-        {selectedProcedure.dateCompletion && (
-          <div className="flex justify-between items-center py-2 border-b border-slate-100">
-            <span className="text-slate-500">Date de terminaison</span>
-            <span className="text-slate-800 font-medium">
-              {formatDate(selectedProcedure.dateCompletion)}
-            </span>
-          </div>
-        )}
-        {selectedProcedure.updatedAt && (
-          <div className="flex justify-between items-center py-2">
-            <span className="text-slate-500">Dernière mise à jour</span>
-            <span className="text-slate-800 font-medium">
-              {formatDate(selectedProcedure.updatedAt)}
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
-  </section>
-
-  {/* Rendez-vous associé */}
-  {selectedProcedure.rendezVousId && typeof selectedProcedure.rendezVousId !== 'string' && (
-    <section className="mb-8">
-      <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-        <Calendar className="w-5 h-5 text-blue-500" />
-        Rendez-vous associé
-      </h2>
-      <div className="bg-white border border-slate-200 rounded-2xl p-4">
-        <div className="space-y-3 text-sm">
-          <div>
-            <label className="text-slate-500 font-medium">Consultant</label>
-            <p className="text-slate-800 mt-1">
-              {selectedProcedure.rendezVousId.firstName} {selectedProcedure.rendezVousId.lastName}
-            </p>
-          </div>
-          <div>
-            <label className="text-slate-500 font-medium">Date du rendez-vous</label>
-            <p className="text-slate-800 mt-1">
-              {formatDate(selectedProcedure.rendezVousId.date)}
-            </p>
-          </div>
-          <div>
-            <label className="text-slate-500 font-medium">Statut</label>
-            <p className="text-slate-800 mt-1 capitalize">
-              {selectedProcedure.rendezVousId.status}
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-  )}
-
-  {/* Bouton d'annulation */}
-  {canCancelProcedure(selectedProcedure) && (
-    <div className="sticky bottom-6 bg-white border border-slate-200 rounded-2xl p-4 shadow-lg">
-      <button
-        onClick={() => {
-          setProcedureToCancel(selectedProcedure);
-          setShowCancelModal(true);
-        }}
-        className="w-full px-6 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 font-medium flex items-center justify-center gap-2 active:scale-95"
-      >
-        <XCircle className="w-5 h-5" />
-        Annuler cette procédure
-      </button>
-    </div>
-  )}
-</div>
-
-
-
           </div>
         </div>
       )}
@@ -1066,7 +872,7 @@ const UserProcedure = () => {
                 id="cancelReason"
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
-                placeholder="Veuillez Nous Dire Pourquoi Vosu souhaitez annuler cette procédure ?"
+                placeholder="Veuillez nous dire pourquoi vous souhaitez annuler cette procédure ?"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none text-sm"
                 rows={3}
               />
