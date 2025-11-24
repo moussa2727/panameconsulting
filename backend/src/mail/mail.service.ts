@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import * as nodemailer from "nodemailer";
 
 @Injectable()
 export class MailService {
@@ -14,20 +14,24 @@ export class MailService {
 
   private initializeTransporter() {
     // Vérifier si la configuration email est complète
-    if (!this.configService.get('EMAIL_HOST') || !this.configService.get('EMAIL_USER') || !this.configService.get('EMAIL_PASS')) {
-      this.logger.warn('Service email non configuré');
+    if (
+      !this.configService.get("EMAIL_HOST") ||
+      !this.configService.get("EMAIL_USER") ||
+      !this.configService.get("EMAIL_PASS")
+    ) {
+      this.logger.warn("Service email non configuré");
       this.emailServiceAvailable = false;
       return;
     }
 
     try {
       this.transporter = nodemailer.createTransport({
-        host: this.configService.get('EMAIL_HOST'),
-        port: this.configService.get('EMAIL_PORT'),
+        host: this.configService.get("EMAIL_HOST"),
+        port: this.configService.get("EMAIL_PORT"),
         secure: false,
         auth: {
-          user: this.configService.get('EMAIL_USER'),
-          pass: this.configService.get('EMAIL_PASS'),
+          user: this.configService.get("EMAIL_USER"),
+          pass: this.configService.get("EMAIL_PASS"),
         },
         tls: {
           rejectUnauthorized: false,
@@ -35,17 +39,16 @@ export class MailService {
       });
 
       // Tester la connexion
-      this.testConnection().then(success => {
+      this.testConnection().then((success) => {
         this.emailServiceAvailable = success;
         if (success) {
-          this.logger.log('Service email initialisé avec succès');
+          this.logger.log("Service email initialisé avec succès");
         } else {
-          this.logger.warn('Service email initialisé mais connexion échouée');
+          this.logger.warn("Service email initialisé mais connexion échouée");
         }
       });
-
     } catch (error) {
-      this.logger.error('Erreur initialisation service email', error);
+      this.logger.error("Erreur initialisation service email", error);
       this.emailServiceAvailable = false;
     }
   }
@@ -64,8 +67,6 @@ export class MailService {
     }
   }
 
-  
-
   async sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
     // Logger le token pour le développement
     this.logger.log(`Token réinitialisation.`);
@@ -77,9 +78,9 @@ export class MailService {
     }
 
     const mailOptions = {
-      from: `"Paname Consulting" <${this.configService.get('EMAIL_USER')}>`,
+      from: `"Paname Consulting" <${this.configService.get("EMAIL_USER")}>`,
       to: email,
-      subject: 'Réinitialisation de votre mot de passe - Paname Consulting',
+      subject: "Réinitialisation de votre mot de passe - Paname Consulting",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #0ea5e9, #0369a1); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
@@ -123,9 +124,12 @@ export class MailService {
       this.logger.error(`Erreur envoi email : ${error.message}`);
       this.logger.log(`Lien réinitialisation  - Service email indisponible.`);
       // Désactiver le service après une erreur d'authentification
-      if (error.message.includes('BadCredentials') || error.message.includes('Invalid login')) {
+      if (
+        error.message.includes("BadCredentials") ||
+        error.message.includes("Invalid login")
+      ) {
         this.emailServiceAvailable = false;
-        this.logger.warn('Service email désactivé - erreur authentification');
+        this.logger.warn("Service email désactivé - erreur authentification");
       }
     }
   }
@@ -137,9 +141,9 @@ export class MailService {
     }
 
     const mailOptions = {
-      from: `"Paname Consulting" <${this.configService.get('EMAIL_USER')}>`,
+      from: `"Paname Consulting" <${this.configService.get("EMAIL_USER")}>`,
       to: email,
-      subject: 'Bienvenue chez Paname Consulting',
+      subject: "Bienvenue chez Paname Consulting",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #0ea5e9, #0369a1); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">

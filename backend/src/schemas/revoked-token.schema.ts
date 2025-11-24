@@ -1,21 +1,21 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
+import { Document } from "mongoose";
 
-@Schema({ 
+@Schema({
   timestamps: true,
-  collection: 'revoked_tokens'
+  collection: "revoked_tokens",
 })
 export class RevokedToken extends Document {
   @Prop({ required: true, unique: true })
   token: string;
 
-  @Prop({ 
+  @Prop({
     required: true,
   })
   expiresAt: Date;
 
   @Prop({
-    required: true
+    required: true,
   })
   userId: string;
 }

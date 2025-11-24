@@ -1,18 +1,18 @@
-import { 
-  BadRequestException, 
-  Injectable, 
-  Logger, 
-  NotFoundException, 
-  UnauthorizedException 
-} from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import * as bcrypt from 'bcrypt';
-import { Model, Types } from 'mongoose';
-import { RegisterDto } from '../auth/dto/register.dto';
-import { UpdatePasswordDto } from '../auth/dto/update-password.dto';
-import { UpdateUserDto } from '../auth/dto/update-user.dto';
-import { User, UserRole } from '../schemas/user.schema';
-import { AuthConstants } from '../auth/auth.constants';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { InjectModel } from "@nestjs/mongoose";
+import * as bcrypt from "bcrypt";
+import { Model, Types } from "mongoose";
+import { RegisterDto } from "../auth/dto/register.dto";
+import { UpdatePasswordDto } from "../auth/dto/update-password.dto";
+import { UpdateUserDto } from "../auth/dto/update-user.dto";
+import { User, UserRole } from "../schemas/user.schema";
+import { AuthConstants } from "../auth/auth.constants";
 
 @Injectable()
 export class UsersService {
@@ -20,25 +20,23 @@ export class UsersService {
   private readonly cache = new Map<string, { data: any; timestamp: number }>();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  constructor(
-    @InjectModel(User.name) private userModel: Model<User>,
-  ) { }
+  constructor(@InjectModel(User.name) private userModel: Model<User>) {}
 
   // 🔧 Méthodes utilitaires
   private normalizeTelephone(input?: string): string | undefined {
     if (!input) return undefined;
-    
+
     const trimmed = input.trim();
-    if (trimmed === '') return undefined;
-    
+    if (trimmed === "") return undefined;
+
     // Extraire uniquement les chiffres
-    const digitsOnly = trimmed.replace(/\D/g, '');
-    
+    const digitsOnly = trimmed.replace(/\D/g, "");
+
     // Validation minimale : au moins 5 chiffres
     if (digitsOnly.length < 5) {
       return undefined;
     }
-    
+
     return digitsOnly;
   }
 
@@ -70,7 +68,7 @@ export class UsersService {
     }
     // Supprimer les caches globaux
     for (const key of this.cache.keys()) {
-      if (key.startsWith('findAll:') || key.startsWith('getStats:')) {
+      if (key.startsWith("findAll:") || key.startsWith("getStats:")) {
         this.cache.delete(key);
       }
     }
@@ -78,14 +76,14 @@ export class UsersService {
 
   // 🔐 Méthodes d'authentification
   async validateUser(email: string, password: string): Promise<User | null> {
-    const cacheKey = this.getCacheKey('validateUser', email);
+    const cacheKey = this.getCacheKey("validateUser", email);
     const cached = this.getCache(cacheKey);
     if (cached) {
       return cached;
     }
 
     const user = await this.findByEmail(email);
-    if (user && await bcrypt.compare(password, user.password)) {
+    if (user && (await bcrypt.compare(password, user.password))) {
       this.setCache(cacheKey, user);
       return user;
     }
@@ -93,13 +91,17 @@ export class UsersService {
   }
 
   async exists(userId: string): Promise<boolean> {
-    const cacheKey = this.getCacheKey('exists', userId);
+    const cacheKey = this.getCacheKey("exists", userId);
     const cached = this.getCache(cacheKey);
     if (cached !== null) {
       return cached;
     }
 
-    const user = await this.userModel.findById(userId).select('_id').lean().exec();
+    const user = await this.userModel
+      .findById(userId)
+      .select("_id")
+      .lean()
+      .exec();
     const exists = !!user;
     this.setCache(cacheKey, exists);
     return exists;
@@ -108,35 +110,37 @@ export class UsersService {
   // 👤 Méthodes de recherche
   async findByEmail(email: string): Promise<User | null> {
     const normalizedEmail = email.toLowerCase().trim();
-    const cacheKey = this.getCacheKey('findByEmail', normalizedEmail);
+    const cacheKey = this.getCacheKey("findByEmail", normalizedEmail);
     const cached = this.getCache(cacheKey);
     if (cached) {
       return cached;
     }
 
-    const user = await this.userModel.findOne({ email: normalizedEmail }).exec();
+    const user = await this.userModel
+      .findOne({ email: normalizedEmail })
+      .exec();
     this.setCache(cacheKey, user);
     return user;
   }
 
   async findByRole(role: UserRole): Promise<User | null> {
-    const cacheKey = this.getCacheKey('findByRole', role);
+    const cacheKey = this.getCacheKey("findByRole", role);
     const cached = this.getCache(cacheKey);
     if (cached) {
-        return cached;
+      return cached;
     }
 
     const user = await this.userModel.findOne({ role }).exec();
     this.setCache(cacheKey, user);
     return user;
-}
+  }
 
   async findOne(id: string): Promise<User | null> {
     if (!Types.ObjectId.isValid(id)) {
       return null;
     }
 
-    const cacheKey = this.getCacheKey('findOne', id);
+    const cacheKey = this.getCacheKey("findOne", id);
     const cached = this.getCache(cacheKey);
     if (cached) {
       return cached;
@@ -148,13 +152,13 @@ export class UsersService {
   }
 
   async findAll(): Promise<User[]> {
-    const cacheKey = this.getCacheKey('findAll', 'all');
+    const cacheKey = this.getCacheKey("findAll", "all");
     const cached = this.getCache(cacheKey);
     if (cached) {
       return cached;
     }
 
-    const users = await this.userModel.find().select('-password').lean().exec();
+    const users = await this.userModel.find().select("-password").lean().exec();
     this.setCache(cacheKey, users);
     return users;
   }
@@ -162,14 +166,14 @@ export class UsersService {
   async findById(id: string): Promise<User> {
     const user = await this.findOne(id);
     if (!user) {
-      throw new NotFoundException('Utilisateur non trouvé');
+      throw new NotFoundException("Utilisateur non trouvé");
     }
     return user;
   }
 
   // 🔒 Méthodes d'accès et sécurité
   async checkUserAccess(userId: string): Promise<boolean> {
-    const cacheKey = this.getCacheKey('checkUserAccess', userId);
+    const cacheKey = this.getCacheKey("checkUserAccess", userId);
     const cached = this.getCache(cacheKey);
     if (cached !== null) {
       return cached;
@@ -201,19 +205,19 @@ export class UsersService {
   }
 
   async isMaintenanceMode(): Promise<boolean> {
-    const cacheKey = this.getCacheKey('isMaintenanceMode', 'status');
+    const cacheKey = this.getCacheKey("isMaintenanceMode", "status");
     const cached = this.getCache(cacheKey);
     if (cached !== null) {
       return cached;
     }
 
-    const isMaintenance = process.env.MAINTENANCE_MODE === 'true';
+    const isMaintenance = process.env.MAINTENANCE_MODE === "true";
     this.setCache(cacheKey, isMaintenance);
     return isMaintenance;
   }
 
   async setMaintenanceMode(enabled: boolean): Promise<void> {
-    process.env.MAINTENANCE_MODE = enabled ? 'true' : 'false';
+    process.env.MAINTENANCE_MODE = enabled ? "true" : "false";
     this.clearUserCache(); // Vider le cache car les permissions peuvent changer
   }
 
@@ -223,14 +227,19 @@ export class UsersService {
       // Vérifier l'email
       const existingUserWithEmail = await this.findByEmail(createUserDto.email);
       if (existingUserWithEmail) {
-        throw new BadRequestException('Cet email est déjà utilisé');
+        throw new BadRequestException("Cet email est déjà utilisé");
       }
 
-      const hashedPassword = await bcrypt.hash(createUserDto.password, AuthConstants.BCRYPT_SALT_ROUNDS);
-      
+      const hashedPassword = await bcrypt.hash(
+        createUserDto.password,
+        AuthConstants.BCRYPT_SALT_ROUNDS,
+      );
+
       // Normalisation du téléphone
-      const normalizedTelephone = this.normalizeTelephone(createUserDto.telephone);
-      
+      const normalizedTelephone = this.normalizeTelephone(
+        createUserDto.telephone,
+      );
+
       const userData: any = {
         firstName: createUserDto.firstName,
         lastName: createUserDto.lastName,
@@ -243,33 +252,34 @@ export class UsersService {
       if (normalizedTelephone) {
         userData.telephone = normalizedTelephone;
       } else {
-        throw new BadRequestException('Le numéro de téléphone est invalide');
+        throw new BadRequestException("Le numéro de téléphone est invalide");
       }
 
       const user = new this.userModel(userData);
       const savedUser = await user.save();
-      
+
       // Nettoyer le cache après création
       this.clearUserCache();
-      
+
       return savedUser;
-      
     } catch (error: any) {
       // Gestion des erreurs MongoDB
       if (error?.code === 11000) {
         const field = Object.keys(error.keyPattern)[0];
-        if (field === 'email') {
-          throw new BadRequestException('Cet email est déjà utilisé');
+        if (field === "email") {
+          throw new BadRequestException("Cet email est déjà utilisé");
         }
       }
-      
+
       // Propager les erreurs métier existantes
       if (error instanceof BadRequestException) {
         throw error;
       }
-      
-      this.logger.error(`Erreur lors de la création utilisateur: ${error.message}`);
-      throw new BadRequestException('Erreur lors de la création du compte');
+
+      this.logger.error(
+        `Erreur lors de la création utilisateur: ${error.message}`,
+      );
+      throw new BadRequestException("Erreur lors de la création du compte");
     }
   }
 
@@ -277,62 +287,60 @@ export class UsersService {
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
     // Validation de l'ID
     if (!id || !Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('ID utilisateur invalide');
+      throw new BadRequestException("ID utilisateur invalide");
     }
 
     // Filtrer et valider les données
     const filteredUpdate = this.filterAndValidateUpdateData(updateUserDto);
-    
+
     try {
       // Vérifier l'existence de l'utilisateur
       await this.verifyUserExists(id);
-      
+
       // Vérifier les conflits avant mise à jour
       await this.checkForConflicts(id, filteredUpdate);
-      
+
       // Effectuer la mise à jour
       const updatedUser = await this.userModel
-        .findByIdAndUpdate(
-          id, 
-          filteredUpdate, 
-          { 
-            new: true, 
-            runValidators: true,
-            context: 'query'
-          }
-        )
-        .select('-password')
+        .findByIdAndUpdate(id, filteredUpdate, {
+          new: true,
+          runValidators: true,
+          context: "query",
+        })
+        .select("-password")
         .exec();
 
       if (!updatedUser) {
-        throw new NotFoundException('Utilisateur non trouvé après mise à jour');
+        throw new NotFoundException("Utilisateur non trouvé après mise à jour");
       }
 
       // Nettoyer le cache après mise à jour
       this.clearUserCache(id);
-      
-      return updatedUser;
 
+      return updatedUser;
     } catch (error: any) {
       this.handleUpdateError(error);
     }
   }
 
   private filterAndValidateUpdateData(updateUserDto: UpdateUserDto): any {
-    const allowedFields = ['email', 'telephone'];
+    const allowedFields = ["email", "telephone"];
     const filteredUpdate: any = {};
-    
-    Object.keys(updateUserDto).forEach(key => {
-      if (allowedFields.includes(key) && updateUserDto[key as keyof UpdateUserDto] !== undefined) {
+
+    Object.keys(updateUserDto).forEach((key) => {
+      if (
+        allowedFields.includes(key) &&
+        updateUserDto[key as keyof UpdateUserDto] !== undefined
+      ) {
         const value = updateUserDto[key as keyof UpdateUserDto];
-        if (value !== null && value !== '') {
+        if (value !== null && value !== "") {
           filteredUpdate[key] = value;
         }
       }
     });
 
     if (Object.keys(filteredUpdate).length === 0) {
-      throw new BadRequestException('Aucune donnée valide à mettre à jour');
+      throw new BadRequestException("Aucune donnée valide à mettre à jour");
     }
 
     // Normalisation
@@ -342,7 +350,9 @@ export class UsersService {
     }
 
     if (filteredUpdate.telephone) {
-      filteredUpdate.telephone = this.normalizeTelephone(filteredUpdate.telephone);
+      filteredUpdate.telephone = this.normalizeTelephone(
+        filteredUpdate.telephone,
+      );
       this.validateTelephone(filteredUpdate.telephone);
     }
 
@@ -352,43 +362,59 @@ export class UsersService {
   private validateEmail(email: string): void {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      throw new BadRequestException('Format d\'email invalide');
+      throw new BadRequestException("Format d'email invalide");
     }
   }
 
   private validateTelephone(telephone: string | undefined): void {
     if (telephone && telephone.length < 5) {
-      throw new BadRequestException('Le téléphone doit contenir au moins 5 caractères');
+      throw new BadRequestException(
+        "Le téléphone doit contenir au moins 5 caractères",
+      );
     }
   }
 
   private async verifyUserExists(userId: string): Promise<void> {
-    const existingUser = await this.userModel.findById(userId).select('_id').exec();
+    const existingUser = await this.userModel
+      .findById(userId)
+      .select("_id")
+      .exec();
     if (!existingUser) {
-      throw new NotFoundException('Utilisateur non trouvé');
+      throw new NotFoundException("Utilisateur non trouvé");
     }
   }
 
-  private async checkForConflicts(userId: string, updateData: any): Promise<void> {
+  private async checkForConflicts(
+    userId: string,
+    updateData: any,
+  ): Promise<void> {
     if (updateData.email) {
-      const existingUserWithEmail = await this.userModel.findOne({
-        email: updateData.email,
-        _id: { $ne: new Types.ObjectId(userId) }
-      }).select('_id').exec();
+      const existingUserWithEmail = await this.userModel
+        .findOne({
+          email: updateData.email,
+          _id: { $ne: new Types.ObjectId(userId) },
+        })
+        .select("_id")
+        .exec();
 
       if (existingUserWithEmail) {
-        throw new BadRequestException('Cet email est déjà utilisé');
+        throw new BadRequestException("Cet email est déjà utilisé");
       }
     }
 
     if (updateData.telephone) {
-      const existingUserWithPhone = await this.userModel.findOne({
-        telephone: updateData.telephone,
-        _id: { $ne: new Types.ObjectId(userId) }
-      }).select('_id').exec();
+      const existingUserWithPhone = await this.userModel
+        .findOne({
+          telephone: updateData.telephone,
+          _id: { $ne: new Types.ObjectId(userId) },
+        })
+        .select("_id")
+        .exec();
 
       if (existingUserWithPhone) {
-        throw new BadRequestException('Ce numéro de téléphone est déjà utilisé');
+        throw new BadRequestException(
+          "Ce numéro de téléphone est déjà utilisé",
+        );
       }
     }
   }
@@ -396,50 +422,63 @@ export class UsersService {
   private handleUpdateError(error: any): never {
     if (error?.code === 11000) {
       const fields = Object.keys(error.keyPattern || {});
-      if (fields.includes('email')) {
-        throw new BadRequestException('Cet email est déjà utilisé');
+      if (fields.includes("email")) {
+        throw new BadRequestException("Cet email est déjà utilisé");
       }
-      if (fields.includes('telephone')) {
-        throw new BadRequestException('Ce numéro de téléphone est déjà utilisé');
+      if (fields.includes("telephone")) {
+        throw new BadRequestException(
+          "Ce numéro de téléphone est déjà utilisé",
+        );
       }
-      throw new BadRequestException('Conflit de données');
+      throw new BadRequestException("Conflit de données");
     }
-    
-    if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map((err: any) => err.message);
-      throw new BadRequestException(messages.join(', '));
+
+    if (error.name === "ValidationError") {
+      const messages = Object.values(error.errors).map(
+        (err: any) => err.message,
+      );
+      throw new BadRequestException(messages.join(", "));
     }
-    
-    if (error.name === 'CastError') {
-      throw new BadRequestException('ID utilisateur invalide');
+
+    if (error.name === "CastError") {
+      throw new BadRequestException("ID utilisateur invalide");
     }
-    
+
     // Propager les erreurs métier existantes
-    if (error instanceof BadRequestException || error instanceof NotFoundException) {
+    if (
+      error instanceof BadRequestException ||
+      error instanceof NotFoundException
+    ) {
       throw error;
     }
-    
+
     this.logger.error(`Erreur inattendue: ${error.message}`, error.stack);
-    throw new BadRequestException('Erreur lors de la mise à jour du profil');
+    throw new BadRequestException("Erreur lors de la mise à jour du profil");
   }
 
   // 🔑 Méthodes de gestion des mots de passe
-  async updatePassword(userId: string, updatePasswordDto: UpdatePasswordDto): Promise<void> {
+  async updatePassword(
+    userId: string,
+    updatePasswordDto: UpdatePasswordDto,
+  ): Promise<void> {
     const user = await this.userModel.findById(userId);
     if (!user) {
-      throw new NotFoundException('Utilisateur non trouvé');
+      throw new NotFoundException("Utilisateur non trouvé");
     }
 
-    const isMatch = await bcrypt.compare(updatePasswordDto.currentPassword, user.password);
+    const isMatch = await bcrypt.compare(
+      updatePasswordDto.currentPassword,
+      user.password,
+    );
     if (!isMatch) {
-      throw new UnauthorizedException('Mot de passe actuel incorrect');
+      throw new UnauthorizedException("Mot de passe actuel incorrect");
     }
 
     user.password = await bcrypt.hash(
-      updatePasswordDto.newPassword, 
-      AuthConstants.BCRYPT_SALT_ROUNDS
+      updatePasswordDto.newPassword,
+      AuthConstants.BCRYPT_SALT_ROUNDS,
     );
-    
+
     await user.save();
     this.clearUserCache(userId);
   }
@@ -447,14 +486,14 @@ export class UsersService {
   async resetPassword(userId: string, newPassword: string): Promise<void> {
     const user = await this.userModel.findById(userId);
     if (!user) {
-      throw new NotFoundException('Utilisateur non trouvé');
+      throw new NotFoundException("Utilisateur non trouvé");
     }
 
     user.password = await bcrypt.hash(
-      newPassword, 
-      AuthConstants.BCRYPT_SALT_ROUNDS
+      newPassword,
+      AuthConstants.BCRYPT_SALT_ROUNDS,
     );
-    
+
     await user.save();
     this.clearUserCache(userId);
   }
@@ -463,7 +502,7 @@ export class UsersService {
   async delete(id: string): Promise<void> {
     const result = await this.userModel.findByIdAndDelete(id).exec();
     if (!result) {
-      throw new NotFoundException('Utilisateur non trouvé');
+      throw new NotFoundException("Utilisateur non trouvé");
     }
     this.clearUserCache(id);
   }
@@ -471,16 +510,12 @@ export class UsersService {
   async toggleStatus(id: string): Promise<User> {
     const user = await this.findById(id);
     const updatedUser = await this.userModel
-      .findByIdAndUpdate(
-        id,
-        { isActive: !user.isActive },
-        { new: true }
-      )
-      .select('-password')
+      .findByIdAndUpdate(id, { isActive: !user.isActive }, { new: true })
+      .select("-password")
       .exec();
 
     if (!updatedUser) {
-      throw new NotFoundException('Utilisateur non trouvé');
+      throw new NotFoundException("Utilisateur non trouvé");
     }
 
     this.clearUserCache(id);
@@ -496,13 +531,13 @@ export class UsersService {
       await this.userModel.db.db.command({ ping: 1 });
       return true;
     } catch (error) {
-      this.logger.error('Database connection check failed', error.stack);
+      this.logger.error("Database connection check failed", error.stack);
       return false;
     }
   }
 
   async getStats() {
-    const cacheKey = this.getCacheKey('getStats', 'all');
+    const cacheKey = this.getCacheKey("getStats", "all");
     const cached = this.getCache(cacheKey);
     if (cached) {
       return cached;
@@ -511,7 +546,7 @@ export class UsersService {
     const [totalUsers, activeUsers, adminUsers] = await Promise.all([
       this.userModel.countDocuments().exec(),
       this.userModel.countDocuments({ isActive: true }).exec(),
-      this.userModel.countDocuments({ role: 'admin' }).exec(),
+      this.userModel.countDocuments({ role: "admin" }).exec(),
     ]);
 
     const stats = {
@@ -519,7 +554,7 @@ export class UsersService {
       activeUsers,
       inactiveUsers: totalUsers - activeUsers,
       adminUsers,
-      regularUsers: totalUsers - adminUsers
+      regularUsers: totalUsers - adminUsers,
     };
 
     this.setCache(cacheKey, stats);
@@ -527,7 +562,7 @@ export class UsersService {
   }
 
   async getMaintenanceStatus() {
-    const cacheKey = this.getCacheKey('getMaintenanceStatus', 'status');
+    const cacheKey = this.getCacheKey("getMaintenanceStatus", "status");
     const cached = this.getCache(cacheKey);
     if (cached) {
       return cached;
@@ -535,7 +570,7 @@ export class UsersService {
 
     const status = {
       isActive: await this.isMaintenanceMode(),
-      logoutUntil: null
+      logoutUntil: null,
     };
 
     this.setCache(cacheKey, status);
@@ -545,6 +580,6 @@ export class UsersService {
   // 🧹 Méthode de nettoyage du cache (pour les tests ou maintenance)
   async clearAllCache(): Promise<void> {
     this.cache.clear();
-    this.logger.log('Cache utilisateur complètement vidé');
+    this.logger.log("Cache utilisateur complètement vidé");
   }
 }

@@ -1,10 +1,13 @@
 // local-auth.guard.ts - VERSION CORRIGÉE
-import { ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import {
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { AuthGuard } from "@nestjs/passport";
 
 @Injectable()
-export class LocalAuthGuard extends AuthGuard('local') {
-  
+export class LocalAuthGuard extends AuthGuard("local") {
   /**
    * Fonctionnement :
    * 1. Le guard intercepte la requête
@@ -13,7 +16,7 @@ export class LocalAuthGuard extends AuthGuard('local') {
    * 4. Si valide, ajoute l'utilisateur à la requête (req.user)
    * 5. Si invalide, renvoie une erreur 401 Unauthorized
    */
-  
+
   constructor() {
     super();
   }
@@ -21,11 +24,14 @@ export class LocalAuthGuard extends AuthGuard('local') {
   /**
    * Surcharge de handleRequest pour personnaliser les messages d'erreur
    */
-  handleRequest(err: any, user: any, info: any, context: ExecutionContext, status?: any) {
+  handleRequest(err: any, user: any, info: any) {
     // Personnalisez la réponse en cas d'erreur
     if (err || !user) {
-      console.error('❌ Erreur authentification locale:', err?.message || info?.message);
-      throw err || new UnauthorizedException('Email ou mot de passe incorrect');
+      console.error(
+        "❌ Erreur authentification locale:",
+        err?.message || info?.message,
+      );
+      throw err || new UnauthorizedException("Email ou mot de passe incorrect");
     }
     return user;
   }
@@ -37,13 +43,13 @@ export class LocalAuthGuard extends AuthGuard('local') {
     try {
       // Logique supplémentaire avant l'authentification (optionnelle)
       const request = context.switchToHttp().getRequest();
-      console.log('🔐 Tentative de connexion pour:', request.body?.email);
-      
+      console.log("🔐 Tentative de connexion pour:", request.body?.email);
+
       // Appel de la méthode parent
-      const result = await super.canActivate(context) as boolean;
+      const result = (await super.canActivate(context)) as boolean;
       return result;
     } catch (error) {
-      console.error('❌ Erreur activation guard local:', error);
+      console.error("❌ Erreur activation guard local:", error);
       throw error;
     }
   }
