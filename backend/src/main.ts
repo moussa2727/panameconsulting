@@ -97,7 +97,8 @@ async function bootstrap() {
     origin: [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://panameconsulting.com'
+      'https://panameconsulting.onrender.com',
+      'https://panameconsulting.vercel.app'
     ],
     methods: ['GET', 'POST', 'HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Accept', 'Authorization', ' Cache-Control', 'X-Requested-With', 'X-HTTP-Method-Override'],
@@ -121,7 +122,8 @@ app.use('/uploads', (req: any, res: { header: (arg0: string, arg1: string) => vo
   const allowedOrigins = [
     'http://localhost:5173',
     'http://localhost:3000', 
-    'https://panameconsulting.com'
+    'https://panameconsulting.onrender.com',
+    'https://panameconsulting.vercel.app'
   ];
   
   const origin = req.headers.origin;
@@ -166,9 +168,10 @@ app.use('/uploads', (req: any, res: { header: (arg0: string, arg1: string) => vo
     })
   );
 
-  await app.listen(3000);
+  const port = process.env.PORT || 10000;
+  await app.listen(port);
   console.log(`Database connected successfully`);
-  console.log(`Server running on http://localhost:3000`);
+  console.log(`Server running on port ${port}`);
 }
 
 bootstrap();
