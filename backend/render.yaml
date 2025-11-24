@@ -11,7 +11,7 @@ services:
       pnpm install
       pnpm run build
     startCommand: cd backend && node dist/main.js
-    healthCheckPath: /api/health
+    healthCheckPath: /health                    # ← CORRIGÉ
     autoDeploy: true
     envVars:
       - key: NODE_ENV

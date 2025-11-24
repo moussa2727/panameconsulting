@@ -17,6 +17,22 @@ async function bootstrap() {
   // 👇 Création du serveur Express natif
   const server = express();
 
+  server.get('/health', (req, res) => {
+  const health = {
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'production',
+    uptime: `${Math.floor(process.uptime())}s`,
+    memory: {
+      used: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
+      total: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`
+    },
+    node: process.version
+  };
+  
+  res.status(200).json(health);
+});
+
   // ➕ Route spéciale pour /
   server.get('/', (req, res) => {
     res.status(200).send(`

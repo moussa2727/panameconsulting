@@ -144,7 +144,7 @@ export class AuthService {
                 new Date(decoded.exp * 1000)
             );
 
-            this.logger.log(`Nouvel utilisateur enregistré: ${newUser.email} (rôle: ${newUser.role}, actif: ${newUser.isActive})`);
+            this.logger.log(`Nouvel utilisateur enregistré: (rôle: ${newUser.role}, actif: ${newUser.isActive})`);
 
             return {
                 access_token: token,
