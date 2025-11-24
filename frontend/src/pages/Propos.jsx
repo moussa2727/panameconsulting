@@ -2,7 +2,6 @@ import { Helmet } from 'react-helmet-async';
 import About from '../components/About';
 import CTASection from '../components/CtaSection';
 
-import Partners from '../components/partners';
 import Valeur from '../components/Valeur';
 import '../index.css';
 
@@ -46,10 +45,9 @@ export default function Propos() {
                   }
                `}</style>
         </Helmet>
-        <main className='flex-1 mt-[10px] sm:mt-[10px] md:mt-[-5px] bg-gradient-to-b from-white via-sky-50 to-white'>
+        <main className='flex-1 bg-gradient-to-b from-white via-sky-50 to-white'>
           <About />
           <Valeur />
-          <Partners />
           <CTASection />
         </main>
       </div>

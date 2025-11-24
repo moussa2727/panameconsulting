@@ -64,6 +64,8 @@ export class MailService {
     }
   }
 
+  
+
   async sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
     // Logger le token pour le développement
     this.logger.log(`Token réinitialisation.`);

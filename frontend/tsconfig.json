@@ -28,7 +28,7 @@
    "include": [
       "**/*.ts",
       "**/*.tsx"
-   ],
+, "src/components/auth/ResetPassword.jsx"   ],
    "exclude": [
       "node_modules"
    ]

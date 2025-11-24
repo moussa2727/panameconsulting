@@ -47,7 +47,7 @@ const About = () => {
   ];
 
   return (
-    <div className='bg-gradient-to-b from-white via-sky-50 to-white'>
+    <div className='bg-gradient-to-b from-white via-sky-50 to-white mt-12 md:mt-16 '>
       <section
         id='a-propos'
         className='py-12 px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto'

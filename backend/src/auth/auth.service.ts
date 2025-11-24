@@ -577,9 +577,18 @@ export class AuthService {
         }
     }
 
-    private getFrontendUrl(): string {
-    const nodeEnv = process.env.NODE_ENV || 'development';
+  
+
+private getFrontendUrl(): string {
     let url = process.env.FRONTEND_URL;
+    const nodeEnv = process.env.NODE_ENV || 'development';
+    
+    // ✅ CORRECTION CRITIQUE : Nettoyer l'URL si elle contient une virgule
+    if (url && url.includes(',')) {
+        console.warn('⚠️ URL frontend malformée détectée, nettoyage en cours');
+        // Prendre seulement la première URL avant la virgule
+        url = url.split(',')[0].trim();
+    }
     
     if (!url) {
         url = nodeEnv === 'production' 
@@ -587,19 +596,25 @@ export class AuthService {
             : 'http://localhost:5173';
     }
     
-    // Nettoyage de l'URL
+    // Nettoyage final
     return url.replace(/\/$/, '');
 }
 
-    private buildResetUrl(token: string): string {
-        const baseUrl = this.getFrontendUrl();
-        
-        if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
-            throw new Error(`URL frontend invalide: "${baseUrl}" - doit commencer par http:// ou https://`);
-        }
-        
-        return `${baseUrl}/reset-password?token=${token}`;
+private buildResetUrl(token: string): string {
+    const baseUrl = this.getFrontendUrl();
+    
+    console.log('🔧 URL frontend nettoyée:', baseUrl); // Pour debug
+    
+    if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+        throw new Error(`URL frontend invalide: "${baseUrl}" - doit commencer par http:// ou https://`);
     }
+    
+    const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+    console.log('🔧 URL de reset finale résolue.'); // Pour debug
+    
+    return resetUrl;
+}
+
 
     async sendPasswordResetEmail(email: string): Promise<void> {
         try {

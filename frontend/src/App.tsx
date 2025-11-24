@@ -40,6 +40,7 @@ import RequireAdmin from './context/RequireAdmin';
 import MesRendezVous from './pages/user/rendezvous/MesRendezVous';
 import UserProfile from './pages/user/UserProfile';
 import UserProcedure from './pages/user/UserProcedure';
+import ResetPassword from './components/auth/ResetPassword';
 
 // Layout pour les pages publiques
 const PublicLayout = ({ children }: { children: React.ReactNode }) => {
@@ -149,6 +150,7 @@ function App() {
               <Contact />
             </PublicLayout>
           } />
+
           
           <Route path='/a-propos' element={
             <PublicLayout>
@@ -162,6 +164,14 @@ function App() {
               <RendezVous />
             </MinimalLayout>
           } />
+
+            <Route path='/reset-password' element={
+            <MinimalLayout>
+               <ResetPassword />
+            </MinimalLayout>
+          } />
+
+
 
           {/* Redirections uniformisées pour l'authentification */}
           <Route path='/connexion' element={

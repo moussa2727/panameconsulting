@@ -125,7 +125,7 @@ const Destination = () => {
   }
 
   return (
-    <section className='px-5 py-20 bg-gradient-to-b from-sky-50 to-white lg:py-20'>
+    <section className='px-5 py-20 bg-white lg:py-20'>
       <ToastContainer position='bottom-right' />
       <div className='max-w-7xl mx-auto'>
         <div className='text-center mb-16'>
