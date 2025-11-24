@@ -1,8 +1,8 @@
-// ProcedureService.ts - VERSION CORRIGÉE POUR ERREUR 401
+// ProcedureService.ts - VERSION SÉCURISÉE ET CORRIGÉE
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
 
-// ==================== TYPES ====================
+// ==================== TYPES SÉCURISÉS POUR UTILISATEUR ====================
 
 export enum ProcedureStatus {
   IN_PROGRESS = 'En cours',
@@ -25,7 +25,7 @@ export enum StepName {
   PREPARATIF_VOYAGE = 'Préparatifs de voyage'
 }
 
-export interface ProcedureStep {
+export interface UserProcedureStep {
   nom: StepName;
   statut: StepStatus;
   dateCreation: Date;
@@ -44,30 +44,28 @@ export interface RendezvousInfo {
   avisAdmin?: string;
 }
 
-export interface Procedure {
+// ✅ TYPE SÉCURISÉ - SANS DONNÉES ADMIN
+export interface UserProcedure {
   _id: string;
   rendezVousId: RendezvousInfo | string;
   prenom: string;
   nom: string;
   email: string;
-  telephone: string;
   destination: string;
-  niveauEtude: string;
-  filiere: string;
+  niveauEtude?: string;
+  filiere?: string;
   statut: ProcedureStatus;
-  steps: ProcedureStep[];
+  steps: UserProcedureStep[];
   raisonRejet?: string;
-  isDeleted: boolean;
-  deletedAt?: Date;
-  deletionReason?: string;
   dateCompletion?: Date;
   dateDerniereModification?: Date;
   createdAt: Date;
   updatedAt: Date;
+  // ❌ SUPPRIMÉ: isDeleted, deletedAt, deletionReason, telephone
 }
 
-export interface PaginatedProcedures {
-  data: Procedure[];
+export interface PaginatedUserProcedures {
+  data: UserProcedure[];
   total: number;
   page: number;
   limit: number;
@@ -78,7 +76,7 @@ export interface CancelProcedureDto {
   reason?: string;
 }
 
-// ==================== SERVICE API ====================
+// ==================== SERVICE API SÉCURISÉ ====================
 
 const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const API_TIMEOUT = 15000;
@@ -86,12 +84,12 @@ const API_TIMEOUT = 15000;
 class ProcedureApiService {
   
   /**
-   * ✅ Récupérer les procédures de l'utilisateur connecté
+   * ✅ Récupérer les procédures de l'utilisateur connecté (SÉCURISÉ)
    */
   static async fetchUserProcedures(
     page: number = 1,
     limit: number = 10
-  ): Promise<PaginatedProcedures> {
+  ): Promise<PaginatedUserProcedures> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
 
@@ -111,20 +109,11 @@ class ProcedureApiService {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        // ✅ CORRECTION: Créer une erreur avec le statut pour mieux la traiter
-        const error = new Error(`HTTP ${response.status}`);
-        (error as any).status = response.status;
-        (error as any).statusText = response.statusText;
-        
-        if (response.status === 401) {
-          (error as any).isSessionExpired = true;
-        }
-        
-        throw error;
+        throw this.createSecureError(response);
       }
 
-      const data: PaginatedProcedures = await response.json();
-      return data;
+      const data = await response.json();
+      return this.sanitizeProceduresData(data);
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -137,11 +126,11 @@ class ProcedureApiService {
   }
 
   /**
-   * ✅ Récupérer les détails d'une procédure spécifique
+   * ✅ Récupérer les détails d'une procédure spécifique (SÉCURISÉ)
    */
   static async fetchProcedureDetails(
     procedureId: string
-  ): Promise<Procedure> {
+  ): Promise<UserProcedure> {
     if (!procedureId) {
       throw new Error('ID de procédure manquant');
     }
@@ -165,20 +154,11 @@ class ProcedureApiService {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        // ✅ CORRECTION: Créer une erreur avec le statut pour mieux la traiter
-        const error = new Error(`HTTP ${response.status}`);
-        (error as any).status = response.status;
-        (error as any).statusText = response.statusText;
-        
-        if (response.status === 401) {
-          (error as any).isSessionExpired = true;
-        }
-        
-        throw error;
+        throw this.createSecureError(response);
       }
 
-      const data: Procedure = await response.json();
-      return data;
+      const data = await response.json();
+      return this.sanitizeProcedureData(data);
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -191,12 +171,12 @@ class ProcedureApiService {
   }
 
   /**
-   * ✅ Annuler une procédure (User seulement)
+   * ✅ Annuler une procédure (User seulement - SÉCURISÉ)
    */
   static async cancelProcedure(
     procedureId: string,
     reason?: string
-  ): Promise<Procedure> {
+  ): Promise<UserProcedure> {
     if (!procedureId) {
       throw new Error('ID de procédure manquant');
     }
@@ -221,20 +201,11 @@ class ProcedureApiService {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        // ✅ CORRECTION: Créer une erreur avec le statut pour mieux la traiter
-        const error = new Error(`HTTP ${response.status}`);
-        (error as any).status = response.status;
-        (error as any).statusText = response.statusText;
-        
-        if (response.status === 401) {
-          (error as any).isSessionExpired = true;
-        }
-        
-        throw error;
+        throw this.createSecureError(response);
       }
 
-      const data: Procedure = await response.json();
-      return data;
+      const data = await response.json();
+      return this.sanitizeProcedureData(data);
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -245,15 +216,85 @@ class ProcedureApiService {
       clearTimeout(timeoutId);
     }
   }
+
+  // ==================== MÉTHODES DE SÉCURITÉ PRIVÉES ====================
+
+  /**
+   * ✅ Créer des erreurs sécurisées sans détails techniques
+   */
+  private static createSecureError(response: Response): Error {
+    const error = new Error(this.getSecureErrorMessage(response.status));
+    (error as any).status = response.status;
+    
+    // ✅ Marquer uniquement les erreurs de session
+    if (response.status === 401) {
+      (error as any).isSessionExpired = true;
+    }
+    
+    return error;
+  }
+
+  /**
+   * ✅ Messages d'erreur sécurisés pour l'utilisateur
+   */
+  private static getSecureErrorMessage(status: number): string {
+    switch (status) {
+      case 401:
+        return 'SESSION_EXPIRED';
+      case 403:
+        return 'ACCES_REFUSE';
+      case 404:
+        return 'PROCEDURE_INTROUVABLE';
+      case 429:
+        return 'TROP_REQUETES';
+      case 500:
+        return 'ERREUR_SERVEUR';
+      default:
+        return 'ERREUR_INCONNUE';
+    }
+  }
+
+  /**
+   * ✅ Filtrer les données sensibles d'une procédure
+   */
+  private static sanitizeProcedureData(data: any): UserProcedure {
+    if (!data) throw new Error('Données de procédure invalides');
+
+    // ✅ Supprimer les champs réservés aux admins
+    const { 
+      isDeleted, 
+      deletedAt, 
+      deletionReason, 
+      telephone, 
+      // Extraire uniquement les champs autorisés
+      ...safeData 
+    } = data;
+
+    return safeData as UserProcedure;
+  }
+
+  /**
+   * ✅ Filtrer les données sensibles d'une liste de procédures
+   */
+  private static sanitizeProceduresData(data: any): PaginatedUserProcedures {
+    if (!data || !Array.isArray(data.data)) {
+      throw new Error('Données de procédures invalides');
+    }
+
+    return {
+      ...data,
+      data: data.data.map((procedure: any) => this.sanitizeProcedureData(procedure))
+    };
+  }
 }
 
-// ==================== CUSTOM HOOKS USER SEULEMENT ====================
+// ==================== CUSTOM HOOKS SÉCURISÉS ====================
 
 /**
  * ✅ Hook pour récupérer les procédures de l'utilisateur avec pagination
  */
 export const useUserProcedures = (page: number = 1, limit: number = 10) => {
-  const [procedures, setProcedures] = useState<PaginatedProcedures | null>(null);
+  const [procedures, setProcedures] = useState<PaginatedUserProcedures | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -265,34 +306,18 @@ export const useUserProcedures = (page: number = 1, limit: number = 10) => {
       const data = await ProcedureApiService.fetchUserProcedures(page, limit);
       setProcedures(data);
     } catch (err: any) {
-      let errorMessage = 'Erreur lors du chargement des procédures';
+      const safeErrorMessage = getSafeUserErrorMessage(err);
+      setError(safeErrorMessage);
       
-      // ✅ CORRECTION: Gestion améliorée des erreurs HTTP
-      if (err.isSessionExpired) {
-        errorMessage = 'SESSION_EXPIRED';
-      } else if (err.status === 403) {
-        errorMessage = 'Accès non autorisé';
-      } else if (err.status === 404) {
-        errorMessage = 'Aucune procédure trouvée';
-      } else if (err.status === 429) {
-        errorMessage = 'Trop de requêtes. Veuillez patienter.';
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-      
-      setError(errorMessage);
-      
-      // ✅ NE PAS NETTOYER LA CONSOLE - Laisser l'erreur 401 visible
-      console.log('🔍 Erreur dans useUserProcedures:', {
-        message: err.message,
-        status: err.status,
-        statusText: err.statusText,
-        isSessionExpired: err.isSessionExpired
+      // ✅ Logs de débogage sécurisés
+      console.log('🔍 Erreur useUserProcedures:', {
+        type: safeErrorMessage,
+        status: err.status
       });
       
-      // ✅ Afficher toast seulement pour les erreurs non liées à la session
-      if (errorMessage !== 'SESSION_EXPIRED') {
-        toast.error(errorMessage);
+      // ✅ Toast uniquement pour les erreurs non-session
+      if (safeErrorMessage !== 'SESSION_EXPIRED') {
+        toast.error(getUserFriendlyMessage(safeErrorMessage));
       }
     } finally {
       setLoading(false);
@@ -315,12 +340,13 @@ export const useUserProcedures = (page: number = 1, limit: number = 10) => {
  * ✅ Hook pour récupérer les détails d'une procédure
  */
 export const useProcedureDetails = (procedureId: string | null) => {
-  const [procedure, setProcedure] = useState<Procedure | null>(null);
+  const [procedure, setProcedure] = useState<UserProcedure | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchDetails = useCallback(async () => {
     if (!procedureId) {
+      setProcedure(null);
       setLoading(false);
       return;
     }
@@ -332,32 +358,16 @@ export const useProcedureDetails = (procedureId: string | null) => {
       const data = await ProcedureApiService.fetchProcedureDetails(procedureId);
       setProcedure(data);
     } catch (err: any) {
-      let errorMessage = 'Erreur lors du chargement des détails';
+      const safeErrorMessage = getSafeUserErrorMessage(err);
+      setError(safeErrorMessage);
       
-      // ✅ CORRECTION: Gestion améliorée des erreurs HTTP
-      if (err.isSessionExpired) {
-        errorMessage = 'SESSION_EXPIRED';
-      } else if (err.status === 403) {
-        errorMessage = 'Accès non autorisé à cette procédure';
-      } else if (err.status === 404) {
-        errorMessage = 'Procédure non trouvée';
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-      
-      setError(errorMessage);
-      
-      // ✅ NE PAS NETTOYER LA CONSOLE - Laisser l'erreur 401 visible
-      console.log('🔍 Erreur dans useProcedureDetails:', {
-        message: err.message,
-        status: err.status,
-        statusText: err.statusText,
-        isSessionExpired: err.isSessionExpired
+      console.log('🔍 Erreur useProcedureDetails:', {
+        type: safeErrorMessage,
+        status: err.status
       });
       
-      // ✅ Afficher toast seulement pour les erreurs non liées à la session
-      if (errorMessage !== 'SESSION_EXPIRED') {
-        toast.error(errorMessage);
+      if (safeErrorMessage !== 'SESSION_EXPIRED') {
+        toast.error(getUserFriendlyMessage(safeErrorMessage));
       }
     } finally {
       setLoading(false);
@@ -385,7 +395,7 @@ export const useCancelProcedure = () => {
   const cancelProcedure = useCallback(async (
     procedureId: string,
     reason?: string
-  ): Promise<Procedure | null> => {
+  ): Promise<UserProcedure | null> => {
     setLoading(true);
 
     try {
@@ -393,30 +403,15 @@ export const useCancelProcedure = () => {
       toast.success('Procédure annulée avec succès');
       return data;
     } catch (err: any) {
-      let errorMessage = 'Erreur lors de l\'annulation';
+      const safeErrorMessage = getSafeUserErrorMessage(err);
       
-      // ✅ CORRECTION: Gestion améliorée des erreurs HTTP
-      if (err.isSessionExpired) {
-        errorMessage = 'SESSION_EXPIRED';
-      } else if (err.status === 403) {
-        errorMessage = 'Vous ne pouvez annuler que vos propres procédures';
-      } else if (err.status === 404) {
-        errorMessage = 'Procédure non trouvée';
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-      
-      // ✅ NE PAS NETTOYER LA CONSOLE - Laisser l'erreur 401 visible
-      console.log('🔍 Erreur dans useCancelProcedure:', {
-        message: err.message,
-        status: err.status,
-        statusText: err.statusText,
-        isSessionExpired: err.isSessionExpired
+      console.log('🔍 Erreur useCancelProcedure:', {
+        type: safeErrorMessage,
+        status: err.status
       });
       
-      // ✅ Afficher toast seulement pour les erreurs non liées à la session
-      if (errorMessage !== 'SESSION_EXPIRED') {
-        toast.error(errorMessage);
+      if (safeErrorMessage !== 'SESSION_EXPIRED') {
+        toast.error(getUserFriendlyMessage(safeErrorMessage));
       }
       return null;
     } finally {
@@ -430,16 +425,17 @@ export const useCancelProcedure = () => {
   };
 };
 
-// ==================== FONCTIONS UTILITAIRES POUR LE FRONTEND ====================
+// ==================== FONCTIONS UTILITAIRES SÉCURISÉES ====================
 
 /**
- * ✅ Vérifie si une procédure peut être annulée
+ * ✅ Vérifie si une procédure peut être annulée (validation frontend indicative seulement)
  */
-export const canCancelProcedure = (procedure: Procedure): boolean => {
+export const canCancelProcedure = (procedure: UserProcedure): boolean => {
+  // ✅ Cette validation est indicative - la validation réelle se fait côté backend
   if (procedure.statut !== ProcedureStatus.IN_PROGRESS) return false;
-  if (procedure.isDeleted) return false;
   
-  const hasCompletedSteps = procedure.steps.some((step: ProcedureStep) => 
+  // ✅ Vérifier qu'aucune étape n'est terminée (logique métier)
+  const hasCompletedSteps = procedure.steps.some((step: UserProcedureStep) => 
     step.statut === StepStatus.COMPLETED
   );
   
@@ -449,13 +445,13 @@ export const canCancelProcedure = (procedure: Procedure): boolean => {
 /**
  * ✅ Calcule la progression d'une procédure
  */
-export const getProgressStatus = (procedure: Procedure): { 
+export const getProgressStatus = (procedure: UserProcedure): { 
   percentage: number; 
   completed: number; 
   total: number 
 } => {
   const totalSteps = procedure.steps.length;
-  const completedSteps = procedure.steps.filter((step: ProcedureStep) => 
+  const completedSteps = procedure.steps.filter((step: UserProcedureStep) => 
     step.statut === StepStatus.COMPLETED
   ).length;
   
@@ -557,6 +553,37 @@ export const getStepStatusColor = (statut: StepStatus): string => {
     default: 
       return 'bg-gray-50 text-gray-700 border-gray-200';
   }
+};
+
+// ==================== FONCTIONS DE SÉCURITÉ INTERNES ====================
+
+/**
+ * ✅ Convertit les erreurs techniques en messages sécurisés
+ */
+const getSafeUserErrorMessage = (error: any): string => {
+  if (error.isSessionExpired) return 'SESSION_EXPIRED';
+  if (error.message && typeof error.message === 'string') {
+    return error.message;
+  }
+  return 'ERREUR_INCONNUE';
+};
+
+/**
+ * ✅ Messages utilisateur friendly
+ */
+const getUserFriendlyMessage = (errorCode: string): string => {
+  const messages: Record<string, string> = {
+    'SESSION_EXPIRED': 'Session expirée - Veuillez vous reconnecter',
+    'ACCES_REFUSE': 'Action non autorisée',
+    'PROCEDURE_INTROUVABLE': 'Procédure non trouvée',
+    'TROP_REQUETES': 'Trop de requêtes - Veuillez patienter',
+    'ERREUR_SERVEUR': 'Erreur serveur - Veuillez réessayer',
+    'ERREUR_INCONNUE': 'Une erreur est survenue',
+    'Délai de connexion dépassé': 'Délai de connexion dépassé',
+    'ID de procédure manquant': 'Identifiant de procédure manquant'
+  };
+  
+  return messages[errorCode] || 'Une erreur est survenue';
 };
 
 // ==================== EXPORT ====================

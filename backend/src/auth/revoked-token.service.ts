@@ -14,30 +14,22 @@ export class RevokedTokenService {
         private jwtService: JwtService
     ) { }
 
-    async revokeToken(token: string, expiresAt: Date): Promise<RevokedToken | null> {
-        const decoded = this.jwtService.decode(token) as any;
-        if (!decoded) {
-            throw new Error('Token invalide');
+    async revokeToken(token: string, expiresAt: Date): Promise<void> {
+        try {
+            const decoded = this.jwtService.decode(token) as any;
+            const userId = decoded?.sub;
+            
+            const exists = await this.revokedTokenModel.findOne({ token });
+            if (!exists) {
+                await this.revokedTokenModel.create({
+                    token,
+                    userId,
+                    expiresAt
+                });
+            }
+        } catch (error) {
+            this.logger.error(`Erreur revocation token: ${error.message}`);
         }
-
-        const userId = decoded.sub || decoded.userId;
-        if (!userId) {
-            throw new Error('Token ne contient pas d\'ID utilisateur');
-        }
-
-        // Éviter les doublons
-        const alreadyRevoked = await this.revokedTokenModel.findOne({ token });
-        if (alreadyRevoked) {
-            return null;
-        }
-
-        const revokedToken = new this.revokedTokenModel({
-            token,
-            expiresAt,
-            userId
-        });
-
-        return revokedToken.save();
     }
 
     async isTokenRevoked(token: string): Promise<boolean> {

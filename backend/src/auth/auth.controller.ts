@@ -3,10 +3,7 @@ import {
     Body,
     Controller,
     Get,
-    Param,
-    Patch,
     Post,
-    Req,
     Request,
     Res,
     UseGuards,
@@ -27,8 +24,6 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { LoginDto } from './dto/login.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-
 interface CustomRequest extends Request {
     cookies?: {
         refresh_token?: string;
@@ -44,246 +39,258 @@ export class AuthController {
         private usersService: UsersService
     ) { }
 
-   // Dans auth.controller.ts - UTILISATION CORRECTE
-@Post('login')
-@UseGuards(ThrottleGuard, LocalAuthGuard) // ✅ Utilisation correcte du guard
-@ApiOperation({ summary: 'Connexion utilisateur' })
-@ApiResponse({ status: 200, description: 'Connexion réussie' })
-@ApiResponse({ status: 401, description: 'Identifiants invalides' })
-async login(
-    @Body() loginDto: LoginDto,
-    @Request() req: { user: any }, // ✅ req.user est rempli par LocalAuthGuard
-    @Res() res: Response
-) {
-    const result = await this.authService.login(req.user);
+    // ==================== 🔐 ENDPOINTS D'AUTHENTIFICATION ====================
+
+    @Post('login')
+    @UseGuards(ThrottleGuard, LocalAuthGuard)
+    @ApiOperation({ summary: 'Connexion utilisateur' })
+    @ApiResponse({ status: 200, description: 'Connexion réussie' })
+    @ApiResponse({ status: 401, description: 'Identifiants invalides' })
+    async login(
+        @Body() loginDto: LoginDto,
+        @Request() req: { user: any },
+        @Res() res: Response
+    ) {
+        console.log('🔐 Tentative de connexion');
+        
+        const result = await this.authService.login(req.user);
+        
+        const cookieOptions: any = {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
+        };
+
+        res.cookie('refresh_token', result.refreshToken, {
+            ...cookieOptions,
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        });
+
+        res.cookie('access_token', result.accessToken, {
+            ...cookieOptions,
+            httpOnly: false,
+            maxAge: 15 * 60 * 1000
+        });
+
+        console.log('✅ Connexion réussie.');
+        
+        return res.json({
+            accessToken: result.accessToken,
+            user: {
+                id: result.user.id,
+                email: result.user.email,
+                firstName: result.user.firstName,
+                lastName: result.user.lastName,
+                role: result.user.role,
+                isAdmin: result.user.role === UserRole.ADMIN
+            },
+            message: 'Connexion réussie'
+        });
+    }
+
     
-    // Configuration des cookies
-    const cookieOptions: any = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined
-    };
 
-    res.cookie('refresh_token', result.refreshToken, {
-        ...cookieOptions,
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
-    });
-
-    res.cookie('access_token', result.accessToken, {
-        ...cookieOptions,
-        httpOnly: false,
-        maxAge: 15 * 60 * 1000 // 15 minutes
-    });
-
-    return res.json({
-        accessToken: result.accessToken,
-        user: result.user,
-        message: 'Connexion réussie'
-    });
-}
-
-  @Post('refresh')
-@ApiOperation({ summary: 'Rafraîchir le token' })
-@ApiResponse({ status: 200, description: 'Token rafraîchi' })
-@ApiResponse({ status: 401, description: 'Refresh token invalide' })
-async refresh(@Req() req: CustomRequest, @Body() body: any, @Res() res: Response) {
-  console.log('🔄 Requête de rafraîchissement reçue');
-  
-  // ✅ Essayer multiple sources pour le refresh token
-  const refreshToken = body?.refreshToken || req.cookies?.refresh_token;
-  
-  if (!refreshToken) {
-    console.warn('❌ Refresh token manquant');
-    
-    // ✅ Nettoyer les cookies même si le token est manquant
-    const cookieOptions: any = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined,
-      path: '/'
-    };
-
-    res.clearCookie('refresh_token', cookieOptions);
-    res.clearCookie('access_token', cookieOptions);
-    
-    return res.status(401).json({ 
-      message: 'Refresh token manquant',
-      loggedOut: true 
-    });
-  }
-
-  console.log('🔍 Refresh token trouvé, longueur:', refreshToken.length);
-
-  try {
-    const result = await this.authService.refresh(refreshToken);
-
-    // ✅ Si session expirée, nettoyer les cookies AVANT de retourner la réponse
-    if ((result as any)?.sessionExpired) {
-      console.log('🔒 Session expirée - nettoyage cookies côté serveur');
+    @Post('refresh')
+  @ApiOperation({ summary: 'Rafraîchir le token' })
+  @ApiResponse({ status: 200, description: 'Token rafraîchi' })
+  @ApiResponse({ status: 401, description: 'Refresh token invalide' })
+  async refresh(@Request() req: CustomRequest, @Body() body: any, @Res() res: Response) {
+      console.log('🔄 Requête de rafraîchissement reçue');
       
-      const cookieOptions: any = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined,
-        path: '/'
-      };
-
-      res.clearCookie('refresh_token', cookieOptions);
-      res.clearCookie('access_token', cookieOptions);
+      const refreshToken = body?.refreshToken || req.cookies?.refresh_token;
       
-      return res.status(401).json({ 
-        loggedOut: true, 
-        sessionExpired: true,
-        message: 'Session expirée après 25 minutes'
-      });
-    }
+      if (!refreshToken) {
+          console.warn('❌ Refresh token manquant');
+          this.clearAuthCookies(res);
+          return res.status(401).json({ 
+              message: 'Refresh token manquant',
+              loggedOut: true 
+          });
+      }
 
-    // ✅ Configuration des cookies pour les tokens valides
-    const cookieOptions: any = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined,
-      path: '/'
-    };
+      try {
+          const result = await this.authService.refresh(refreshToken);
 
-    // ✅ Mettre à jour le refresh token si un nouveau est fourni
-    if (result.refreshToken) {
-      res.cookie('refresh_token', result.refreshToken, {
-        ...cookieOptions,
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
-      });
-      console.log('✅ Nouveau refresh token défini');
-    }
+          // ✅ GESTION SESSION EXPIREE
+          if (result.sessionExpired) {
+              console.log('🔒 Session expirée - nettoyage cookies');
+              this.clearAuthCookies(res);
+              return res.status(401).json({ 
+                  loggedOut: true, 
+                  sessionExpired: true,
+                  message: 'Session expirée après 25 minutes'
+              });
+          }
 
-    // ✅ Mettre à jour le access token
-    res.cookie('access_token', result.accessToken, {
-      ...cookieOptions,
-      httpOnly: false,
-      maxAge: 15 * 60 * 1000 // 15 minutes
-    });
+          // ✅ VALIDATION DES TOKENS
+          if (!result.accessToken) {
+              console.error('❌ Access token non généré');
+              throw new BadRequestException('Access token non généré');
+          }
 
-    console.log('✅ Tokens rafraîchis avec succès');
+          const cookieOptions: any = {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+              domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined,
+              path: '/'
+          };
 
-    return res.json({
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken
-    });
+          // ✅ MISE À JOUR COOKIE REFRESH TOKEN
+          if (result.refreshToken) {
+              res.cookie('refresh_token', result.refreshToken, {
+                  ...cookieOptions,
+                  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
+              });
+              console.log('✅ Refresh token cookie mis à jour');
+          }
 
-  } catch (error: any) {
-    console.error('❌ Erreur rafraîchissement:', error.message);
-    
-    // ✅ Nettoyer les cookies en cas d'erreur
-    const cookieOptions: any = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined,
-      path: '/'
-    };
+          // ✅ MISE À JOUR COOKIE ACCESS TOKEN
+          res.cookie('access_token', result.accessToken, {
+              ...cookieOptions,
+              httpOnly: false, // Accessible par le frontend
+              maxAge: 15 * 60 * 1000 // 15 minutes
+          });
 
-    res.clearCookie('refresh_token', cookieOptions);
-    res.clearCookie('access_token', cookieOptions);
-    
-    return res.status(401).json({ 
-      message: 'Refresh token invalide',
-      loggedOut: true,
-      error: error.message
-    });
+          console.log('✅ Tokens rafraîchis avec succès');
+
+          // ✅ RÉPONSE STANDARDISÉE
+          return res.json({
+              accessToken: result.accessToken,
+              refreshToken: result.refreshToken,
+              message: 'Tokens rafraîchis avec succès',
+              expiresIn: 15 * 60 // 15 minutes en secondes
+          });
+
+      } catch (error: any) {
+          console.error('❌ Erreur rafraîchissement:', error.message);
+          
+          // ✅ NETTOYAGE COMPLET EN CAS D'ERREUR
+          this.clearAuthCookies(res);
+          
+          // ✅ GESTION D'ERREURS SPÉCIFIQUES
+          let errorMessage = 'Refresh token invalide';
+          let statusCode = 401;
+          
+          if (error instanceof BadRequestException) {
+              errorMessage = error.message;
+              statusCode = 400;
+          } else if (error.message?.includes('whitelist') || error.message?.includes('autorisé')) {
+              errorMessage = 'Session invalide - veuillez vous reconnecter';
+          } else if (error.message?.includes('expiré')) {
+              errorMessage = 'Session expirée - veuillez vous reconnecter';
+          }
+          
+          return res.status(statusCode).json({ 
+              message: errorMessage,
+              loggedOut: true,
+              requiresReauth: true
+          });
+      }
   }
-}
 
-
-   @Post('register')
-@ApiOperation({ summary: 'Inscription utilisateur' })
-@ApiResponse({ status: 201, description: 'Utilisateur créé' })
-@ApiResponse({ status: 400, description: 'Données invalides' })
-async register(@Body() registerDto: RegisterDto) {
-  try {
-    return await this.authService.register(registerDto);
-  } catch (error: any) {
-    // ✅ Logger l'erreur pour le debug
-    console.log(`Erreur inscription: ${error.message}`, error.stack);
-    
-    // ✅ Renvoyer directement l'erreur métier
-    if (error instanceof BadRequestException) {
-      throw error;
+    @Post('register')
+    @ApiOperation({ summary: 'Inscription utilisateur' })
+    @ApiResponse({ status: 201, description: 'Utilisateur créé' })
+    @ApiResponse({ status: 400, description: 'Données invalides' })
+    async register(@Body() registerDto: RegisterDto) {
+        console.log('📝 Tentative d\'inscription pour:', registerDto.email);
+        
+        try {
+            const result = await this.authService.register(registerDto);
+            
+            console.log('✅ Inscription réussie .');
+            
+            return {
+                access_token: result.access_token,
+                user: {
+                    id: result.user.id,
+                    email: result.user.email,
+                    firstName: result.user.firstName,
+                    lastName: result.user.lastName,
+                    role: result.user.role,
+                    isAdmin: result.user.isAdmin,
+                    isActive: result.user.isActive
+                },
+                message: 'Inscription réussie'
+            };
+            
+        } catch (error: any) {
+            console.error('❌ Erreur inscription:', error.message);
+            
+            if (error instanceof BadRequestException) {
+                throw error;
+            }
+            
+            throw new BadRequestException(
+                error.message || 'Une erreur est survenue lors de l\'inscription'
+            );
+        }
     }
-    
-    // ✅ Gérer les erreurs inattendues
-    throw new BadRequestException(
-      error.message || 'Une erreur est survenue lors de l\'inscription'
-    );
-  }
-}
 
     @Post('logout')
     @UseGuards(JwtAuthGuard)
     @ApiOperation({ summary: 'Déconnexion' })
     async logout(@Request() req: any, @Res() res: Response) {
         const token = req.headers.authorization?.split(' ')[1] || '';
-        await this.authService.logoutWithSessionDeletion(req.user.sub, token);
+        const userId = req.user?.sub || req.user?.userId;
         
-        res.clearCookie('refresh_token');
-        res.clearCookie('access_token');
+        console.log('🚪 Déconnexion pour l\'utilisateur.' );
+        
+        if (userId && token) {
+            await this.authService.logoutWithSessionDeletion(userId, token);
+        }
+        
+        this.clearAuthCookies(res);
         
         return res.json({ message: 'Déconnexion réussie' });
     }
 
-
     @Post('logout-all')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
-@ApiOperation({ summary: 'Déconnexion de TOUS les utilisateurs SAUF les administrateurs' })
-@ApiResponse({ status: 200, description: 'Utilisateurs non-admin déconnectés avec succès' })
-@ApiResponse({ status: 403, description: 'Accès refusé - Admin uniquement' })
-async logoutAll(@Request() req: any, @Res() res: Response) {
-    try {
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.ADMIN)
+    @ApiOperation({ summary: 'Déconnexion de tous les utilisateurs non-admin' })
+    async logoutAll(@Request() req: any, @Res() res: Response) {
         const currentAdmin = req.user;
-        console.log(`🛡️ Admin ${currentAdmin.email} initie une déconnexion globale (non-admin uniquement)`);
+        console.log('🛡️ Admin initie une déconnexion globale:', currentAdmin.email);
         
-        const result = await this.authService.logoutAll();
-        
-        console.log(`✅ Déconnexion globale réussie par l'admin: ${currentAdmin.email}`);
-        
-        return res.json({ 
-            success: true,
-            message: result.message,
-            stats: result.stats,
-            adminInfo: {
-                id: currentAdmin.sub,
-                email: currentAdmin.email,
-                preserved: true
-            }
-        });
-    } catch (error) {
-        console.error(`❌ Erreur déconnexion globale: ${error.message}`);
-        return res.status(500).json({ 
-            success: false,
-            message: 'Erreur lors de la déconnexion globale',
-            error: error.message 
-        });
+        try {
+            const result = await this.authService.logoutAll();
+            
+            console.log('✅ Déconnexion globale réussie');
+            
+            return res.json({ 
+                success: true,
+                message: result.message,
+                stats: {
+                    usersLoggedOut: result.loggedOutCount,
+                    adminPreserved: true
+                }
+            });
+        } catch (error: any) {
+            console.error('❌ Erreur déconnexion globale:', error.message);
+            return res.status(500).json({ 
+                success: false,
+                message: 'Erreur lors de la déconnexion globale'
+            });
+        }
     }
-}
-    
+
+    // ==================== 👤 ENDPOINTS PROFIL UTILISATEUR ====================
+
     @Get('me')
     @UseGuards(JwtAuthGuard)
     @ApiOperation({ summary: 'Récupérer le profil utilisateur' })
     async getProfile(@Request() req: any) {
-        
-        // ✅ Essayer différents chemins pour l'ID utilisateur
         const userId = req.user?.sub || req.user?.userId || req.user?.id;
         
         if (!userId) {
-            console.error('❌ ERREUR: Aucun ID utilisateur trouvé dans req.user');
-            console.error('❌ Structure de req.user .');
+            console.error('❌ ID utilisateur manquant');
             throw new BadRequestException('ID utilisateur manquant dans le token');
         }
         
-        console.log('✅ ID utilisateur trouvé:', userId);
+        console.log('📋 Récupération du profil pour l\'utilisateur exécutant la réquête.');
         
         try {
             const user = await this.authService.getProfile(userId);
@@ -298,37 +305,45 @@ async logoutAll(@Request() req: any, @Res() res: Response) {
                 telephone: user.telephone,
                 isActive: user.isActive
             };
-        } catch (error) {
-            console.error('❌ Erreur dans getProfile:', error);
+        } catch (error: any) {
+            console.error('❌ Erreur récupération profil:', error.message);
             throw error;
         }
     }
 
-    @Patch('me')
+    @Post('update-password')
     @UseGuards(JwtAuthGuard)
-    @ApiOperation({ summary: 'Mettre à jour le profil utilisateur' })
-    async updateProfile(
+    @ApiOperation({ summary: 'Mettre à jour le mot de passe' })
+    async updatePassword(
         @Request() req: any,
-        @Body() updateUserDto: UpdateUserDto
+        @Body() body: { currentPassword: string; newPassword: string; confirmNewPassword: string }
     ) {
-        const updatedUser = await this.usersService.update(req.user.sub, updateUserDto);
-        return {
-            id: updatedUser._id,
-            email: updatedUser.email,
-            firstName: updatedUser.firstName,
-            lastName: updatedUser.lastName,
-            role: updatedUser.role,
-            telephone: updatedUser.telephone,
-            isActive: updatedUser.isActive
-        };
+        const userId = req.user?.sub || req.user?.userId;
+        
+        console.log('🔑 Mise à jour mot de passe .');
+        
+        if (body.newPassword !== body.confirmNewPassword) {
+            throw new BadRequestException('Les mots de passe ne correspondent pas');
+        }
+
+        await this.usersService.updatePassword(userId, {
+            currentPassword: body.currentPassword,
+            newPassword: body.newPassword,
+            confirmNewPassword: body.confirmNewPassword
+        });
+        
+        console.log('✅ Mot de passe mis à jour .');
+        
+        return { message: 'Mot de passe mis à jour avec succès' };
     }
 
     @Post('forgot-password')
     @ApiOperation({ summary: 'Demande de réinitialisation de mot de passe' })
-    @ApiResponse({ status: 200, description: 'Email envoyé si l\'utilisateur existe' })
-    @ApiResponse({ status: 400, description: 'Données invalides' })
     async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+        console.log('📧 Demande de réinitialisation pour:', forgotPasswordDto.email);
+        
         await this.authService.sendPasswordResetEmail(forgotPasswordDto.email);
+        
         return { 
             message: 'Si votre email est enregistré, vous recevrez un lien de réinitialisation' 
         };
@@ -337,33 +352,28 @@ async logoutAll(@Request() req: any, @Res() res: Response) {
     @Post('reset-password')
     @ApiOperation({ summary: 'Réinitialiser le mot de passe' })
     async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+        console.log('🔄 Réinitialisation du mot de passe');
+        
         await this.authService.resetPassword(
             resetPasswordDto.token,
             resetPasswordDto.newPassword
         );
+        
         return { message: 'Mot de passe réinitialisé avec succès' };
     }
 
-   @Post('update-password')
-    @UseGuards(JwtAuthGuard)
-    @ApiOperation({ summary: 'Mettre à jour le mot de passe' })
-    async updatePassword(
-    @Request() req: any,
-    @Body() body: { currentPassword: string; newPassword: string; confirmNewPassword: string }
-    ) {
-    // Validation de la confirmation
-    if (body.newPassword !== body.confirmNewPassword) {
-        throw new BadRequestException('Les mots de passe ne correspondent pas');
+    // ==================== 🔧 MÉTHODES UTILITAIRES PRIVÉES ====================
+
+    private clearAuthCookies(res: Response): void {
+        const cookieOptions: any = {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            domain: process.env.NODE_ENV === 'production' ? '.panameconsulting.com' : undefined,
+            path: '/'
+        };
+
+        res.clearCookie('refresh_token', cookieOptions);
+        res.clearCookie('access_token', cookieOptions);
     }
-
-    await this.usersService.updatePassword(req.user.sub, {
-        currentPassword: body.currentPassword,
-        newPassword: body.newPassword,
-        confirmNewPassword: body.confirmNewPassword
-    });
-    
-    return { message: 'Mot de passe mis à jour avec succès' };
-    }
-
-
 }

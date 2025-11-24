@@ -39,7 +39,6 @@ const renderApp = () => {
   }
 
   try {
-    // Configuration développement
     setupDevelopmentConfig();
 
     const root = createRoot(rootElement);
@@ -55,25 +54,23 @@ const renderApp = () => {
           >
             <AuthProvider>
               <App />
-              {/* ✅ TOASTCONTAINER AJOUTÉ ICI */}
-             <ToastContainer
-                position="top-right" 
-                autoClose={4000} 
+              <ToastContainer
+                position="top-right"
+                autoClose={4000}
                 hideProgressBar={false}
                 newestOnTop={true}
                 closeOnClick={true}
                 rtl={false}
-                pauseOnFocusLoss={false} 
+                pauseOnFocusLoss={false}
                 draggable={false}
-                pauseOnHover={false} 
+                pauseOnHover={false}
                 theme="light"
-                style={{ 
+                style={{
                   zIndex: 9999,
-                  marginTop: '50px' 
+                  marginTop: '50px'
                 }}
                 limit={1} 
-                stacked={false} 
-                loop={false}
+                stacked={true} 
               />
             </AuthProvider>
           </BrowserRouter>

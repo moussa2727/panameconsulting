@@ -1,15 +1,15 @@
-// UserProcedure.tsx - VERSION CORRIGÉE POUR GESTION ERREUR 401
+// UserProcedure.tsx - VERSION SÉCURISÉE POUR UTILISATEUR
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
   useUserProcedures, 
   useProcedureDetails, 
   useCancelProcedure,
-  Procedure,
+  type UserProcedure, // ✅ Importation de type uniquement
+  type UserProcedureStep, // ✅ Importation de type uniquement
   ProcedureStatus,
   StepStatus,
   StepName,
-  ProcedureStep,
   getStepDisplayName,
   getStepDisplayStatus,
   getProcedureDisplayStatus,
@@ -57,9 +57,9 @@ const UserProcedure = (): JSX.Element => {
   const { user, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null);
+  const [selectedProcedure, setSelectedProcedure] = useState<UserProcedure | null>(null);
   const [showCancelModal, setShowCancelModal] = useState<boolean>(false);
-  const [procedureToCancel, setProcedureToCancel] = useState<Procedure | null>(null);
+  const [procedureToCancel, setProcedureToCancel] = useState<UserProcedure | null>(null);
   const [cancelReason, setCancelReason] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<ProcedureStatus | 'ALL'>('ALL');
@@ -68,7 +68,7 @@ const UserProcedure = (): JSX.Element => {
 
   const limit = 8;
 
-  // Utilisation des hooks personnalisés
+  // Utilisation des hooks personnalisés SÉCURISÉS
   const { 
     procedures: paginatedProcedures, 
     loading: proceduresLoading, 
@@ -90,7 +90,7 @@ const UserProcedure = (): JSX.Element => {
 
   // === EFFETS - Gestion centralisée des sessions expirées ===
   useEffect(() => {
-    // ✅ CORRECTION: Vérifier si une erreur contient SESSION_EXPIRED
+    // ✅ Vérifier si une erreur contient SESSION_EXPIRED
     const checkSessionExpired = (error: string | null) => {
       if (error === 'SESSION_EXPIRED') {
         console.log('🔐 Session expirée détectée dans UserProcedure - Déconnexion...');
@@ -109,8 +109,15 @@ const UserProcedure = (): JSX.Element => {
     }
   }, [proceduresError, detailsError, logout]);
 
+  // Mettre à jour les détails quand une nouvelle procédure est sélectionnée
+  useEffect(() => {
+    if (selectedProcedure && detailedProcedure && selectedProcedure._id === detailedProcedure._id) {
+      setSelectedProcedure(detailedProcedure);
+    }
+  }, [detailedProcedure, selectedProcedure]);
+
   // === GESTION DE LA SÉLECTION ===
-  const handleSelectProcedure = (procedure: Procedure): void => {
+  const handleSelectProcedure = (procedure: UserProcedure): void => {
     setSelectedProcedure(procedure);
     setShowMobileDetails(true);
   };
@@ -137,7 +144,7 @@ const UserProcedure = (): JSX.Element => {
   };
 
   // === FILTRES ET RECHERCHE ===
-  const filteredProcedures = (paginatedProcedures?.data || []).filter((procedure: Procedure) => {
+  const filteredProcedures = (paginatedProcedures?.data || []).filter((procedure: UserProcedure) => {
     const matchesSearch = procedure.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          procedure.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          procedure.prenom.toLowerCase().includes(searchTerm.toLowerCase());
@@ -166,7 +173,7 @@ const UserProcedure = (): JSX.Element => {
     );
   }
 
-  // ✅ CORRECTION: Si session expirée, afficher un message spécifique
+  // ✅ Si session expirée, afficher un message spécifique
   if (proceduresError === 'SESSION_EXPIRED' || detailsError === 'SESSION_EXPIRED') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
@@ -327,7 +334,7 @@ const UserProcedure = (): JSX.Element => {
           <div className="lg:grid lg:grid-cols-3 lg:gap-6">
             {/* Liste des procédures */}
             <div className={`lg:col-span-2 space-y-4 ${showMobileDetails ? 'hidden lg:block' : 'block'}`}>
-              {filteredProcedures.map((procedure: Procedure) => {
+              {filteredProcedures.map((procedure: UserProcedure) => {
                 const progress = getProgressStatus(procedure);
                 const canCancel = canCancelProcedure(procedure);
                 
@@ -373,7 +380,7 @@ const UserProcedure = (): JSX.Element => {
 
                     {/* Étapes compactes */}
                     <div className="space-y-2">
-                      {procedure.steps.slice(0, 3).map((step: ProcedureStep) => (
+                      {procedure.steps.slice(0, 3).map((step: UserProcedureStep) => (
                         <div key={step.nom} className="flex items-center gap-2 text-xs">
                           {getStepStatusIcon(step.statut)}
                           <span className="text-slate-700 flex-1 truncate">
@@ -518,7 +525,7 @@ const UserProcedure = (): JSX.Element => {
                           ÉTAPES DE LA PROCÉDURE
                         </h4>
                         <div className="space-y-2">
-                          {selectedProcedure.steps.map((step: ProcedureStep) => (
+                          {selectedProcedure.steps.map((step: UserProcedureStep) => (
                             <div
                               key={step.nom}
                               className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors group"
@@ -573,12 +580,7 @@ const UserProcedure = (): JSX.Element => {
                               <span className="text-slate-500">Email</span>
                               <span className="text-slate-800 font-medium">{selectedProcedure.email}</span>
                             </div>
-                            {selectedProcedure.telephone && (
-                              <div className="flex justify-between py-1">
-                                <span className="text-slate-500">Téléphone</span>
-                                <span className="text-slate-800 font-medium">{selectedProcedure.telephone}</span>
-                              </div>
-                            )}
+                            {/* ❌ SUPPRIMÉ: Téléphone - données sensibles */}
                           </div>
                         </div>
 
@@ -629,11 +631,11 @@ const UserProcedure = (): JSX.Element => {
                                 </span>
                               </div>
                             )}
-                            {selectedProcedure.updatedAt && (
+                            {selectedProcedure.dateDerniereModification && (
                               <div className="flex justify-between py-1">
                                 <span className="text-slate-500">Dernière mise à jour</span>
                                 <span className="text-slate-800 font-medium">
-                                  {formatProcedureDate(selectedProcedure.updatedAt)}
+                                  {formatProcedureDate(selectedProcedure.dateDerniereModification)}
                                 </span>
                               </div>
                             )}
@@ -793,7 +795,7 @@ const UserProcedure = (): JSX.Element => {
                   Étapes de la procédure
                 </h2>
                 <div className="space-y-3">
-                  {selectedProcedure.steps.map((step: ProcedureStep) => (
+                  {selectedProcedure.steps.map((step: UserProcedureStep) => (
                     <div
                       key={step.nom}
                       className="bg-white border border-slate-200 rounded-2xl p-4 transition-all hover:shadow-sm"

@@ -24,13 +24,14 @@ import { Validate } from 'class-validator';
 
 interface RequestWithUser extends Request {
     user: {
-        userId: string;    // ✅ Doit correspondre à ce que renvoie JwtStrategy
-        sub?: string;      // ✅ Optionnel pour compatibilité
+        userId: string;
+        sub?: string;
         email: string;
         role: string;
         telephone?: string;
     };
 }
+
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }
@@ -40,19 +41,15 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   async create(@Body() createUserDto: RegisterDto) {
-    // S'assurer que le rôle est géré correctement
-    const userData = { ...createUserDto };
-    
-    // Ne pas permettre à l'admin de créer d'autres admins via cette route
-    // ou gérer la logique des rôles dans le service
-    if (userData.role === UserRole.ADMIN) {
-      const existingAdmin = await this.usersService.findByRole(UserRole.ADMIN);
-      if (existingAdmin) {
-        throw new BadRequestException('Il ne peut y avoir qu\'un seul administrateur');
+      // CORRECTION : Vérifier correctement l'existence d'un admin
+      if (createUserDto.role === UserRole.ADMIN) {
+          const existingAdmin = await this.usersService.findByRole(UserRole.ADMIN);
+          if (existingAdmin) {
+              throw new BadRequestException('Il ne peut y avoir qu\'un seul administrateur');
+          }
       }
-    }
-    
-    return this.usersService.create(userData);
+      
+      return this.usersService.create(createUserDto);
   }
 
   @Get()
@@ -206,6 +203,10 @@ async updateUser(
    @Get('profile/me')
   @UseGuards(JwtAuthGuard)
   async getMyProfile(@Request() req: RequestWithUser) {
+    const userId = req.user.sub || req.user.userId;
+    if (!userId) {
+        throw new BadRequestException('ID utilisateur manquant');
+    }
     const user = await this.usersService.findById(req.user.userId);
     
     return {

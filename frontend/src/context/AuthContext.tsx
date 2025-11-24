@@ -318,6 +318,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       let refreshToken: string | null = getCookie('refresh_token');
       
       if (!refreshToken) {
+        console.warn('❌ Refresh token manquant dans les cookies');
         await logout('/', true);
         return false;
       }
@@ -331,46 +332,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         body: JSON.stringify({ refreshToken })
       });
 
+      // ✅ CORRECTION : Gestion améliorée des réponses
       if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        
         if (response.status === 401) {
-          const data = await response.json();
-          
-          if (data.sessionExpired) {
-            toast.info('Votre session a expiré après 25 minutes');
+          if (errorData.sessionExpired) {
+            // ✅ Toast avec ID unique pour éviter les doublons
+            toast.info('Votre session a expiré après 25 minutes', { toastId: 'session-expired' });
             await logout('/', true);
             return false;
           }
           
-          if (data.loggedOut) {
+          if (errorData.loggedOut || errorData.requiresReauth) {
             await logout('/', true);
             return false;
           }
         }
         
+        // Autres erreurs
+        console.error('Erreur refresh token:', errorData);
         await logout('/', true);
         return false;
       }
 
       const data = await response.json();
       
-      if (data.loggedOut || data.sessionExpired) {
-        await logout('/', true);
-        return false;
-      }
-
-      if (!data.accessToken) {
+      // ✅ CORRECTION : Validation des données de réponse
+      if (data.loggedOut || data.sessionExpired || !data.accessToken) {
         await logout('/', true);
         return false;
       }
 
       const decoded = jwtDecode<JwtPayload>(data.accessToken);
       
+      // ✅ VERIFICATION SESSION 25 MINUTES (cohérent avec backend)
       if (isSessionExpired(decoded)) {
-        toast.info('Votre session a expiré après 25 minutes');
+        // ✅ Toast avec ID unique pour éviter les doublons
+        toast.info('Votre session a expiré après 25 minutes', { toastId: 'session-expired' });
         await logout('/', true);
         return false;
       }
       
+      // ✅ MISE A JOUR COHERENTE
       localStorage.setItem('token', data.accessToken);
       setToken(data.accessToken);
       
@@ -378,9 +382,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       setupTokenRefresh(decoded.exp);
       
+      console.log('✅ Token rafraîchi avec succès');
       return true;
       
     } catch (error: any) {
+      console.error('❌ Erreur lors du rafraîchissement:', error);
       await logout('/', true);
       return false;
     }
@@ -406,9 +412,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     sessionCheckRef.current = null;
   }
 
+  // ✅ CORRECTION : Appel cohérent avec le backend
   if (token) {
     try {
-      await fetch(`${VITE_API_URL}/api/auth/logout`, {
+      const response = await fetch(`${VITE_API_URL}/api/auth/logout`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -416,28 +423,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         },
         credentials: 'include',
       });
+
+      // ✅ Gérer la réponse même en cas d'erreur
+      if (!response.ok) {
+        console.warn('Logout backend échoué, mais nettoyage frontend effectué');
+      }
     } catch (error) {
-      // Silence
+      console.warn('Erreur lors du logout backend, continuation du nettoyage frontend');
     }
   }
 
+  // ✅ NETTOYAGE COHERENT AVEC LE BACKEND
   const ALL_TOKENS = ['token', 'access_token', 'refresh_token', 'auth_token'];
   ALL_TOKENS.forEach(tokenName => {
     localStorage.removeItem(tokenName);
+    sessionStorage.removeItem(tokenName);
   });
 
   clearSession();
 
-  const cookiesToClear = ['refresh_token', 'access_token', 'token'];
+  // ✅ NETTOYAGE COOKIES COHERENT
+  const cookiesToClear = ['refresh_token', 'access_token'];
   const hostname = window.location.hostname;
   
   cookiesToClear.forEach(cookieName => {
+    // Nettoyage complet des cookies
     document.cookie = `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
     document.cookie = `${cookieName}=; Path=/; Domain=${hostname}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
     
+    // Pour les sous-domaines
     if (hostname.includes('.')) {
-      const mainDomain = hostname.split('.').slice(-2).join('.');
-      document.cookie = `${cookieName}=; Path=/; Domain=.${mainDomain}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+      const domainParts = hostname.split('.');
+      if (domainParts.length > 2) {
+        const mainDomain = domainParts.slice(-2).join('.');
+        document.cookie = `${cookieName}=; Path=/; Domain=.${mainDomain}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+      }
     }
   });
 
@@ -454,12 +474,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
     
     if (!silent) {
-      toast.info('Vous avez été déconnecté avec succès');
+      // ✅ Toast avec ID unique pour éviter les doublons
+      toast.info('Vous avez été déconnecté avec succès', { toastId: 'logout-success' });
     }
     
-    setTimeout(() => {
-      window.location.reload();
-    }, 100);
+    // ✅ CORRECTION : Rechargement conditionnel
+    if (!silent && !redirectPath?.includes('connexion')) {
+      setTimeout(() => {
+        window.location.reload();
+      }, 100);
+    }
   }, 150);
 }, [navigate, clearSession, token, VITE_API_URL]);
 
@@ -488,19 +512,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       const result = await response.json();
       
-      if (result.success) {
-        toast.success(result.message);
-        setTimeout(() => window.location.reload(), 2000);
+      // ✅ CORRECTION : Vérifier la structure de réponse du backend
+      if (result.success || result.loggedOutCount >= 0) {
+        const message = result.message || `${result.loggedOutCount} utilisateurs non-admin déconnectés`;
+        toast.success(message);
+        
+        // ✅ CORRECTION : Ne pas reload immédiatement, laisser l'admin continuer
+        setTimeout(() => {
+          // Optionnel : recharger pour voir les changements
+          window.location.reload();
+        }, 3000);
       } else {
         throw new Error(result.message || 'Erreur inconnue');
       }
 
     } catch (error: any) {
+      console.error('❌ Erreur déconnexion globale:', error);
       toast.error(`${error.message || 'Erreur lors de la déconnexion globale'}`);
     } finally {
       setIsLoading(false);
     }
   }, [VITE_API_URL, token, user]);
+
 
   const login = useCallback(async (email: string, password: string): Promise<void> => {
   setIsLoading(true);
@@ -530,6 +563,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         errorMessage = `Erreur ${response.status}`;
       }
       
+      // ✅ Toast avec ID unique pour éviter les doublons
+      toast.error(errorMessage, { toastId: 'login-error' });
       throw new Error(errorMessage);
     }
 
@@ -545,22 +580,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setToken(data.accessToken);
     setUser(userWithRole);
 
-      const decoded = jwtDecode<JwtPayload>(data.accessToken);
-      saveToSession(ALLOWED_SESSION_KEYS.SESSION_START, decoded.iat * 1000);
-      
-      setupTokenRefresh(decoded.exp);
-      startSessionMonitoring();
+    const decoded = jwtDecode<JwtPayload>(data.accessToken);
+    saveToSession(ALLOWED_SESSION_KEYS.SESSION_START, decoded.iat * 1000);
+    
+    setupTokenRefresh(decoded.exp);
+    startSessionMonitoring();
 
-      const redirectPath = getRoleBasedRedirect(userWithRole);
-      navigate(redirectPath, { replace: true });
-      
-    } catch (err: any) {
-      setError(err.message);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [VITE_API_URL, navigate, setupTokenRefresh, saveToSession, getRoleBasedRedirect]);
+    const redirectPath = getRoleBasedRedirect(userWithRole);
+    navigate(redirectPath, { replace: true });
+    
+  } catch (err: any) {
+    setError(err.message);
+    throw err;
+  } finally {
+    setIsLoading(false);
+  }
+}, [VITE_API_URL, navigate, setupTokenRefresh, saveToSession, getRoleBasedRedirect]);
+
 
   const startSessionMonitoring = useCallback(() => {
     if (sessionCheckRef.current) {
@@ -581,7 +617,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }, 30 * 1000);
   }, [getSessionTimeLeft, logout]);
 
-  const register = useCallback(async (formData: RegisterFormData): Promise<void> => {
+ const register = useCallback(async (formData: RegisterFormData): Promise<void> => {
   setIsLoading(true);
   setError(null);
 

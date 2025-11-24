@@ -3,7 +3,7 @@ import About from '../components/About';
 import CtaSection from '../components/CtaSection';
 import Form from '../components/Form';
 import Hero from '../components/Hero';
-import Partners from '../components/partners';
+// import Partners from '../components/partners';
 import Valeur from '../components/Valeur';
 import '../index.css';
 
@@ -101,7 +101,7 @@ function Accueil() {
           <Hero />
           <About />
           <Valeur />
-          <Partners />
+          {/* <Partners /> */}
           <Form />
           <CtaSection />
         </main>
