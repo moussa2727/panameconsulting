@@ -25,7 +25,6 @@ FROM node:18-alpine AS production
 # Arguments de build
 ARG NODE_ENV=production
 ENV NODE_ENV=${NODE_ENV}
-ENV PORT=10000
 
 # Installation et configuration de pnpm
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
@@ -47,11 +46,11 @@ RUN mkdir -p /app/uploads && \
     mkdir -p /app/logs && \
     chown -R node:node /app
 
-# Passage à l'utilisateur non-root
+# Passage à l'utilisateur non-root (sécurité)
 USER node
 
-# Exposition du port
+# Exposition du port (Railway fournit le port via variable d'environnement)
 EXPOSE $PORT
 
-# Commande de démarrage
+# Commande de démarrage de l'application
 CMD ["node", "dist/main.js"]
