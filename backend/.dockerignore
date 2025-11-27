@@ -4,13 +4,10 @@ npm-debug.log
 .gitignore
 README.md
 .env
-.env.production
 .nyc_output
 coverage
 logs
 uploads
 .DS_Store
-docker-compose.yml
-render.yaml
-railway.toml
 *.md
+dist

@@ -5,7 +5,6 @@
   "main": "dist/main.js",
   "type": "commonjs",
   "scripts": {
-    "prebuild": "rimraf dist",
     "build": "nest build",
     "dev": "nest start --watch --verbose",
     "start": "node dist/main.js",
