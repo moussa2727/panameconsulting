@@ -4,18 +4,23 @@ services:
   backend:
     container_name: panameconsultingbackend
     build:
-      context: .  # Contexte actuel (backend/)
+      context: ./backend
       dockerfile: Dockerfile
       args:
         NODE_ENV: production
     
     image: panameconsulting:latest
+    
+    # Ports exposés
     ports:
       - "10000:10000"
+    
+    # Variables d'environnement essentielles
     environment:
       - NODE_ENV=production
       - PORT=10000
-      - HOSTNAME=0.0.0.0
+      - MONGODB_SERVER_SELECTION_TIMEOUT=30000
+      - MONGODB_SOCKET_TIMEOUT=45000
       - TZ=Europe/Paris
       - JWT_SECRET=${JWT_SECRET}
       - EMAIL_HOST=${EMAIL_HOST}
@@ -23,18 +28,42 @@ services:
       - EMAIL_PASS=${EMAIL_PASS}
       - MONGODB_URI=${MONGODB_URI}
       - FRONTEND_URL=https://panameconsulting.vercel.app
+      
+    # Fichier de variables sensibles
     env_file:
       - .env
+    
+    # Politique de redémarrage automatique
     restart: unless-stopped
+    
+    # Serveurs DNS pour la résolution de noms
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    
+    # Configuration des logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Réseau dédié
     networks:
       - backend-network
+    
+    # Volumes pour la persistance
     volumes:
       - uploads_data:/app/uploads
       - logs_data:/app/logs
 
+# Déclaration des volumes persistants
 volumes:
   uploads_data:
+    driver: local
   logs_data:
+    driver: local
 
 networks:
   backend-network:
+    driver: bridge
