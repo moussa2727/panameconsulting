@@ -1,13 +1,12 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
-import { User } from '../schemas/user.schema';
+import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
+import { Document, Types } from "mongoose";
+import { User } from "./user.schema"; // Fixed import path
 
 @Schema({
   timestamps: true,
-  autoIndex: true,
 })
 export class Session extends Document {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: Types.ObjectId, ref: "User", required: true })
   user: User;
 
   @Prop({ required: true, unique: true })
@@ -25,12 +24,15 @@ export class Session extends Document {
 
 export const SessionSchema = SchemaFactory.createForClass(Session);
 
-SessionSchema.index({ 
-  user: 1, 
-  isActive: 1, 
-  expiresAt: 1 
-}, {
-  partialFilterExpression: { isActive: true }
-});
+SessionSchema.index(
+  {
+    user: 1,
+    isActive: 1,
+    expiresAt: 1,
+  },
+  {
+    partialFilterExpression: { isActive: true },
+  },
+);
 
 SessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

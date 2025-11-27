@@ -1,4 +1,3 @@
-// AdminContactService.ts
 import { useState, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
@@ -56,13 +55,18 @@ export const useContactService = () => {
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+  // Fonction utilitaire pour vérifier les droits admin
+  const isUserAdmin = (currentUser: any): boolean => {
+    return currentUser?.role === 'admin';
+  };
+
   // Fonction de requête sécurisée avec gestion d'erreur
   const secureFetch = useCallback(async (
     endpoint: string, 
     options: RequestInit = {}, 
     requireAdmin = false
   ) => {
-    if (requireAdmin && (!isAuthenticated || !user?.isAdmin)) {
+    if (requireAdmin && (!isAuthenticated || !isUserAdmin(user))) {
       throw new Error('Accès refusé : droits administrateur requis');
     }
 
@@ -106,7 +110,7 @@ export const useContactService = () => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.message || `Erreur ${response.status}: ${response.statusText}`);
+        throw new Error(errorData?.message || `Erreur ${response.status}`);
       }
 
       return await response.json();
@@ -311,13 +315,13 @@ export const useContactService = () => {
     clearError,
     
     // Métadonnées
-    isAdmin: user?.isAdmin,
-    canAccessAdmin: isAuthenticated && user?.isAdmin
+    isAdmin: isUserAdmin(user),
+    canAccessAdmin: isAuthenticated && isUserAdmin(user)
   };
 };
 
 // Hook spécialisé pour l'admin
-export const AdminContactService = () => {
+export const useAdminContactService = () => {
   const contactService = useContactService();
   
   return {
@@ -329,8 +333,10 @@ export const AdminContactService = () => {
     markAsRead: contactService.markAsRead,
     replyToMessage: contactService.replyToMessage,
     deleteContact: contactService.deleteContact,
-    clearError: contactService.clearError
+    clearError: contactService.clearError,
+    isAdmin: contactService.isAdmin,
+    canAccessAdmin: contactService.canAccessAdmin
   };
 };
 
-export default AdminContactService;
+export default useContactService;

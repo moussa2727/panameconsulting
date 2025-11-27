@@ -6,6 +6,7 @@ import {
   Trash2, 
   Mail, 
   Phone, 
+  CheckCircle,
   XCircle,
   X,
   Shield,
@@ -20,7 +21,7 @@ import {
   ShieldCheck,
   UserCheck,
   UserX,
-  Users
+  Users,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import AdminUserService, { User as UserType, UserStats, CreateUserDto, UpdateUserDto } from '../../api/admin/AdminUserService';

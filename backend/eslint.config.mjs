@@ -1,13 +1,12 @@
-const js = require('@eslint/js');
-const typescriptParser = require('@typescript-eslint/parser');
-const typescriptPlugin = require('@typescript-eslint/eslint-plugin');
-const globals = require('globals');
+import js from '@eslint/js';
+import typescriptPlugin from '@typescript-eslint/eslint-plugin';
+import globals from 'globals';
 
-module.exports = [
+export default [
   {
     files: ['**/*.ts'],
     languageOptions: {
-      parser: typescriptParser,
+      parser: await import('@typescript-eslint/parser').then(m => m.default),
       ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
@@ -36,6 +35,8 @@ module.exports = [
         }
       }]
     },
+  },
+  {
     ignores: ['dist/**', 'node_modules/**', '**/*.js']
   }
 ];

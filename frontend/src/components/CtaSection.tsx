@@ -62,12 +62,12 @@ const CtaSection: React.FC<CtaSectionProps> = ({ className }) => {
             <div className='absolute group-hover:opacity-100 transition duration-1000 group-hover:duration-200' />
             <Link
               to='/rendez-vous'
-              className='relative flex items-center gap-2 bg-white px-6 py-3 rounded transition-all duration-300 transform hover:scale-105'
+              className='relative flex items-center gap-2 bg-white px-6 py-3 rounded-full transition-all duration-300 transform hover:scale-105'
             >
               <span className='text-sky-600 font-semibold text-base'>
                 RENDEZ-VOUS
               </span>
-              <div className='w-6 h-6 rounded bg-sky-500 flex items-center justify-center'>
+              <div className='w-6 h-6 rounded-full bg-sky-500 flex items-center justify-center'>
                 <ArrowRight className='w-4 h-4 text-white group-hover:translate-x-1 transition-transform' />
               </div>
             </Link>

@@ -1,68 +1,57 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
-import { User } from './user.schema';
+import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
+import { Document, Types } from "mongoose";
+import { User } from "./user.schema";
 
 @Schema({
   timestamps: true,
-  collection: 'password_reset_tokens',
-  autoIndex: true
+  collection: "password_reset_tokens",
 })
 export class ResetToken extends Document {
-  @Prop({
-    type: String,
-    required: true,
-    unique: true,
-    index: true
-  })
+  @Prop({ required: true, unique: true })
   token: string;
 
   @Prop({
     type: Types.ObjectId,
-    ref: 'User',
+    ref: "User",
     required: true,
-    index: true
   })
   user: User;
 
   @Prop({
     type: Date,
     required: true,
-    index: { expires: '1h' } // Auto-expire après 1 heure
   })
   expiresAt: Date;
 
   @Prop({
     type: Boolean,
     default: false,
-    index: true
   })
   used: boolean;
 
   @Prop({
     type: String,
-    enum: ['pending', 'used', 'expired'],
-    default: 'pending'
+    enum: ["pending", "used", "expired"],
+    default: "pending",
   })
   status: string;
-
-  // Méthodes virtuelles et hooks peuvent être ajoutés ici
 }
 
 export const ResetTokenSchema = SchemaFactory.createForClass(ResetToken);
 
-// Index composé pour les requêtes fréquentes
-ResetTokenSchema.index({ token: 1, user: 1, used: 1 });
+// Single index definition for expiration
+ResetTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // Middleware pour empêcher la réutilisation des tokens
-ResetTokenSchema.pre('save', function(next) {
-  if (this.isModified('used') && this.used) {
-    this.status = 'used';
+ResetTokenSchema.pre("save", function (next) {
+  if (this.isModified("used") && this.used) {
+    this.status = "used";
   }
   next();
 });
 
-// Export du type complet
-export type ResetTokenDocument = ResetToken & Document & {
-  createdAt: Date;
-  updatedAt: Date;
-};
+export type ResetTokenDocument = ResetToken &
+  Document & {
+    createdAt: Date;
+    updatedAt: Date;
+  };

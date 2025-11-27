@@ -1,39 +1,23 @@
-import { PartialType } from '@nestjs/mapped-types';
-import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, Matches, MinLength } from 'class-validator';
-import { UserRole } from '../../schemas/user.schema';
-import { RegisterDto } from './register.dto';
+import { IsEmail, IsOptional, IsString, MinLength } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
 
-export class UpdateUserDto extends PartialType(RegisterDto) {
+export class UpdateUserDto {
+  @ApiProperty({
+    example: "nouveau@email.com",
+    description: "Nouvel email",
+    required: false,
+  })
   @IsOptional()
-  @IsEmail()
+  @IsEmail({}, { message: "Format d'email invalide" })
   email?: string;
 
-  @IsOptional()
-  @IsString()
-  firstName?: string;
-
-  @IsOptional()
-  @IsString()
-  lastName?: string;
-
-  @IsOptional()
-  @IsString()
-  telephone?: string;
-
-  @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
-
-  @IsOptional()
-  @IsString()
-  isActive?: string;
-
-  @IsOptional()
-  @IsString()
-  @MinLength(8)
-  @Matches(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-    message:
-      'Le mot de passe doit contenir au moins une minuscule, une majuscule et un chiffre',
+  @ApiProperty({
+    example: "+33123456789",
+    description: "Nouveau numéro de téléphone",
+    required: false,
   })
-  password?: string;
+  @IsOptional()
+  @IsString({ message: "Le téléphone doit être une chaîne de caractères" })
+  @MinLength(5, { message: "Le téléphone doit contenir au moins 5 caractères" })
+  telephone?: string;
 }

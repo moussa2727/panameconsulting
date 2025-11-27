@@ -1,8 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { Helmet } from 'react-helmet-async';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
+import { Helmet } from 'react-helmet-async';
 import ErrorBoundary from './components/ErrorBoundary';
 import { useAuth } from './context/AuthContext';
 
@@ -17,7 +17,7 @@ import Contact from './pages/Contact';
 import Propos from './pages/Propos';
 import Services from './pages/Services';
 import NotFound from './pages/Notfound';
-import RendezVous from './pages/user/Rendez-Vous';
+import RendezVous from './pages/user/rendezvous/Rendez-Vous';
 
 // Pages de connexion, inscription, mot de passe oublié
 import Connexion from './pages/Connexion';
@@ -32,14 +32,15 @@ const AdminProfile = lazy(() => import('./pages/admin/AdminProfile'));
 const AdminProcedure = lazy(() => import('./pages/admin/AdminProcedure'));
 const AdminDestinations = lazy(() => import('./pages/admin/AdminDestinations'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
+const AdminRendezVous = lazy(() => import('./pages/admin/AdminRendez-Vous'));
 
 // Restrictions admin
 import RequireAdmin from './context/RequireAdmin';
 
-import MesRendezVous from './pages/user/MesRendezVous';
+import MesRendezVous from './pages/user/rendezvous/MesRendezVous';
 import UserProfile from './pages/user/UserProfile';
 import UserProcedure from './pages/user/UserProcedure';
-import AdminRendezVous from './pages/admin/AdminRendez-Vous';
+import ResetPassword from './components/auth/ResetPassword';
 
 // Layout pour les pages publiques
 const PublicLayout = ({ children }: { children: React.ReactNode }) => {
@@ -68,7 +69,8 @@ const MinimalLayout = ({ children }: { children: React.ReactNode }) => {
 function App() {
   const location = useLocation();
   const [navigationKey, setNavigationKey] = useState(0);
-  const { isLoading } = useAuth();
+  const { isLoading, isAuthenticated, user } = useAuth();
+  const [isAOSInitialized, setIsAOSInitialized] = useState(false);
 
   const safeScrollToTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
     try {
@@ -81,6 +83,7 @@ function App() {
     }
   }, []);
 
+  // Gestion du scroll en haut lors du changement de route
   useEffect(() => {
     safeScrollToTop();
 
@@ -95,90 +98,144 @@ function App() {
     };
   }, [location.pathname, safeScrollToTop]);
 
-  // Initialize AOS once for the entire application
+  // Initialisation AOS simplifiée
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      AOS.init({
-        duration: window.innerWidth < 768 ? 300 : 600, // Shorter duration on mobile
-        once: true,
-        easing: 'ease-out-cubic',
-        disable: false, // Enable AOS on all devices
-        offset: window.innerWidth < 768 ? 20 : 50, // Smaller offset on mobile
-        delay: 0,
-        // Disable animations that might cause issues on mobile
-        disableMutationObserver: window.innerWidth < 768
-      });
-    }
+    if (typeof window === 'undefined' || isAOSInitialized) return;
 
-    return () => {
-      AOS.refresh();
-    };
-  }, []);
+    AOS.init({
+      duration: 600,
+      once: true,
+      easing: 'ease-out-cubic',
+      offset: 50,
+    });
+
+    setIsAOSInitialized(true);
+  }, [isAOSInitialized]);
+
+  // Afficher le loader pendant le chargement
+  if (isLoading) {
+    return <Loader />;
+  }
+
+  // Fonction utilitaire pour déterminer si l'utilisateur est admin
+  const isAdminUser = user?.role === 'admin' || user?.isAdmin;
 
   return (
     <ErrorBoundary>
       <Helmet>
-        
+        <title>Paname Consulting - Études à l'Étranger, Voyages d'Affaires & demandes de Visas</title>
         <meta
-          name='description'
-          content='Accompagnement pour études en France, obtention de visas et services consulaires'
+          name="description"
+          content="Paname Consulting : expert en accompagnement étudiant à l'étranger, organisation de voyages d'affaires et demandes de visa. Conseil personnalisé pour votre réussite internationale."
         />
-        <meta
-          name='keywords'
-          content='Paname Consulting, visa France, études France, accompagnement étudiant'
-        />
-        <meta property='og:title' content='Paname Consulting' />
-        <meta property='og:type' content='website' />
-        <meta property='og:url' content={window.location.href} />
-        <link rel='canonical' href={window.location.href} />
       </Helmet>
 
       <div key={navigationKey}>
         <Routes>
-          {/* Routes publiques avec Header et Footer communs */}
+          {/* Routes publiques avec Header et Footer */}
           <Route path='/' element={
-            isLoading ? (
-              <Loader />
-            ) : (
-              <PublicLayout>
-                <Accueil />
-              </PublicLayout>
-            )
+            <PublicLayout>
+              <Accueil />
+            </PublicLayout>
           } />
+          
           <Route path='/services' element={
             <PublicLayout>
               <Services />
             </PublicLayout>
           } />
+          
           <Route path='/contact' element={
             <PublicLayout>
               <Contact />
             </PublicLayout>
           } />
+
+          
           <Route path='/a-propos' element={
             <PublicLayout>
               <Propos />
             </PublicLayout>
           } />
-          
-          {/* RendezVous - sans Header/Footer */}
+
+          {/* Rendez-vous - layout minimal */}
           <Route path='/rendez-vous' element={
             <MinimalLayout>
               <RendezVous />
             </MinimalLayout>
           } />
 
-          {/* Auth - sans Header/Footer communs */}
-          <Route path='/connexion' element={<Connexion />} />
-          <Route path='/inscription' element={<Inscription />} />
-          <Route path='/mot-de-passe-oublie' element={<MotdePasseoublie />} />
+            <Route path='/reset-password' element={
+            <MinimalLayout>
+               <ResetPassword />
+            </MinimalLayout>
+          } />
 
-          {/* Utilisateur - sans Header/Footer communs */}
-          <Route path='/user-rendez-vous' element={<MesRendezVous />} />
-          <Route path='/user-profile' element={<UserProfile />} />
-          <Route path='/user-procedure' element={<UserProcedure />} />
 
-          {/* Administration - utilise AdminLayout */}
+
+          {/* Redirections uniformisées pour l'authentification */}
+          <Route path='/connexion' element={
+            isAuthenticated ? (
+              <Navigate to={isAdminUser ? '/gestionnaire/statistiques' : '/'} replace />
+            ) : (
+              <MinimalLayout>
+                <Connexion />
+              </MinimalLayout>
+            )
+          } />
+          
+          <Route path='/inscription' element={
+            isAuthenticated ? (
+              <Navigate to={isAdminUser ? '/gestionnaire/statistiques' : '/'} replace />
+            ) : (
+              <MinimalLayout>
+                <Inscription />
+              </MinimalLayout>
+            )
+          } />
+          
+          <Route path='/mot-de-passe-oublie' element={
+            isAuthenticated ? (
+              <Navigate to={isAdminUser ? '/gestionnaire/statistiques' : '/'} replace />
+            ) : (
+              <MinimalLayout>
+                <MotdePasseoublie />
+              </MinimalLayout>
+            )
+          } />
+
+          {/* Routes utilisateur connecté - redirection si non authentifié */}
+          <Route path='/mes-rendez-vous' element={
+            isAuthenticated ? (
+              <MinimalLayout>
+                <MesRendezVous />
+              </MinimalLayout>
+            ) : (
+              <Navigate to="/connexion" replace state={{ from: location.pathname }} />
+            )
+          } />
+          
+          <Route path='/mon-profil' element={
+            isAuthenticated ? (
+              <MinimalLayout>
+                <UserProfile />
+              </MinimalLayout>
+            ) : (
+              <Navigate to="/connexion" replace state={{ from: location.pathname }} />
+            )
+          } />
+          
+          <Route path='/ma-procedure' element={
+            isAuthenticated ? (
+              <MinimalLayout>
+                <UserProcedure />
+              </MinimalLayout>
+            ) : (
+              <Navigate to="/connexion" replace state={{ from: location.pathname }} />
+            )
+          } />
+
+          {/* Administration - redirection si non admin */}
           <Route path='/gestionnaire/*' element={
             <RequireAdmin>
               <Suspense fallback={<Loader />}>
@@ -187,49 +244,25 @@ function App() {
             </RequireAdmin>
           }>
             <Route index element={<Navigate to="statistiques" replace />} />
-            <Route path='utilisateurs' element={
-              <Suspense fallback={<Loader />}>
-                <UsersManagement />
-              </Suspense>
-            } />
-            <Route path='statistiques' element={
-              <Suspense fallback={<Loader />}>
-                <AdminDashboard />
-              </Suspense>
-            } />
-            <Route path='messages' element={
-              <Suspense fallback={<Loader />}>
-                <AdminMessages />
-              </Suspense>
-            } />
-            <Route path='procedures' element={
-              <Suspense fallback={<Loader />}>
-                <AdminProcedure />
-              </Suspense>
-            } />
-            <Route path='profil' element={
-              <Suspense fallback={<Loader />}>
-                <AdminProfile />
-              </Suspense>
-            } />
-            <Route path='destinations' element={
-              <Suspense fallback={<Loader />}>
-                <AdminDestinations />
-              </Suspense>
-            } />
-
-            <Route path='rendez-vous' element={
-              <Suspense fallback={<Loader />}>
-                <AdminRendezVous />
-              </Suspense>
-            } />
+            <Route path='utilisateurs' element={<UsersManagement />} />
+            <Route path='statistiques' element={<AdminDashboard />} />
+            <Route path='messages' element={<AdminMessages />} />
+            <Route path='procedures' element={<AdminProcedure />} />
+            <Route path='profil' element={<AdminProfile />} />
+            <Route path='destinations' element={<AdminDestinations />} />
+            <Route path='rendez-vous' element={<AdminRendezVous />} />
           </Route>
 
-          {/* Routes spécifiques pour /admin/ qui doivent être NotFound */}
-          <Route path='/admin' element={<NotFound />} />
-          <Route path='/admin/*' element={<NotFound />} />
+          {/* Redirections pour compatibilité */}
+          <Route path='/user-rendez-vous' element={<Navigate to="/mes-rendez-vous" replace />} />
+          <Route path='/user-profile' element={<Navigate to="/mon-profil" replace />} />
+          <Route path='/user-procedure' element={<Navigate to="/ma-procedure" replace />} />
+          
+          {/* Redirection admin vers le dashboard */}
+          <Route path='/admin' element={<Navigate to="/gestionnaire/statistiques" replace />} />
+          <Route path='/gestionnaire' element={<Navigate to="/gestionnaire/statistiques" replace />} />
 
-          {/* Route de protection contre accès non autorisé ou fausses routes */}
+          {/* Route 404 */}
           <Route path='*' element={<NotFound />} />
         </Routes>
       </div>

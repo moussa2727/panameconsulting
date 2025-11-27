@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import * as nodemailer from "nodemailer";
 
 @Injectable()
 export class MailService {
@@ -66,18 +66,18 @@ export class MailService {
 
   async sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
     // Logger le token pour le développement
-    this.logger.log(`Token réinitialisation pour ${email}: ${resetUrl}`);
+    this.logger.log(`Token réinitialisation.`);
 
     // Si le service email n'est pas disponible
     if (!this.emailServiceAvailable || !this.transporter) {
-      this.logger.log(`Lien réinitialisation pour: ${email}`);
+      this.logger.log(`Lien réinitialisation.`);
       return;
     }
 
     const mailOptions = {
-      from: `"Paname Consulting" <${this.configService.get('EMAIL_USER')}>`,
+      from: `"Paname Consulting" <${this.configService.get("EMAIL_USER")}>`,
       to: email,
-      subject: 'Réinitialisation de votre mot de passe - Paname Consulting',
+      subject: "Réinitialisation de votre mot de passe - Paname Consulting",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #0ea5e9, #0369a1); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
@@ -116,14 +116,17 @@ export class MailService {
 
     try {
       await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Email réinitialisation envoyé à ${email}`);
+      this.logger.log(`Email réinitialisation envoyé.`);
     } catch (error) {
-      this.logger.error(`Erreur envoi email à ${email}: ${error.message}`);
-      this.logger.log(`Lien réinitialisation pour ${email} - Service email indisponible`);
+      this.logger.error(`Erreur envoi email : ${error.message}`);
+      this.logger.log(`Lien réinitialisation  - Service email indisponible.`);
       // Désactiver le service après une erreur d'authentification
-      if (error.message.includes('BadCredentials') || error.message.includes('Invalid login')) {
+      if (
+        error.message.includes("BadCredentials") ||
+        error.message.includes("Invalid login")
+      ) {
         this.emailServiceAvailable = false;
-        this.logger.warn('Service email désactivé - erreur authentification');
+        this.logger.warn("Service email désactivé - erreur authentification");
       }
     }
   }
@@ -135,9 +138,9 @@ export class MailService {
     }
 
     const mailOptions = {
-      from: `"Paname Consulting" <${this.configService.get('EMAIL_USER')}>`,
+      from: `"Paname Consulting" <${this.configService.get("EMAIL_USER")}>`,
       to: email,
-      subject: 'Bienvenue chez Paname Consulting',
+      subject: "Bienvenue chez Paname Consulting",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #0ea5e9, #0369a1); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
@@ -167,10 +170,10 @@ export class MailService {
 
     try {
       await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Email bienvenue envoyé à ${email}`);
+      this.logger.log(`Email bienvenue envoyé.`);
     } catch (error) {
-      this.logger.error(`Erreur envoi email bienvenue à ${email}`, error.stack);
-      this.logger.log(`Email bienvenue pour ${firstName} (${email})`);
+      this.logger.error(`Erreur envoi email bienvenue`, error.stack);
+      this.logger.log(`Email bienvenue - Service email indisponible.`);
     }
   }
 }

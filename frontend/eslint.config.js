@@ -1,33 +1,31 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-
+// Configuration ESLint moderne et simple
 export default [
-  { ignores: ['dist'] },
   {
-    files: ['**/*.{js,jsx}'],
+    files: ["**/*.{js,jsx,ts,tsx}"],
+    ignores: ["dist/**", "build/**", "node_modules/**"],
     languageOptions: {
-      ecmaVersion: 2020,
-      globals: globals.browser,
-      parserOptions: {
-        ecmaVersion: 'latest',
-        ecmaFeatures: { jsx: true },
-        sourceType: 'module',
-      },
+      parser: require('@typescript-eslint/parser'),
+      ecmaVersion: 'latest',
+      sourceType: 'module',
     },
     plugins: {
-      'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
+      '@typescript-eslint': require('@typescript-eslint/eslint-plugin'),
+      'react': require('eslint-plugin-react'),
+      'react-hooks': require('eslint-plugin-react-hooks'),
     },
     rules: {
-      ...js.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
+      // Règles de base
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': 'error',
+      'no-console': 'warn',
+      
+      // React
+      'react/react-in-jsx-scope': 'off',
+      'react/jsx-uses-react': 'off',
+      
+      // React Hooks
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
     },
   },
-]
+];

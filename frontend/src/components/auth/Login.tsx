@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiAlertCircle, FiEye, FiEyeOff, FiLock, FiMail } from 'react-icons/fi';
+import { FiAlertCircle, FiEye, FiEyeOff, FiLock, FiMail, FiUserX } from 'react-icons/fi';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
@@ -12,14 +12,7 @@ const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
-  const { login, isLoading, user } = useAuth();
-
-  useEffect(() => {
-    // Redirection automatique uniquement vers la page d'accueil si déjà connecté
-    if (user) {
-      navigate('/', { replace: true });
-    }
-  }, [user, navigate]);
+  const { login, isLoading } = useAuth();
 
   useEffect(() => {
     if (location.state?.message) {
@@ -31,15 +24,40 @@ const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    if (!email || !password) {
+      const errorMsg = 'Veuillez remplir tous les champs';
+      setError(errorMsg);
+      toast.error(errorMsg);
+      return;
+    }
+
     try {
       await login(email, password);
-      // La redirection se fait dans le contexte d'auth ou via l'effet ci-dessus
+      toast.success('Connexion réussie !');
     } catch (err: any) {
-      const message = err instanceof Error ? err.message : 'Une erreur est survenue lors de la connexion';
+      const message = err.message || 'Une erreur est survenue lors de la connexion';
       setError(message);
-      toast.error(message);
+      
+      // ✅ TOAST POUR COMPTE DÉSACTIVÉ
+      if (message.includes('désactivé')) {
+        toast.error(
+          <div>
+            <div className="font-semibold">Compte désactivé</div>
+            <div className="text-sm mt-1">Contactez l'administrateur pour réactiver votre compte</div>
+          </div>,
+          { 
+            autoClose: 8000,
+            icon: <FiUserX className="text-red-500 text-xl" />
+          }
+        );
+      } else {
+        toast.error(message);
+      }
     }
   };
+
+  const isAccountDisabledError = error.includes('désactivé');
 
   return (
     <div className="flex items-center justify-center p-4 min-h-screen bg-sky-50">
@@ -150,10 +168,19 @@ const Login: React.FC = () => {
                 </p>
               </div>
 
+              {/* Affichage erreur dans le formulaire */}
               {error && (
-                <div className="p-3 text-red-600 text-sm bg-red-50 rounded-md border border-red-200" role="alert">
+                <div className={`p-3 text-sm rounded-md border ${
+                  isAccountDisabledError 
+                    ? 'text-amber-800 bg-amber-50 border-amber-200' 
+                    : 'text-red-600 bg-red-50 border-red-200'
+                }`} role="alert">
                   <div className="flex items-center">
-                    <FiAlertCircle className="w-4 h-4 mr-2" aria-hidden="true" />
+                    {isAccountDisabledError ? (
+                      <FiUserX className="w-4 h-4 mr-2" aria-hidden="true" />
+                    ) : (
+                      <FiAlertCircle className="w-4 h-4 mr-2" aria-hidden="true" />
+                    )}
                     <span>{error}</span>
                   </div>
                 </div>

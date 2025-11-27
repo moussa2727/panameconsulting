@@ -56,6 +56,13 @@ interface LoginResponse {
   message?: string;
 }
 
+interface RegisterResponse {
+  accessToken: string;    // Pour localStorage
+  refreshToken?: string;  // Pour les cookies (optionnel car httpOnly)
+  user: User;
+  message?: string;
+}
+
 interface RefreshResponse {
   accessToken?: string;
   refreshToken?: string;
@@ -94,7 +101,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshTimeoutRef = useRef<number | null>(null);
   const checkIntervalRef = useRef<number | null>(null);
 
-  const VITE_API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
   // === FONCTIONS SESSIONSTORAGE SÉCURISÉES ===
 
@@ -261,155 +268,134 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }, refreshTime);
     }
   };
-  const refreshTokenFunction = async (): Promise<boolean> => {
-    // Éviter les refresh multiples simultanés
-    if (isRefreshing && refreshInFlightRef.current) {
-      console.log('🔄 Refresh déjà en cours, attente...');
-      return refreshInFlightRef.current;
+
+  // Remplacer la fonction refreshTokenFunction dans AuthContext.tsx
+const refreshTokenFunction = async (): Promise<boolean> => {
+  // Éviter les refresh multiples simultanés
+  if (isRefreshing && refreshInFlightRef.current) {
+    return refreshInFlightRef.current;
+  }
+  
+  // Vérifier si un refresh est déjà en cours (protection contre les boucles)
+  const existingRefresh = sessionStorage.getItem('refresh_in_progress');
+  if (existingRefresh) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const newToken = localStorage.getItem('token');
+    if (newToken) {
+      setToken(newToken);
+      return true;
     }
+    return false;
+  }
+
+  setIsRefreshing(true);
+  sessionStorage.setItem('refresh_in_progress', 'true');
+  
+  const doRefresh = (async () => {
+    let refreshSuccessful = false;
     
-    // Vérifier si un refresh est déjà en cours (protection contre les boucles)
-    const existingRefresh = sessionStorage.getItem('refresh_in_progress');
-    if (existingRefresh) {
-      console.log('⏳ Refresh déjà en cours selon sessionStorage, attente...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const newToken = localStorage.getItem('token');
-      if (newToken) {
-        console.log('✅ Récupération du token depuis le cache');
-        setToken(newToken);
-        return true;
+    try {
+      const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include'
+      });
+
+      // Gestion des erreurs HTTP
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Vérifier si c'est une expiration de session normale
+          const errorData = await response.json().catch(() => null);
+          if (errorData?.sessionExpired) {
+            throw new Error('SESSION_EXPIRED');
+          }
+          throw new Error('REFRESH_TOKEN_EXPIRED');
+        }
+        
+        if (response.status >= 500) {
+          throw new Error('SERVER_ERROR');
+        }
+        
+        throw new Error('REFRESH_FAILED');
       }
-      return false;
-    }
-  
-    setIsRefreshing(true);
-    sessionStorage.setItem('refresh_in_progress', 'true');
-    const doRefresh = (async () => {
-      let refreshSuccessful = false;
+
+      const data: RefreshResponse = await response.json();
       
-      try {
-        console.log('🔄 Début du rafraîchissement du token...');
-        
-        const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include'
-        });
-  
-        console.log('📡 Statut réponse refresh:', response.status, response.statusText);
-  
-        // Gestion des erreurs HTTP
-        if (!response.ok) {
-          if (response.status === 401) {
-            console.log('❌ Refresh token expiré ou invalide (401)');
-            throw new Error('REFRESH_TOKEN_EXPIRED');
-          }
-          
-          if (response.status >= 500) {
-            console.error('❌ Erreur serveur lors du refresh:', response.status);
-            throw new Error('SERVER_ERROR');
-          }
-          
-          console.error('❌ Erreur lors du refresh:', response.status);
-          throw new Error('REFRESH_FAILED');
-        }
-  
-        const data: RefreshResponse = await response.json();
-        
-        // Vérifier si l'utilisateur est déconnecté côté serveur
-        if (data.loggedOut) {
-          console.log('🔒 Utilisateur déconnecté côté serveur');
-          throw new Error('USER_LOGGED_OUT');
-        }
-        
-        // Vérifier la présence du token
-        if (!data.accessToken) {
-          console.error('❌ Aucun token reçu dans la réponse');
-          throw new Error('NO_TOKEN_RECEIVED');
-        }
-  
-        console.log('✅ Nouveau token reçu avec succès');
-        
-        // SAUVEGARDE CRITIQUE DU TOKEN
+      // Vérifier si l'utilisateur est déconnecté côté serveur
+      if (data.loggedOut) {
+        throw new Error('USER_LOGGED_OUT');
+      }
+      
+      // Vérifier la présence du token
+      if (!data.accessToken) {
+        throw new Error('NO_TOKEN_RECEIVED');
+      }
+
+      // SAUVEGARDE CRITIQUE DU TOKEN
+      localStorage.setItem('token', data.accessToken);
+      setToken(data.accessToken);
+      
+      // Vérification de la sauvegarde
+      const savedToken = localStorage.getItem('token');
+      if (savedToken !== data.accessToken) {
         localStorage.setItem('token', data.accessToken);
         setToken(data.accessToken);
         
-        // Vérification de la sauvegarde
-        const savedToken = localStorage.getItem('token');
-        if (savedToken !== data.accessToken) {
-          console.error('❌ Échec de la sauvegarde du token, nouvelle tentative...');
-          localStorage.setItem('token', data.accessToken);
-          setToken(data.accessToken);
-          
-          // Vérification finale
-          const finalToken = localStorage.getItem('token');
-          if (finalToken !== data.accessToken) {
-            throw new Error('TOKEN_SAVE_FAILED');
-          }
-        }
-  
-        // Décoder et configurer le nouveau token
-        try {
-          const decoded = jwtDecode<JwtPayload>(data.accessToken);
-          console.log('⏰ Nouveau token expire dans', 
-            Math.floor((decoded.exp * 1000 - Date.now()) / 1000 / 60), 
-            'minutes'
-          );
-          
-          // Configurer le prochain rafraîchissement automatique
-          setupTokenRefresh(decoded.exp);
-          
-          // Recharger les données utilisateur
-          await fetchUserData(data.accessToken);
-          
-          // Mettre à jour les métadonnées de session
-          saveSessionMetadata();
-          
-          console.log('✅ Refresh token complété avec succès');
-          refreshSuccessful = true;
-          return true;
-          
-        } catch (decodeError) {
-          console.error('❌ Erreur décodage token:', decodeError);
-          throw new Error('TOKEN_DECODE_FAILED');
-        }
-        
-      } catch (error: any) {
-        console.error('💥 Erreur lors du rafraîchissement:', error.message);
-        
-        // Nettoyer les données d'authentification en cas d'échec
-        localStorage.removeItem('token');
-        setToken(null);
-        setUser(null);
-        
-        // Déclencher une déconnexion propre seulement pour certaines erreurs
-        if (['REFRESH_TOKEN_EXPIRED', 'USER_LOGGED_OUT', 'NO_TOKEN_RECEIVED'].includes(error.message)) {
-          console.log('🔒 Déconnexion forcée après échec du refresh');
-          // Ne pas rediriger immédiatement, laisser le composant gérer
-          setTimeout(() => {
-            logout('/', true);
-          }, 3000);
-        }
-        
-        return false;
-        
-      } finally {
-        setIsRefreshing(false);
-        sessionStorage.removeItem('refresh_in_progress');
-        refreshInFlightRef.current = null;
-        
-        if (!refreshSuccessful) {
-          console.log('❌ Refresh token échoué');
+        // Vérification finale
+        const finalToken = localStorage.getItem('token');
+        if (finalToken !== data.accessToken) {
+          throw new Error('TOKEN_SAVE_FAILED');
         }
       }
-    })();
-    
-    refreshInFlightRef.current = doRefresh;
-    return doRefresh;
-  };
- 
+
+      // Décoder et configurer le nouveau token
+      try {
+        const decoded = jwtDecode<JwtPayload>(data.accessToken);
+        
+        // Configurer le prochain rafraîchissement automatique (5 min avant expiration)
+        setupTokenRefresh(decoded.exp);
+        
+        // Recharger les données utilisateur
+        await fetchUserData(data.accessToken);
+        
+        // Mettre à jour les métadonnées de session
+        saveSessionMetadata();
+        
+        refreshSuccessful = true;
+        return true;
+        
+      } catch (decodeError) {
+        throw new Error('TOKEN_DECODE_FAILED');
+      }
+      
+    } catch (error: any) {
+      // Nettoyer les données d'authentification en cas d'échec
+      localStorage.removeItem('token');
+      setToken(null);
+      setUser(null);
+      
+      // Déclencher une déconnexion propre seulement pour certaines erreurs
+      if (['REFRESH_TOKEN_EXPIRED', 'USER_LOGGED_OUT', 'NO_TOKEN_RECEIVED', 'SESSION_EXPIRED'].includes(error.message)) {
+        // Déconnexion silencieuse
+        setTimeout(() => {
+          logout('/', true);
+        }, 1000);
+      }
+      
+      return false;
+      
+    } finally {
+      setIsRefreshing(false);
+      sessionStorage.removeItem('refresh_in_progress');
+      refreshInFlightRef.current = null;
+    }
+  })();
+  
+  refreshInFlightRef.current = doRefresh;
+  return doRefresh;
+};
   // === INITIALISATION ET NETTOYAGE ===
 
   useEffect(() => {
@@ -454,92 +440,107 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       logout();
     }
   };
+// AuthContext.tsx - Dans la fonction login
+const login = async (email: string, password: string): Promise<void> => {
+  setIsLoading(true);
+  
+  try {
+    const response = await fetch(`${VITE_API_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+      credentials: 'include' // ← Cookies automatiques
+    });
 
-  // Connexion
-  const login = async (email: string, password: string): Promise<void> => {
-    setIsLoading(true);
+    const data: LoginResponse = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Erreur de connexion');
+    }
+
+    // ✅ DOUBLE STOCKAGE :
+    // 1. Access Token dans localStorage (pour les requêtes API)
+    localStorage.setItem('token', data.accessToken);
+    setToken(data.accessToken);
     
-    try {
-      const response = await fetch(`${VITE_API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-        credentials: 'include'
-      });
+    // 2. Access Token aussi dans les cookies (pour le backend)
+    // (géré automatiquement par le backend via set-cookie)
+    
+    setUser(data.user);
 
-      const data: LoginResponse = await response.json();
+    // Configurer le rafraîchissement automatique
+    const decoded = jwtDecode<JwtPayload>(data.accessToken);
+    setupTokenRefresh(decoded.exp);
+    saveSessionMetadata();
 
-      if (!response.ok) {
-        throw new Error(data.message || 'Erreur de connexion');
-      }
+    // Redirection
+    const redirectPath = data.user.role === 'admin' 
+      ? '/gestionnaire/statistiques' 
+      : '/';
+    
+    navigate(redirectPath);
+    
+  } catch (err: any) {
+    toast.error(err.message || 'Erreur de connexion');
+    throw err;
+  } finally {
+    setIsLoading(false);
+  }
+};
+// Dans la fonction register - Mettre à jour le typage
+const register = async (formData: RegisterFormData): Promise<void> => {
+  setIsLoading(true);
+  setError(null);
 
-      localStorage.setItem('token', data.accessToken);
-      setToken(data.accessToken);
-      setUser(data.user);
+  try {
+    saveNavigationState();
 
-      // Configurer le rafraîchissement automatique
-      const decoded = jwtDecode<JwtPayload>(data.accessToken);
-      setupTokenRefresh(decoded.exp);
-      saveSessionMetadata();
+    const response = await fetch(`${VITE_API_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        telephone: formData.phone,
+        password: formData.password,
+      }),
+      credentials: 'include'
+    });
 
-      // Redirection basée sur le rôle
-      const redirectPath = data.user.role === 'admin' 
-        ? '/gestionnaire/statistiques' 
-        : '/';
-      
-      navigate(redirectPath);
-      
-    } catch (err: any) {
-      toast.error(err.message || 'Erreur de connexion');
-      throw err;
-    } finally {
-      setIsLoading(false);
+    const data: RegisterResponse = await response.json();
+
+    if (!response.ok) {
+      const errorMsg = data.message || "Erreur lors de l'inscription";
+      throw new Error(errorMsg);
     }
-  };
 
-  const register = async (formData: RegisterFormData): Promise<void> => {
-    setIsLoading(true);
-    setError(null);
+    // ✅ MAINTENANT data.accessToken EST TYPÉ
+    localStorage.setItem('token', data.accessToken);
+    setToken(data.accessToken);
+    setUser(data.user);
 
-    try {
-      saveNavigationState();
+    const decoded = jwtDecode<JwtPayload>(data.accessToken);
+    setupTokenRefresh(decoded.exp);
+    saveSessionMetadata();
 
-      const response = await fetch(`${VITE_API_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-          telephone: formData.phone,
-          password: formData.password,
-        }),
-        credentials: 'include'
-      });
+    const redirectPath = data.user.role === 'admin' 
+      ? '/gestionnaire/statistiques' 
+      : '/';
+    
+    navigate(redirectPath);
+    toast.success('Inscription réussie !');
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        const errorMsg = data.errors 
-          ? Object.values(data.errors).join(', ') 
-          : data.message || "Erreur lors de l'inscription";
-        throw new Error(errorMsg);
-      }
-
-      await login(formData.email, formData.password);
-    } catch (err) {
-      removeFromSession(ALLOWED_SESSION_KEYS.REDIRECT_PATH);
-      removeFromSession(ALLOWED_SESSION_KEYS.LOGIN_TIMESTAMP);
-      handleAuthError(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  } catch (err) {
+    removeFromSession(ALLOWED_SESSION_KEYS.REDIRECT_PATH);
+    removeFromSession(ALLOWED_SESSION_KEYS.LOGIN_TIMESTAMP);
+    handleAuthError(err);
+  } finally {
+    setIsLoading(false);
+  }
+};
   const forgotPassword = async (email: string): Promise<void> => {
     setIsLoading(true);
     setError(null);

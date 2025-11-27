@@ -1,18 +1,16 @@
-// vite.config.js
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   build: {
+    outDir: 'dist',
     rollupOptions: {
       output: {
         manualChunks: {
-          // Vendor chunks
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'ui-vendor': ['lucide-react', 'react-toastify'],
           'date-vendor': ['date-fns', 'date-fns/locale/fr'],
-          // Admin chunk (lazy loaded)
           'admin': [
             './src/pages/admin/AdminDashboard.tsx',
             './src/pages/admin/UsersManagement.tsx',
@@ -31,9 +29,12 @@ export default defineConfig({
       'date-fns',
       'date-fns/locale/fr'
     ],
-    exclude: ['date-fns-tz'] // Exclure pour éviter les conflits
+    exclude: ['date-fns-tz']
   },
-  server: {
+  // Configuration spécifique à Vercel
+  base: process.env.NODE_ENV === 'production' ? '/' : '/',
+  // Configuration du serveur uniquement en développement
+  server: mode === 'development' ? {
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
@@ -41,12 +42,11 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
-      
       '/auth': {
         target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
       }
     }
-  }
-});
+  } : undefined,
+}));

@@ -36,9 +36,6 @@ const Form = () => {
   
   // Gestion sécurisée des variables d'environnement
   const API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
-  if (!API_URL) {
-    console.error('VITE_API_URL is not defined');
-  }
 
   // Effet de nettoyage avec gestion d'erreur
   useEffect(() => {
@@ -266,9 +263,9 @@ const Form = () => {
 
               {/* Carte Google Maps optimisée pour mobile */}
               <div className='mt-8 h-56 md:h-64 lg:h-72 overflow-hidden shadow-lg' 
-                   role="application" aria-label="Carte de localisation">
+                  role="application" aria-label="Carte de localisation">
                 <iframe
-                  src='https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3894.010270463331!2d-7.993864324930176!3d12.581574287699127!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xe51cf2248975979%3A0xa90fabf3b7838312!2sImmeuble%20BORE!5e0!3m2!1sfr!2sma!4v1750297669135!5m2!1sfr!2sma&zoom=16&ui_controls=1&ui_maps=1'
+                  src='https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3894.010270463331!2d-7.993864324930176!3d12.581574287699127!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xe51cf2248975979%3A0xa90fabf3b7838312!2sImmeuble%20BORE!5e0!3m2!1sfr!2sml!4v1700000000000!5m2!1sfr!2sml'
                   className='w-full h-full rounded'
                   loading='lazy'
                   title='Localisation Paname Consulting - Kalaban Coura, Immeuble BORE en face de l&apos;hôtel Wassulu'

@@ -2,7 +2,6 @@ import { useAuth } from '../../context/AuthContext';
 import React, { useState } from 'react';
 import { FiEye, FiEyeOff, FiLock, FiMail, FiPhone, FiUser, FiAlertCircle } from 'react-icons/fi';
 import { Link, useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -29,7 +28,7 @@ const Register: React.FC = () => {
     e.preventDefault();
     setError('');
     
-    // Validation côté client
+    // Validation côté client uniquement (sans toast)
     if (formData.password !== formData.confirmPassword) {
       setError('Les mots de passe ne correspondent pas');
       return;
@@ -39,14 +38,20 @@ const Register: React.FC = () => {
       setError('Le mot de passe doit contenir au moins 8 caractères');
       return;
     }
-    
+
     try {
+      // ✅ DÉLÉGATION COMPLETE : AuthContext gère tous les toasts
       await register(formData);
-      toast.success('Compte créé avec succès!');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Une erreur est survenue lors de la création du compte';
+      // Plus de toast ici - tout est géré dans l'AuthContext
+    } catch (err: any) {
+      let message = 'Une erreur est survenue lors de la création du compte';
+      
+      if (err.message) {
+        message = err.message;
+      }
+      
       setError(message);
-      toast.error(message);
+      // Plus de toast ici - l'erreur est déjà gérée dans l'AuthContext
     }
   };
 
@@ -157,7 +162,7 @@ const Register: React.FC = () => {
                     value={formData.phone}
                     onChange={handleChange}
                     className="pl-9 w-full px-3 py-2 rounded bg-gray-50 border border-gray-300 hover:border-sky-400 focus:outline-none focus:ring-none focus:border-sky-500"
-                    placeholder="+33 6 12 34 56 78"
+                    placeholder="Votre numéro avec ou sans format"
                     required
                     disabled={isLoading}
                     autoComplete="tel"

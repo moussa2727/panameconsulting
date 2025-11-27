@@ -1,0 +1,43 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "incremental": true,
+    "incrementalFile": ".tsbuildinfo",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "sourceMap": true,
+    "declaration": false,
+    "declarationMap": false,
+    "removeComments": true,
+    "noEmitOnError": true,
+    "pretty": false,
+    "stripInternal": true,
+    "diagnostics": false,
+    "extendedDiagnostics": false,
+    "listFiles": false,
+    "listEmittedFiles": false,
+    "traceResolution": false,
+    "skipLibCheck": true,
+    "preserveConstEnums": false,
+    "importsNotUsedAsValues": "remove"
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "coverage",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "**/*.e2e-spec.ts",
+    "**/*.d.ts",
+    "**/__tests__/**",
+    "**/__mocks__/**",
+    "scripts/**",
+    "docs/**",
+    "temp/**",
+    "**/fixtures/**"
+  ]
+}

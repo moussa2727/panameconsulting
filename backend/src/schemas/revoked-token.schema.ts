@@ -1,35 +1,26 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
+import { Document } from "mongoose";
 
-@Schema({ 
+@Schema({
   timestamps: true,
-  collection: 'revoked_tokens' // Nom explicite pour la collection MongoDB
+  collection: "revoked_tokens",
 })
 export class RevokedToken extends Document {
-  @Prop({ 
-    required: true, 
-    unique: true,
-    index: true // Ajout d'un index pour les recherches par token
-  })
+  @Prop({ required: true, unique: true })
   token: string;
 
-  @Prop({ 
+  @Prop({
     required: true,
-    index: { expires: 0 } // Index pour expiration automatique (à gérer manuellement)
   })
   expiresAt: Date;
 
   @Prop({
     required: true,
-    index: true // Index pour les recherches par userId
   })
   userId: string;
 }
 
 export const RevokedTokenSchema = SchemaFactory.createForClass(RevokedToken);
 
-// Export du type Document complet
-export type RevokedTokenDocument = RevokedToken & Document & {
-  createdAt: Date;
-  updatedAt: Date;
-};
+// Single index definition
+RevokedTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
