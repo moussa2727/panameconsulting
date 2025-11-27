@@ -35,10 +35,3 @@ node = "18"
 [plan.environment]
 NODE_ENV = "production"
 PORT = "10000"
-
-# Scripts de santé
-[plan.health]
-path = "https://panameconsulting.up.railway.app/health
-initialDelay = 30
-timeout = 10
-period = 60
