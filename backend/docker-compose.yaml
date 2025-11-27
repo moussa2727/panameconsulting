@@ -41,23 +41,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-  # Database example (if you have one)
-  # postgres:
-  #   image: postgres:15-alpine
-  #   container_name: paname-postgres
-  #   restart: unless-stopped
-  #   environment:
-  #     POSTGRES_DB: paname_db
-  #     POSTGRES_USER: paname_user
-  #     POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #   networks:
-  #     - paname-network
-
 volumes:
   uploads_data:
   logs_data:
