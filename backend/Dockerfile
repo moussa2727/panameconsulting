@@ -6,14 +6,14 @@ RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
 WORKDIR /app
 
-# Copie des fichiers de configuration
+# Copie des fichiers de configuration DEPUIS LE DOSSIER COURANT
 COPY package.json pnpm-lock.yaml* tsconfig.json nest-cli.json ./
 
 # Installation des dépendances
 RUN pnpm install --frozen-lockfile --prefer-offline
 
 # Copie des sources
-COPY src/ ./src/
+COPY backend/src/ ./src/
 
 # Construction de l'application
 RUN pnpm run build
