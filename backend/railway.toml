@@ -13,3 +13,8 @@ NODE_ENV = "production"
 TZ = "Europe/Paris"
 MONGODB_SERVER_SELECTION_TIMEOUT = "30000"
 MONGODB_SOCKET_TIMEOUT = "45000"
+
+[http]
+allowedOrigins = ["https://panameconsulting.vercel.app"]
+allowedMethods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+allowedHeaders = ["Content-Type", "Authorization"]
