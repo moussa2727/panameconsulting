@@ -1,54 +1,65 @@
+# ============ ÉTAPE DE BUILD ============
 FROM node:18-alpine AS builder
 
-WORKDIR /app
-
-# Copy package files
-COPY package.json ./
-
-# Try to copy various lock files that might exist
-COPY pnpm-lock.yaml* ./
-COPY package-lock.json* ./
-COPY yarn.lock* ./
-
-# Enable Corepack
+# Installation et configuration de pnpm
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
-# Install based on available lock file
-RUN if [ -f pnpm-lock.yaml ]; then \
-        pnpm install --frozen-lockfile --prefer-offline; \
-    elif [ -f package-lock.json ]; then \
-        npm ci --only=production; \
-    else \
-        pnpm install --prefer-offline; \
-    fi
+# Définition du répertoire de travail
+WORKDIR /app
 
-# Copy the rest of the source code
+# Copie des fichiers de configuration en premier (optimisation du cache Docker)
+COPY package.json pnpm-lock.yaml* tsconfig.json nest-cli.json ./
+
+# Installation de toutes les dépendances (développement + production)
+RUN pnpm install --frozen-lockfile --prefer-offline
+
+# Copie des sources de l'application
 COPY . .
-RUN pnpm build
 
-# ============ PRODUCTION STAGE ============
+# Construction de l'application
+RUN pnpm run build
+
+# ============ ÉTAPE DE PRODUCTION ============
 FROM node:18-alpine AS production
 
+# Arguments de build
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
+
+# Installation et configuration de pnpm
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
+# Définition du répertoire de travail
 WORKDIR /app
-ENV NODE_ENV=production
-ENV PORT=10000
-ENV HOSTNAME=0.0.0.0
 
-# Copy only what's needed
+# Copie des fichiers de package
+COPY package.json pnpm-lock.yaml* ./
+
+# Installation UNIQUEMENT des dépendances de production
+RUN pnpm install --prod --frozen-lockfile --prefer-offline
+
+# Copie des fichiers compilés depuis l'étape builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
 
-# Create runtime directories (Railway volumes will be mounted here)
-RUN mkdir -p /app/uploads /app/logs && \
-    addgroup -g 1001 -S nodejs && \
+# Création des dossiers nécessaires
+RUN mkdir -p /app/uploads && \
+    mkdir -p /app/logs
+
+# ============ SÉCURITÉ ============
+# Création d'un utilisateur non-root pour plus de sécurité
+RUN addgroup -g 1001 -S nodejs && \
     adduser -S nestjs -u 1001 && \
     chown -R nestjs:nodejs /app
 
+# Passage à l'utilisateur non-root
 USER nestjs
 
-# Expose the port
+# Exposition du port de l'application
 EXPOSE 10000
 
-# Start the app
+# Variables d'environnement par défaut
+ENV PORT=10000
+ENV HOSTNAME=0.0.0.0
+
+# Commande de démarrage de l'application
 CMD ["node", "dist/main.js"]
