@@ -42,18 +42,31 @@ export class AuthController {
   // ==================== 🔐 ENDPOINTS D'AUTHENTIFICATION ====================
 
 
-
-  private getCookieOptions(_req?: any): any {
-    const isProduction = process.env.NODE_ENV === 'production';
-    
+private getCookieOptions(req?: any): any {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isLocalhost = req?.headers?.host?.includes('localhost') || 
+                     req?.headers?.origin?.includes('localhost');
+  
+  // ✅ CORRECTION : En local, pas de secure et pas de domain
+  if (!isProduction || isLocalhost) {
     return {
       httpOnly: true,
-      secure: isProduction, // true en prod, false en local
-      sameSite: isProduction ? 'none' : 'lax',
-      domain: isProduction ? '.panameconsulting.com' : undefined, // ← CRITIQUE
+      secure: false, // ← false en local
+      sameSite: 'lax', // ← lax en local
       path: '/',
+      // Pas de domain en local
     };
   }
+
+  // En production
+  return {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    domain: '.panameconsulting.com',
+    path: '/',
+  };
+}
 
   @Post("login")
   @UseGuards(ThrottleGuard, LocalAuthGuard)
@@ -93,107 +106,95 @@ export class AuthController {
   });
 }
 
-  @Post("refresh")
-  @ApiOperation({ summary: "Rafraîchir le token" })
-  @ApiResponse({ status: 200, description: "Token rafraîchi" })
-  @ApiResponse({ status: 401, description: "Refresh token invalide" })
-  async refresh(
-    @Request() req: CustomRequest,
-    @Body() body: any,
-    @Res() res: Response,
-  ) {
-    console.log("🔄 Requête de rafraîchissement reçue");
 
-    const refreshToken = body?.refreshToken || req.cookies?.refresh_token;
+@Post("refresh")
+@ApiOperation({ summary: "Rafraîchir le token" })
+@ApiResponse({ status: 200, description: "Token rafraîchi" })
+@ApiResponse({ status: 401, description: "Refresh token invalide" })
+async refresh(
+  @Request() req: CustomRequest,
+  @Body() body: any,
+  @Res() res: Response,
+) {
+  console.log("🔄 Requête de rafraîchissement reçue");
 
-    if (!refreshToken) {
-      console.warn("❌ Refresh token manquant");
+  // ✅ CORRECTION : Récupérer le refresh token depuis les cookies d'abord
+  const refreshToken = req.cookies?.refresh_token || body?.refreshToken;
+
+  if (!refreshToken) {
+    console.warn("❌ Refresh token manquant dans les cookies et body");
+    this.clearAuthCookies(res);
+    return res.status(401).json({
+      message: "Refresh token manquant",
+      loggedOut: true,
+    });
+  }
+
+  try {
+    const result = await this.authService.refresh(refreshToken);
+
+    if (result.sessionExpired) {
+      console.log("🔒 Session expirée - nettoyage cookies");
       this.clearAuthCookies(res);
       return res.status(401).json({
-        message: "Refresh token manquant",
         loggedOut: true,
+        sessionExpired: true,
+        message: "Session expirée après 25 minutes",
       });
     }
 
-    try {
-      const result = await this.authService.refresh(refreshToken);
+    if (!result.accessToken) {
+      console.error("❌ Access token non généré");
+      throw new BadRequestException("Access token non généré");
+    }
 
-      // ✅ GESTION SESSION EXPIREE
-      if (result.sessionExpired) {
-        console.log("🔒 Session expirée - nettoyage cookies");
-        this.clearAuthCookies(res);
-        return res.status(401).json({
-          loggedOut: true,
-          sessionExpired: true,
-          message: "Session expirée après 25 minutes",
-        });
-      }
+    // ✅ CORRECTION : Configuration cookies adaptée au local
+    const cookieOptions = this.getCookieOptions(req);
 
-      // ✅ VALIDATION DES TOKENS
-      if (!result.accessToken) {
-        console.error("❌ Access token non généré");
-        throw new BadRequestException("Access token non généré");
-      }
-
-      const cookieOptions: any = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        domain:
-          process.env.NODE_ENV === "production"
-            ? ".panameconsulting.com"
-            : undefined,
-        path: "/",
-      };
-
-      // ✅ MISE À JOUR COOKIE REFRESH TOKEN
-      if (result.refreshToken) {
-        res.cookie("refresh_token", result.refreshToken, {
-          ...cookieOptions,
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 jours
-        });
-        console.log("✅ Refresh token cookie mis à jour");
-      }
-
-      // ✅ MISE À JOUR COOKIE ACCESS TOKEN
-      res.cookie("access_token", result.accessToken, {
+    // ✅ MISE À JOUR COOKIE REFRESH TOKEN
+    if (result.refreshToken) {
+      res.cookie("refresh_token", result.refreshToken, {
         ...cookieOptions,
-        httpOnly: false, // Accessible par le frontend
-        maxAge: 15 * 60 * 1000, // 15 minutes
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 jours
       });
+      console.log("✅ Refresh token cookie mis à jour");
+    }
 
-      console.log("✅ Tokens rafraîchis avec succès");
+    // ✅ MISE À JOUR COOKIE ACCESS TOKEN
+    res.cookie("access_token", result.accessToken, {
+      ...cookieOptions,
+      httpOnly: false, // Accessible par le frontend
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
 
-      // ✅ RÉPONSE STANDARDISÉE
-      return res.json({
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        message: "Tokens rafraîchis avec succès",
-        expiresIn: 15 * 60, // 15 minutes en secondes
-      });
-    // Dans la méthode refresh du controller - Simplifier la réponse d'erreur
-} catch (error: any) {
-  console.error("❌ Erreur rafraîchissement:", error.message);
+    console.log("✅ Tokens rafraîchis avec succès");
 
-  // ✅ NETTOYAGE COMPLET EN CAS D'ERREUR
-  this.clearAuthCookies(res);
+    return res.json({
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      message: "Tokens rafraîchis avec succès",
+      expiresIn: 15 * 60,
+    });
 
-  // ✅ GESTION D'ERREURS SPÉCIFIQUES
-  let errorMessage = "Session expirée - veuillez vous reconnecter";
-  let statusCode = 401;
+  } catch (error: any) {
+    console.error("❌ Erreur rafraîchissement:", error.message);
+    this.clearAuthCookies(res);
 
-  if (error instanceof BadRequestException) {
-    errorMessage = error.message;
-    statusCode = 400;
+    let errorMessage = "Session expirée - veuillez vous reconnecter";
+    let statusCode = 401;
+
+    if (error instanceof BadRequestException) {
+      errorMessage = error.message;
+      statusCode = 400;
+    }
+
+    return res.status(statusCode).json({
+      message: errorMessage,
+      loggedOut: true,
+      requiresReauth: true,
+    });
   }
-
-  return res.status(statusCode).json({
-    message: errorMessage,
-    loggedOut: true,
-    requiresReauth: true,
-  });
 }
-  }
 
  // Dans auth.controller.ts - Méthode register
 @Post("register")
@@ -399,18 +400,30 @@ async register(@Body() registerDto: RegisterDto, @Res() res: Response) {
   // ==================== 🔧 MÉTHODES UTILITAIRES PRIVÉES ====================
 
   private clearAuthCookies(res: Response): void {
-    const cookieOptions: any = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      domain:
-        process.env.NODE_ENV === "production"
-          ? ".panameconsulting.com"
-          : undefined,
-      path: "/",
-    };
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // ✅ CORRECTION : Configuration différente pour local/prod
+  const cookieOptions: any = {
+    httpOnly: true,
+    path: '/',
+  };
 
-    res.clearCookie("refresh_token", cookieOptions);
-    res.clearCookie("access_token", cookieOptions);
+  if (isProduction) {
+    cookieOptions.secure = true;
+    cookieOptions.sameSite = 'none';
+    cookieOptions.domain = '.panameconsulting.com';
+  } else {
+    cookieOptions.secure = false;
+    cookieOptions.sameSite = 'lax';
+    // Pas de domain en local
   }
+
+  res.clearCookie("refresh_token", cookieOptions);
+  res.clearCookie("access_token", { 
+    ...cookieOptions, 
+    httpOnly: false 
+  });
+}
+
+
 }

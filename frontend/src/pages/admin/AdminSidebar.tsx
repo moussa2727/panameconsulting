@@ -64,7 +64,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
       name: 'Tableau de bord',
       path: '/gestionnaire',
       icon: <LayoutDashboard className='w-5 h-5' />,
-      basePath: '/gestionnaire' // ✅ Spécifier le chemin de base
+      basePath: '/gestionnaire'
     },
     {
       name: 'Utilisateurs',
@@ -104,7 +104,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
     },
   ];
 
-  // ✅ DÉTECTION AMÉLIORÉE DES LIENS ACTIFS AVEC SOUS-ROUTES
+  // Détection améliorée des liens actifs avec sous-routes
   const isActivePath = (basePath: string): boolean => {
     const currentPath = location.pathname;
     
@@ -122,28 +122,6 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
     
     // Pour les autres routes, vérifier si le chemin commence par basePath
     return currentPath.startsWith(basePath);
-  };
-
-  // ✅ DÉTECTION POUR LE SURBRILLANCE VISUELLE
-  const getActiveItemClass = (basePath: string): string => {
-    const isActive = isActivePath(basePath);
-    
-    if (isActive) {
-      return 'bg-blue-500 text-white shadow-lg shadow-blue-500/25';
-    }
-    
-    return 'text-slate-600 hover:bg-slate-100 hover:text-slate-800';
-  };
-
-  // ✅ DÉTECTION POUR LES ICÔNES
-  const getActiveIconClass = (basePath: string): string => {
-    const isActive = isActivePath(basePath);
-    
-    if (isActive) {
-      return 'text-white';
-    }
-    
-    return 'text-slate-500 group-hover:text-slate-700';
   };
 
   // Fonction pour obtenir le nom d'affichage sécurisé selon AuthContext
@@ -169,7 +147,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
 
   // Déconnexion simple - session actuelle uniquement
   const handleLogout = () => {
-    logout(); // ✅ Laisser le contexte gérer la redirection
+    logout();
   };
 
   // Déconnexion de toutes les sessions (admin seulement)
@@ -199,11 +177,11 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
       const result = await response.json();
       console.log('Déconnexion globale réussie:', result);
       
-      logout(); // ✅ Laisser le contexte gérer la redirection
+      logout();
       
     } catch (error) {
       console.error('Erreur lors de la déconnexion globale:', error);
-      logout(); // ✅ Laisser le contexte gérer la redirection même en cas d'erreur
+      logout();
     } finally {
       setIsLogoutAllOpen(false);
     }
@@ -222,14 +200,13 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
     return null;
   }
 
-
   return (
     <>
       {/* Version Desktop et Tablet - Sidebar */}
-      <div className='hidden md:flex min-h-screen bg-slate-50'>
+      <div className='hidden md:flex h-screen bg-slate-50'>
         {/* Sidebar */}
         <div 
-          className={`bg-white h-screen fixed left-0 top-0 z-40 shadow-xl border-r border-slate-200/60 flex flex-col transition-all duration-300 ${
+          className={`bg-white h-full fixed left-0 top-0 z-40 shadow-xl border-r border-slate-200/60 flex flex-col transition-all duration-300 ${
             isCollapsed ? 'w-0 opacity-0' : 'w-64 opacity-100'
           }`}
         >
@@ -267,7 +244,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
           </div>
           
           {/* Navigation */}
-          <nav className='flex-1 overflow-y-auto py-6'>
+          <nav className='flex-1 py-6'>
             <div className='px-3'>
               <ul className='space-y-2'>
                 {menuItems.map(item => (
@@ -370,7 +347,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
       </div>
 
       {/* Version Mobile */}
-      <div className='md:hidden min-h-screen bg-slate-50'>
+      <div className='md:hidden h-screen bg-slate-50 flex flex-col'>
         {/* Header Mobile */}
         <header className='bg-white shadow-lg border-b border-slate-200/60 sticky top-0 z-50 backdrop-blur-sm bg-white/95'>
           <div className='px-4'>
@@ -406,7 +383,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
 
           {/* Menu Mobile déroulant */}
           {isMobileMenuOpen && (
-            <div className='bg-white border-t border-slate-200/60 shadow-xl absolute top-16 left-0 right-0 z-50 backdrop-blur-sm bg-white/95 max-h-[85vh] overflow-y-auto'>
+            <div className='bg-white border-t border-slate-200/60 shadow-xl absolute top-16 left-0 right-0 z-50 backdrop-blur-sm bg-white/95 max-h-[85vh]'>
               <div className='px-4 py-4 space-y-2'>
                 {/* Navigation */}
                 <div className='space-y-1'>
@@ -470,8 +447,8 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
         )}
 
         {/* Contenu principal mobile avec padding adaptatif */}
-        <div className='p-4'>
-          <div className='bg-white rounded-2xl shadow-sm border border-slate-200 min-h-[calc(100vh-8rem)]'>
+        <div className='flex-1 p-4'>
+          <div className='bg-white rounded-2xl shadow-sm border border-slate-200 h-full'>
             {children}
           </div>
         </div>
