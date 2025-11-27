@@ -4,14 +4,14 @@ services:
   backend:
     container_name: panameconsultingbackend
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
       args:
         NODE_ENV: production
     
     image: panameconsulting:latest
     
-    # Ports exposés (host:container)
+    # Ports exposés
     ports:
       - "10000:10000"
     
@@ -27,9 +27,7 @@ services:
       - EMAIL_USER=${EMAIL_USER}
       - EMAIL_PASS=${EMAIL_PASS}
       - MONGODB_URI=${MONGODB_URI}
-      # Variables pour le développement local
-      - RAILWAY_STATIC_URL=https://panameconsulting.up.railway.app/
-      - FRONTEND_URL=http://panameconsulting.vercel.app
+      - FRONTEND_URL=https://panameconsulting.vercel.app
       
     # Fichier de variables sensibles
     env_file:
@@ -43,14 +41,6 @@ services:
       - 1.1.1.1
       - 8.8.8.8
     
-    # Health check LOCAL simple et rapide
-    healthcheck:
-      test: ["CMD", "curl", "-f", "https://panameconsulting.up.railway.app/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    
     # Configuration des logs
     logging:
       driver: "json-file"
@@ -58,27 +48,22 @@ services:
         max-size: "10m"
         max-file: "3"
     
-    # Réseau dédié pour l'application
+    # Réseau dédié
     networks:
       - backend-network
     
-    # Volumes pour la persistance des données
+    # Volumes pour la persistance
     volumes:
-      # Mount des dossiers critiques
-      - ./uploads:/app/uploads
-      - ./logs:/app/logs
-      
-      # Volume pour les node_modules (évite les conflits avec l'hôte)
-      - node_modules:/app/node_modules
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
 
-# Déclaration des ressources partagées
+# Déclaration des volumes persistants
 volumes:
-  node_modules:
+  uploads_data:
+    driver: local
+  logs_data:
     driver: local
 
 networks:
   backend-network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16

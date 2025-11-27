@@ -1,10 +1,7 @@
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "backend/Dockerfile"
+builder = "heroku/buildpacks:20"
 
 [deploy]
-healthCheckPath = "https://panameconsulting.up.railway.app/health"
-healthCheckTimeout = 5
 restartPolicyType = "ON_FAILURE"
 
 [variables]
@@ -17,5 +14,5 @@ MONGODB_SOCKET_TIMEOUT = "45000"
 # Configuration CORS pour Railway
 [http]
 allowedOrigins = ["https://panameconsulting.vercel.app"]
-allowedMethods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+allowedMethods = ["GET", "POST", "PUT", "DELETE", "PATCH","UPDATE","OPTIONS"]
 allowedHeaders = ["Content-Type", "Authorization"]
