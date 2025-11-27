@@ -1,47 +1,52 @@
-# Dockerfile
-FROM node:18-alpine AS builder
+# Dockerfile multi-stage optimisé pour pnpm
+FROM node:18-alpine AS installer
 
-# Install pnpm
-RUN npm install -g pnpm
+# Installer pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 
-WORKDIR /app
+WORKDIR /usr/src/app
 
-# Copy package files
-COPY package.json pnpm-lock.yaml .npmrc ./
+# Copier les fichiers de configuration
+COPY package.json pnpm-lock.yaml* .npmrc* ./
 
-# Install dependencies
+# Installer toutes les dépendances
 RUN pnpm install --frozen-lockfile
 
-# Copy source code
+FROM installer AS builder
+
 COPY . .
 
-# Build the application
+# Build de l'application
 RUN pnpm run build
 
-# Production image
+# Étape de production finale
 FROM node:18-alpine AS production
 
-WORKDIR /app
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
 
-# Install pnpm
-RUN npm install -g pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 
-# Copy package files
-COPY package.json pnpm-lock.yaml .npmrc ./
+WORKDIR /usr/src/app
 
-# Install only production dependencies
-RUN pnpm install --prod --frozen-lockfile
+# Copier package.json et lockfile
+COPY package.json pnpm-lock.yaml* ./
 
-# Copy built application from builder stage
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/uploads ./uploads
-COPY --from=builder /app/logs ./logs
+# Installer uniquement les dépendances de production
+RUN pnpm install --frozen-lockfile --prod
 
-# Create necessary directories
-RUN mkdir -p logs uploads
+# Copier le build depuis l'étape builder
+COPY --from=builder /usr/src/app/dist ./dist
 
-# Expose port
-EXPOSE 3000
+# Sécurité : utiliser un utilisateur non-root
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001 && \
+    chown -R nextjs:nodejs /usr/src/app
 
-# Start the application
-CMD ["node", "dist/main.js"]
+USER nextjs
+
+CMD ["node", "dist/main"]
