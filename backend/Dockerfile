@@ -1,65 +1,77 @@
-# ============ ÉTAPE DE BUILD ============
+# Dockerfile
+# ==========
+# Builder stage
+# ==========
 FROM node:18-alpine AS builder
 
-# Installation et configuration de pnpm
-RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+# Install pnpm globally
+RUN npm install -g pnpm@8.15.0
 
-# Définition du répertoire de travail
 WORKDIR /app
 
-# Copie des fichiers de configuration en premier (optimisation du cache Docker)
-COPY package.json pnpm-lock.yaml* tsconfig.json nest-cli.json ./
+# Copy package files first for better caching
+COPY package.json pnpm-lock.yaml .npmrc ./
 
-# Installation de toutes les dépendances (développement + production)
+# Install all dependencies (including dev dependencies for build)
 RUN pnpm install --frozen-lockfile --prefer-offline
 
-# Copie des sources de l'application
+# Copy source code
 COPY . .
 
-# Construction de l'application
+# Create necessary directories
+RUN mkdir -p logs uploads
+
+# Set build-time environment variables
+ARG NODE_ENV=production
+ARG BUILD_VERSION=1.0.0
+
+# Build the application
 RUN pnpm run build
 
-# ============ ÉTAPE DE PRODUCTION ============
+# ==========
+# Production stage
+# ==========
 FROM node:18-alpine AS production
 
-# Arguments de build
-ARG NODE_ENV=production
-ENV NODE_ENV=${NODE_ENV}
+# Security best practices
+RUN apk add --no-cache curl && \
+    addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
 
-# Installation et configuration de pnpm
-RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+# Install pnpm globally
+RUN npm install -g pnpm@8.15.0 && \
+    npm cache clean --force
 
-# Définition du répertoire de travail
 WORKDIR /app
 
-# Copie des fichiers de package
-COPY package.json pnpm-lock.yaml* ./
+# Switch to non-root user
+USER nextjs
 
-# Installation UNIQUEMENT des dépendances de production
-RUN pnpm install --prod --frozen-lockfile --prefer-offline
+# Copy package files
+COPY --chown=nextjs:nodejs package.json pnpm-lock.yaml .npmrc ./
 
-# Copie des fichiers compilés depuis l'étape builder
-COPY --from=builder /app/dist ./dist
+# Install only production dependencies
+RUN pnpm install --prod --frozen-lockfile --prefer-offline && \
+    pnpm store prune
 
-# Création des dossiers nécessaires
-RUN mkdir -p /app/uploads && \
-    mkdir -p /app/logs
+# Copy built application from builder stage
+COPY --chown=nextjs:nodejs --from=builder /app/dist ./dist
+COPY --chown=nextjs:nodejs --from=builder /app/uploads ./uploads
+COPY --chown=nextjs:nodejs --from=builder /app/logs ./logs
+COPY --chown=nextjs:nodejs --from=builder /app/package.json ./
 
-# ============ SÉCURITÉ ============
-# Création d'un utilisateur non-root pour plus de sécurité
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nestjs -u 1001 && \
-    chown -R nestjs:nodejs /app
+# Create necessary directories with proper permissions
+RUN mkdir -p logs uploads && \
+    chown -R nextjs:nodejs logs uploads
 
-# Passage à l'utilisateur non-root
-USER nestjs
 
-# Exposition du port de l'application
+# Runtime environment variables
+ENV NODE_ENV=production
+ENV PORT=10000
+ENV TZ=Europe/Paris
+
+# Expose port
 EXPOSE 10000
 
-# Variables d'environnement par défaut
-ENV PORT=10000
-ENV HOSTNAME=0.0.0.0
-
-# Commande de démarrage de l'application
+# Use node process instead of npm for better signal handling
 CMD ["node", "dist/main.js"]

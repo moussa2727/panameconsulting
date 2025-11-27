@@ -1,17 +1,24 @@
+# railway.toml
 [build]
-builder = "dockerfile"          # Railway utilise ton Dockerfile
-dockerfilePath = "Dockerfile"
-context = "."
+builder = "Dockerfile"
+buildCommand = "pnpm install && pnpm run build"
 
 [deploy]
+numReplicas = 1
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
+startCommand = "node dist/main"
 
-[service]
-name = "backend"
-internal_port = 10000           # Doit correspondre à EXPOSE 10000 dans Dockerfile
+[healthcheck]
+path = "/api"
+port = 10000
+initialDelay = 30
+timeout = 10
+interval = 30
 
+# Environment variables
 [env]
-PORT = "10000"
 NODE_ENV = "production"
+PORT = "10000"
 TZ = "Europe/Paris"
+MONGODB_SERVER_SELECTION_TIMEOUT = "30000"
+MONGODB_SOCKET_TIMEOUT = "45000"

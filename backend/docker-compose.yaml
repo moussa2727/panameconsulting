@@ -1,53 +1,72 @@
+version: '3.8'
+
 services:
   backend:
-    container_name: backend
     build:
       context: .
       dockerfile: Dockerfile
+      target: production
       args:
-        NODE_ENV: production  # Injecté dans ton Dockerfile multi-stage
-      
+        NODE_ENV: production
+    container_name: panameconsultingbackend
     image: panameconsulting:latest
-    
+    restart: unless-stopped
     ports:
       - "10000:10000"
-
     environment:
-      NODE_ENV: production
-      PORT: 10000
-      MONGODB_SERVER_SELECTION_TIMEOUT: 30000
-      MONGODB_SOCKET_TIMEOUT: 45000
-      TZ: Europe/Paris
-
+      - NODE_ENV=production
+      - PORT=10000
+      - MONGODB_SERVER_SELECTION_TIMEOUT=30000
+      - MONGODB_SOCKET_TIMEOUT=45000
+      - TZ=Europe/Paris
     env_file:
       - .env
-
-    restart: unless-stopped
-
+    volumes:
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+      - node_modules:/app/node_modules
+    networks:
+      - paname-network
     dns:
       - 1.1.1.1
       - 8.8.8.8
-    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://panameconsulting.up.railway.app/api"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
 
-    networks:
-      - backend-network
-
-    volumes:
-      - ./uploads:/app/uploads   # Persistance fichiers
-      - ./logs:/app/logs         # Persistance logs
-      - node_modules:/app/node_modules  # Isolement dépendances
+  # Database example (if you have one)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: paname-postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: paname_db
+  #     POSTGRES_USER: paname_user
+  #     POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - paname-network
 
 volumes:
+  uploads_data:
+  logs_data:
   node_modules:
     driver: local
+  # postgres_data:
 
 networks:
-  backend-network:
+  paname-network:
     driver: bridge
     ipam:
       config:
