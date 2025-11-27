@@ -90,6 +90,9 @@ dependencies:
   multer:
     specifier: ^2.0.2
     version: 2.0.2
+  nest:
+    specifier: ^0.1.6
+    version: 0.1.6
   nest-winston:
     specifier: ^1.10.2
     version: 1.10.2(@nestjs/common@10.2.7)(winston@3.18.3)
@@ -7910,6 +7913,10 @@ packages:
       '@nestjs/common': 10.2.7(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.1.14)(rxjs@7.8.2)
       fast-safe-stringify: 2.1.1
       winston: 3.18.3
+    dev: false
+
+  /nest@0.1.6:
+    resolution: {integrity: sha512-21378J/6pHB9EZMId5yz9DaxVj778pCHhzfXhRLLrLWZydpLgbsyxL5B5QyTSWJBk5L8XbiGgMvNZMb/qBySYg==}
     dev: false
 
   /nice-try@1.0.5:
