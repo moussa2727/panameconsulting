@@ -5,13 +5,11 @@ import {
   Languages,
   BookOpen,
   GraduationCap,
-  Globe,
   MapPin,
   Sparkles,
   BadgeCheck,
   ChevronLeft,
   ChevronRight,
-  Loader,
 } from 'lucide-react';
 
 // Types
@@ -33,63 +31,55 @@ interface Destination {
   advantages: string[];
   score: number;
   matchPercentage: number;
-  image?: string;
   flag: string;
 }
 
-// Composant de chargement optimisé
-const LoadingSpinner: React.FC = () => (
-  <div className="flex items-center justify-center py-12">
-    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600"></div>
-  </div>
-);
-
-// Composant de carte de destination
+// Composant de carte de destination optimisé
 const DestinationCard: React.FC<{ destination: Destination; rank: number }> = React.memo(({ destination, rank }) => (
-  <div className={`relative border rounded-2xl p-6 text-left flex flex-col h-full transform transition-all duration-300 hover:scale-[1.02] ${
+  <div className={`relative border rounded-xl p-4 text-left flex flex-col h-full transition-all duration-300 hover:shadow-lg ${
     rank === 1
-      ? 'border-sky-300 bg-gradient-to-br from-sky-50 to-blue-50 shadow-lg'
-      : 'border-gray-200 bg-white shadow-md'
+      ? 'border-sky-300 bg-gradient-to-br from-sky-50 to-blue-50 shadow-md'
+      : 'border-gray-200 bg-white shadow-sm'
   }`}>
     {/* Badge de rang */}
-    <div className={`absolute -top-3 -right-3 w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+    <div className={`absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-xs ${
       rank === 1 ? 'bg-gradient-to-r from-yellow-500 to-orange-500' : 'bg-gradient-to-r from-gray-500 to-gray-600'
     }`}>
       #{rank}
     </div>
 
     {/* En-tête avec drapeau et score */}
-    <div className="flex items-center justify-between mb-4">
-      <div className="flex items-center space-x-3">
-        <span className="text-2xl">{destination.flag}</span>
-        <h3 className="text-2xl font-bold text-gray-900">
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center space-x-2">
+        <span className="text-xl">{destination.flag}</span>
+        <h3 className="text-lg font-bold text-gray-900">
           {destination.name}
         </h3>
       </div>
-      <div className="flex items-center bg-sky-100 px-3 py-1 rounded-full">
-        <Sparkles className="h-4 w-4 text-sky-600 mr-1" />
-        <span className="text-sm font-medium text-sky-600">
-          {destination.matchPercentage}% match
+      <div className="flex items-center bg-sky-100 px-2 py-1 rounded-full">
+        <Sparkles className="h-3 w-3 text-sky-600 mr-1" />
+        <span className="text-xs font-medium text-sky-600">
+          {destination.matchPercentage}%
         </span>
       </div>
     </div>
 
     {/* Description */}
-    <p className="text-gray-600 mb-4 flex-grow">
+    <p className="text-gray-600 text-sm mb-3 flex-grow">
       {destination.description}
     </p>
 
     {/* Avantages */}
-    <div className="mt-4">
-      <h4 className="font-semibold text-sky-600 mb-3 flex items-center">
-        <BadgeCheck className="h-5 w-5 mr-2" />
-        Avantages clés :
+    <div className="mt-2">
+      <h4 className="font-semibold text-sky-600 text-sm mb-2 flex items-center">
+        <BadgeCheck className="h-4 w-4 mr-1" />
+        Points forts :
       </h4>
-      <ul className="space-y-2">
-        {destination.advantages.map((advantage, i) => (
+      <ul className="space-y-1">
+        {destination.advantages.slice(0, 3).map((advantage, i) => (
           <li key={i} className="flex items-start">
-            <div className="h-2 w-2 rounded-full bg-sky-500 mr-3 mt-2 flex-shrink-0"></div>
-            <span className="text-gray-700 text-sm">{advantage}</span>
+            <div className="h-1.5 w-1.5 rounded-full bg-sky-500 mr-2 mt-1.5 flex-shrink-0"></div>
+            <span className="text-gray-700 text-xs">{advantage}</span>
           </li>
         ))}
       </ul>
@@ -104,111 +94,66 @@ const DestinationQuiz: React.FC = () => {
   const [isCalculating, setIsCalculating] = useState<boolean>(false);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
 
-  // Questions avec useMemo pour éviter les recréations
+  // Questions compactes
   const questions: Question[] = useMemo(() => [
     {
       id: 'budget',
-      question: 'Quel est votre budget annuel pour les études ?',
-      icon: <Banknote className='w-8 h-8 text-sky-600' />,
+      question: 'Budget annuel pour les études ?',
+      icon: <Banknote className='w-6 h-6 text-sky-600' />,
       options: [
-        { 
-          value: '2-3M', 
-          label: '2-3 millions FCFA',
-          description: 'Budget économique'
-        },
-        { 
-          value: '3-5M', 
-          label: '3-5 millions FCFA',
-          description: 'Budget moyen'
-        },
-        { 
-          value: '5-10M', 
-          label: '5-10 millions FCFA',
-          description: 'Budget confortable'
-        },
-        { 
-          value: '10M+', 
-          label: '10+ millions FCFA',
-          description: 'Budget élevé'
-        },
+        { value: '2-3M', label: '2-3M FCFA' },
+        { value: '3-5M', label: '3-5M FCFA' },
+        { value: '5-10M', label: '5-10M FCFA' },
+        { value: '10M+', label: '10M+ FCFA' },
       ],
     },
     {
       id: 'language',
-      question: 'Quelles sont vos préférences linguistiques ?',
-      icon: <Languages className='w-8 h-8 text-sky-600' />,
+      question: 'Préférence linguistique ?',
+      icon: <Languages className='w-6 h-6 text-sky-600' />,
       options: [
-        { 
-          value: 'fr', 
-          label: 'Français uniquement',
-          description: 'Programmes en français'
-        },
-        { 
-          value: 'en', 
-          label: 'Anglais uniquement',
-          description: 'Programmes en anglais'
-        },
-        { 
-          value: 'bilingue', 
-          label: 'Bilingue (FR/EN)',
-          description: 'Programmes dans les deux langues'
-        },
-        { 
-          value: 'other', 
-          label: 'Autre combinaison',
-          description: 'Autres langues disponibles'
-        },
+        { value: 'fr', label: 'Français' },
+        { value: 'en', label: 'Anglais' },
+        { value: 'bilingue', label: 'Bilingue' },
+        { value: 'other', label: 'Autre' },
       ],
     },
     {
       id: 'field',
-      question: 'Quel domaine de formation recherchez-vous ?',
-      icon: <BookOpen className='w-8 h-8 text-sky-600' />,
+      question: 'Domaine de formation ?',
+      icon: <BookOpen className='w-6 h-6 text-sky-600' />,
       options: [
-        { value: 'info', label: 'Informatique & Tech' },
-        { value: 'med', label: 'Médecine & Santé' },
-        { value: 'law', label: 'Droit & Juridique' },
-        { value: 'finance', label: 'Finance & Commerce' },
-        { value: 'arts', label: 'Lettres & Arts' },
+        { value: 'info', label: 'Informatique' },
+        { value: 'med', label: 'Médecine' },
         { value: 'engineering', label: 'Ingénierie' },
+        { value: 'finance', label: 'Finance' },
       ],
     },
     {
       id: 'degree',
-      question: "Quel niveau d'études visez-vous ?",
-      icon: <GraduationCap className='w-8 h-8 text-sky-600' />,
+      question: "Niveau d'études ?",
+      icon: <GraduationCap className='w-6 h-6 text-sky-600' />,
       options: [
-        { value: 'bachelor', label: 'Licence/Bachelor' },
+        { value: 'bachelor', label: 'Licence' },
         { value: 'master', label: 'Master' },
         { value: 'phd', label: 'Doctorat' },
-        { value: 'short', label: 'Formation courte' },
-      ],
-    },
-    {
-      id: 'destination',
-      question: 'Avez-vous une préférence géographique ?',
-      icon: <Globe className='w-8 h-8 text-sky-600' />,
-      options: [
-        { value: 'europe', label: 'Europe' },
-        { value: 'africa', label: 'Afrique' },
-        { value: 'asia', label: 'Asie' },
-        { value: 'none', label: 'Aucune préférence' },
+        { value: 'short', label: 'Courte' },
       ],
     },
   ], []);
 
-  // Destinations avec useMemo
+  // Destinations avec les pays demandés
   const destinations: Destination[] = useMemo(() => [
     {
       id: 'france',
       name: 'France',
-      description: 'Excellence académique avec des frais abordables et riche culture étudiante dans un environnement francophone.',
+      description: 'Excellence académique avec des universités renommées et un environnement francophone idéal.',
       advantages: [
-        'Grandes écoles et universités renommées',
+        'Grandes écoles et universités prestigieuses',
         'Frais universitaires très accessibles',
         'Système de bourses développé',
         'Vie étudiante riche et dynamique',
-        'Diplômes reconnus internationalement'
+        'Diplômes internationalement reconnus'
       ],
       score: 0,
       matchPercentage: 0,
@@ -217,13 +162,13 @@ const DestinationQuiz: React.FC = () => {
     {
       id: 'russie',
       name: 'Russie',
-      description: 'Pays bilingue avec des opportunités de travail pendant les études et immigration facilitée après graduation.',
+      description: 'Formation de qualité avec des coûts abordables et une riche tradition académique.',
       advantages: [
-        'Permis de travail post-études avantageux',
-        'Environnement multiculturel et inclusif',
-        'Diplômes très bien reconnus',
-        'Excellente qualité de vie',
-        'Économie stable et opportunités'
+        'Universités réputées en médecine et sciences',
+        'Coûts de formation très compétitifs',
+        'Programmes en anglais disponibles',
+        'Logement étudiant subventionné',
+        'Diplômes reconnus en Europe'
       ],
       score: 0,
       matchPercentage: 0,
@@ -232,11 +177,11 @@ const DestinationQuiz: React.FC = () => {
     {
       id: 'maroc',
       name: 'Maroc',
-      description: 'Proximité culturelle et coûts très abordables pour des formations de qualité reconnue.',
+      description: 'Proximité culturelle et géographique avec des coûts très abordables.',
       advantages: [
         'Coûts de vie et études très compétitifs',
         'Environnement francophone familier',
-        'Proximité géographique si africain',
+        'Proximité géographique pour les africains',
         'Développement économique rapide',
         'Culture riche et accueillante'
       ],
@@ -245,30 +190,45 @@ const DestinationQuiz: React.FC = () => {
       flag: '🇲🇦'
     },
     {
-      id: 'turquie',
-      name: 'Turquie',
-      description: 'Pont entre l\'Europe et l\'Asie avec des programmes en anglais et français à coûts modérés.',
+      id: 'algerie',
+      name: 'Algérie',
+      description: 'Destination économique avec un système éducatif en développement.',
       advantages: [
-        'Coûts modérés avec bonne qualité',
-        'Programmes internationaux diversifiés',
-        'Culture historique riche',
-        'Position géographique stratégique',
-        'Bourses disponibles pour étudiants'
+        'Coûts extrêmement abordables',
+        'Environnement francophone',
+        'Proximité culturelle et géographique',
+        'Universités en développement constant',
+        'Frais de scolarité très bas'
       ],
       score: 0,
       matchPercentage: 0,
-      flag: '🇹🇷'
+      flag: '🇩🇿'
+    },
+    {
+      id: 'tunisie',
+      name: 'Tunisie',
+      description: 'Qualité de formation reconnue avec des coûts modérés.',
+      advantages: [
+        'Rapport qualité-prix excellent',
+        'Environnement francophone',
+        'Système éducatif bien structuré',
+        'Coûts de vie raisonnables',
+        'Diplômes reconnus en Afrique'
+      ],
+      score: 0,
+      matchPercentage: 0,
+      flag: '🇹🇳'
     },
     {
       id: 'chine',
       name: 'Chine',
-      description: 'Croissance économique rapide avec des programmes en anglais et nombreuses bourses disponibles.',
+      description: 'Croissance économique rapide avec des programmes internationaux et bourses.',
       advantages: [
         'Bourses gouvernementales nombreuses',
         'Croissance économique exceptionnelle',
-        'Expérience culturelle asiatique unique',
-        'Programmes techniques avancés',
-        'Coûts relativement bas'
+        'Programmes en anglais disponibles',
+        'Universités de rang mondial',
+        'Expérience culturelle unique'
       ],
       score: 0,
       matchPercentage: 0,
@@ -276,92 +236,72 @@ const DestinationQuiz: React.FC = () => {
     }
   ], []);
 
-  // Logique de calcul optimisée avec useCallback
+  // Logique de scoring mise à jour
   const calculateResults = useCallback((answers: Record<string, string>): Destination[] => {
     const scoredDestinations = destinations.map(d => ({ ...d, score: 0 }));
 
-    // Système de scoring plus sophistiqué
-    const scoringRules: Record<string, Record<string, Record<string, number>>> = {
-      budget: {
-        '2-3M': { 'maroc': 4, 'algerie': 3, 'turquie': 2 },
-        '3-5M': { 'france': 3, 'turquie': 3, 'maroc': 2 },
-        '5-10M': { 'russie': 3, 'france': 2, 'chine': 2 },
-        '10M+': { 'russie': 4, 'france': 3, 'chine': 2 }
-      },
-      language: {
-        'fr': { 'france': 4, 'maroc': 3, 'russie': 2 },
-        'en': { 'russie': 4, 'chine': 2, 'turquie': 2 },
-        'bilingue': { 'russie': 4, 'france': 2, 'maroc': 2 },
-        'other': { 'turquie': 2, 'chine': 2 }
-      },
-      field: {
-        'info': { 'russie': 3, 'chine': 2, 'france': 2 },
-        'med': { 'france': 4, 'russie': 2 },
-        'engineering': { 'france': 3, 'russie': 2, 'chine': 2 },
-        'finance': { 'france': 3, 'russie': 3 },
-        'law': { 'france': 4, 'russie': 2 },
-        'arts': { 'france': 3, 'russie': 2 }
-      },
-      degree: {
-        'bachelor': { 'france': 2, 'russie': 2, 'maroc': 2 },
-        'master': { 'france': 3, 'russie': 3, 'turquie': 2 },
-        'phd': { 'france': 4, 'russie': 3, 'chine': 2 },
-        'short': { 'maroc': 3, 'turquie': 2, 'france': 2 }
-      },
-      destination: {
-        'europe': { 'france': 4, 'turquie': 2, 'russie': 4 },
-        'africa': { 'maroc': 4 },
-        'asia': { 'chine': 4, 'turquie': 2 },
-        'none': { 'france': 1, 'russie': 1, 'maroc': 1, 'chine': 1, 'turquie': 1 }
-      }
-    };
-
-    // Application des règles de scoring
+    // Règles de scoring pour les nouvelles destinations
     Object.entries(answers).forEach(([questionId, answer]) => {
-      const rules = scoringRules[questionId as keyof typeof scoringRules];
-      if (rules && rules[answer]) {
-        Object.entries(rules[answer]).forEach(([country, points]) => {
-          const destination = scoredDestinations.find(d => d.id === country);
-          if (destination) {
-            destination.score += points as number;
-          }
-        });
-      }
+      scoredDestinations.forEach(dest => {
+        if (questionId === 'budget') {
+          if (answer === '2-3M' && ['maroc', 'algerie', 'tunisie'].includes(dest.id)) dest.score += 3;
+          if (answer === '3-5M' && ['maroc', 'tunisie', 'russie'].includes(dest.id)) dest.score += 2;
+          if (answer === '5-10M' && ['france', 'russie', 'chine'].includes(dest.id)) dest.score += 2;
+          if (answer === '10M+' && ['france', 'chine'].includes(dest.id)) dest.score += 3;
+        }
+        
+        if (questionId === 'language') {
+          if (answer === 'fr' && ['france', 'maroc', 'algerie', 'tunisie'].includes(dest.id)) dest.score += 3;
+          if (answer === 'en' && ['chine', 'russie'].includes(dest.id)) dest.score += 3;
+          if (answer === 'bilingue' && ['russie', 'chine'].includes(dest.id)) dest.score += 4;
+        }
+
+        if (questionId === 'field') {
+          if (answer === 'med' && ['russie', 'france'].includes(dest.id)) dest.score += 3;
+          if (answer === 'engineering' && ['france', 'chine', 'russie'].includes(dest.id)) dest.score += 3;
+          if (answer === 'info' && ['chine', 'france'].includes(dest.id)) dest.score += 3;
+          if (answer === 'finance' && ['france', 'maroc'].includes(dest.id)) dest.score += 2;
+        }
+
+        if (questionId === 'degree') {
+          if (answer === 'master' && ['france', 'russie'].includes(dest.id)) dest.score += 3;
+          if (answer === 'phd' && ['france', 'chine'].includes(dest.id)) dest.score += 3;
+          if (answer === 'bachelor' && ['maroc', 'tunisie', 'algerie'].includes(dest.id)) dest.score += 2;
+          if (answer === 'short' && ['maroc', 'tunisie'].includes(dest.id)) dest.score += 3;
+        }
+      });
     });
 
-    // Calcul du pourcentage de match
-    const maxPossibleScore = 20; // Score maximum théorique
+    const maxPossibleScore = 16;
     return scoredDestinations
-      .filter(d => d.score > 0) // Ne garder que les destinations avec un score positif
+      .filter(d => d.score > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 3) // Top 3 destinations
+      .slice(0, 3)
       .map(d => ({
         ...d,
-        matchPercentage: Math.min(100, Math.round((d.score / maxPossibleScore) * 100))
+        matchPercentage: Math.min(95, Math.max(60, Math.round((d.score / maxPossibleScore) * 100)))
       }));
   }, [destinations]);
 
-  // Gestion des réponses avec animation
+  // Gestion des réponses
   const handleAnswer = useCallback(async (questionId: string, answer: string) => {
     setSelectedOption(answer);
     
     const newAnswers = { ...answers, [questionId]: answer };
     setAnswers(newAnswers);
 
-    // Petit délai pour l'animation
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     if (currentStep < questions.length - 1) {
       setCurrentStep(prev => prev + 1);
       setSelectedOption(null);
     } else {
       setIsCalculating(true);
-      // Simulation du temps de calcul
       setTimeout(() => {
         const topDestinations = calculateResults(newAnswers);
         setResults(topDestinations);
         setIsCalculating(false);
-      }, 1500);
+      }, 1200);
     }
   }, [answers, currentStep, questions.length, calculateResults]);
 
@@ -377,23 +317,23 @@ const DestinationQuiz: React.FC = () => {
   // Écran de résultats
   if (results.length > 0) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 py-8 px-4 sm:px-6 lg:px-8 md:pb-2">
-        <div className="max-w-6xl mx-auto">
-          {/* En-tête des résultats */}
-          <div className="text-center mb-12">
-            <div className="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-white shadow-lg mb-6">
-              <MapPin className="h-10 w-10 text-sky-600" />
+      <div className="min-h-screen bg-gray-50 py-4 px-4 sm:px-6">
+        <div className="max-w-4xl mx-auto">
+          {/* En-tête compact */}
+          <div className="text-center mb-6">
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-white shadow-md mb-3">
+              <MapPin className="h-8 w-8 text-blue-600" />
             </div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-4">
-              Vos destinations recommandées
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+              Vos destinations idéales
             </h1>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Basé sur vos préférences, voici les pays les plus adaptés à votre projet d'études
+            <p className="text-gray-600 max-w-md mx-auto text-sm">
+              Basé sur vos préférences, voici les pays les plus adaptés
             </p>
           </div>
 
-          {/* Grille des résultats */}
-          <div className="grid gap-8 lg:grid-cols-3 mb-12">
+          {/* Grille des résultats responsive */}
+          <div className="grid gap-4 sm:gap-6 md:grid-cols-3 mb-6">
             {results.map((destination, index) => (
               <DestinationCard 
                 key={destination.id} 
@@ -403,34 +343,27 @@ const DestinationQuiz: React.FC = () => {
             ))}
           </div>
 
-          {/* Actions */}
-          <div className="text-center space-y-6">
-            <div className="space-y-4">
-              <Link
-                to="/rendez-vous"
-                className="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
-              >
-                Discuter avec un conseiller
-                <ChevronRight className="ml-2 h-5 w-5" />
-              </Link>
-            </div>
+          {/* Actions compactes */}
+          <div className="text-center space-y-3">
+            <Link
+              to="/rendez-vous"
+              className="inline-flex items-center justify-center px-6 py-3 font-semibold text-white bg-blue-600 rounded-lg shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-300 text-sm"
+            >
+              Discuter avec un conseiller
+              <ChevronRight className="ml-2 h-4 w-4" />
+            </Link>
             
-            <div className="pt-6 border-t border-gray-200">
-              <button
-                onClick={() => {
-                  setCurrentStep(0);
-                  setAnswers({});
-                  setResults([]);
-                  setSelectedOption(null);
-                }}
-                className="text-sky-600 hover:text-sky-700 font-semibold transition-colors duration-200 flex items-center justify-center mx-auto"
-              >
-                <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Refaire le questionnaire
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                setCurrentStep(0);
+                setAnswers({});
+                setResults([]);
+                setSelectedOption(null);
+              }}
+              className="block mx-auto text-blue-600 hover:text-blue-700 font-medium transition-colors duration-200 text-sm"
+            >
+              ↻ Refaire le test
+            </button>
           </div>
         </div>
       </div>
@@ -440,113 +373,132 @@ const DestinationQuiz: React.FC = () => {
   // Écran de chargement
   if (isCalculating) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 flex items-center justify-center md:pb-2">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-sky-600 mx-auto mb-4"></div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">
-            Analyse de vos préférences...
-          </h3>
-          <p className="text-gray-600">
-            Nous sélectionnons les meilleures destinations pour vous
-          </p>
+          {/* Loader principal */}
+          <div className="relative w-16 h-16 mx-auto mb-4">
+            {/* Cercle externe */}
+            <div className="absolute inset-0 border-3 border-blue-200 rounded-full"></div>
+            {/* Cercle progressif */}
+            <div className="absolute inset-0 border-3 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
+            {/* Points animés */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex space-x-1">
+                <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Texte */}
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-gray-800">Calcul en cours</h3>
+            <p className="text-gray-600 text-sm">Veuillez patienter...</p>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Interface du questionnaire
+  // Interface du questionnaire compact
   const currentQuestion = questions[currentStep];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 py-8 px-4 sm:px-6 lg:px-8 md:pb-2">
-      <div className="max-w-2xl mx-auto">
-        {/* Barre de progression */}
-        <div className="mb-8">
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-sm font-semibold text-sky-600">
-              Question {currentStep + 1}/{questions.length}
-            </span>
-            <span className="text-sm font-semibold text-sky-600">
-              {Math.round(progress)}%
-            </span>
+    <div className="min-h-screen bg-gray-50 py-4 px-4 sm:px-6">
+      <div className="max-w-lg mx-auto">
+        {/* Barre de progression compacte */}
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-2 text-xs font-medium text-blue-600">
+            <span>Question {currentStep + 1}/{questions.length}</span>
+            <span>{Math.round(progress)}%</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-3">
+          <div className="w-full bg-gray-200 rounded-full h-2">
             <div
-              className="bg-gradient-to-r from-sky-400 to-blue-500 h-3 rounded-full transition-all duration-500 ease-out shadow-sm"
+              className="bg-blue-600 h-2 rounded-full transition-all duration-500"
               style={{ width: `${progress}%` }}
             ></div>
           </div>
         </div>
 
-        {/* Carte de question */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          {/* En-tête de la question */}
-          <div className="p-8 text-center border-b border-gray-100">
-            <div className="flex justify-center mb-4">
+        {/* Carte de question compacte */}
+        <div className="bg-white rounded-xl shadow-lg border border-gray-100">
+          {/* En-tête compact */}
+          <div className="p-5 text-center border-b border-gray-100">
+            <div className="flex justify-center mb-40">
               {currentQuestion.icon}
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 leading-tight">
+            <h2 className="text-xl font-bold text-gray-900">
               {currentQuestion.question}
             </h2>
           </div>
 
-          {/* Options de réponse */}
-          <div className="p-6 space-y-4">
+          {/* Options compactes - ESPACE RÉDUIT */}
+          <div className="p-4 space-y-2">
             {currentQuestion.options.map((option) => (
               <button
                 key={option.value}
                 onClick={() => handleAnswer(currentQuestion.id, option.value)}
-                className={`w-full p-4 text-left rounded-xl border-2 transition-all duration-300 transform hover:scale-[1.02] ${
+                className={`w-full p-3 text-left rounded-lg border transition-all duration-200 ${
                   selectedOption === option.value
-                    ? 'border-sky-500 bg-sky-50 shadow-md'
-                    : 'border-gray-200 hover:border-sky-300 hover:bg-sky-50/50'
+                    ? 'border-blue-600 bg-blue-50 shadow-sm'
+                    : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/30'
                 }`}
               >
                 <div className="flex items-center">
-                  <div className={`flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full border-2 mr-4 ${
+                  <div className={`flex-shrink-0 flex items-center justify-center h-5 w-5 rounded-full border mr-3 ${
                     selectedOption === option.value
-                      ? 'border-sky-500 bg-sky-500'
+                      ? 'border-blue-600 bg-blue-600'
                       : 'border-gray-300'
                   }`}>
                     {selectedOption === option.value && (
-                      <div className="h-2 w-2 rounded-full bg-white"></div>
+                      <div className="h-1.5 w-1.5 rounded-full bg-white"></div>
                     )}
                   </div>
-                  <div className="flex-1">
-                    <div className="font-semibold text-gray-900">
-                      {option.label}
-                    </div>
-                    {option.description && (
-                      <div className="text-sm text-gray-600 mt-1">
-                        {option.description}
-                      </div>
-                    )}
-                  </div>
+                  <span className="font-medium text-gray-900 text-sm">
+                    {option.label}
+                  </span>
                 </div>
               </button>
             ))}
           </div>
 
-          {/* Navigation */}
-          <div className="bg-gray-50 px-6 py-4 flex items-center justify-between">
+          {/* Navigation compacte - ESPACE RÉDUIT */}
+          <div className="bg-gray-50 px-4 py-3 flex items-center justify-between rounded-b-xl">
             <button
               onClick={handlePrevious}
               disabled={currentStep === 0}
-              className={`flex items-center font-medium ${
+              className={`flex items-center text-sm font-medium ${
                 currentStep === 0
                   ? 'text-gray-400 cursor-not-allowed'
-                  : 'text-sky-600 hover:text-sky-700'
+                  : 'text-blue-600 hover:text-blue-700'
               }`}
             >
-              <ChevronLeft className="w-5 h-5 mr-1" />
-              Précédent
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Retour
             </button>
             
-            <div className="text-sm text-gray-500 font-medium">
-              {currentStep + 1} sur {questions.length}
+            <div className="text-xs text-gray-500 font-medium">
+              {currentStep + 1}/{questions.length}
             </div>
-            
-            <div className="w-20"></div> {/* Espaceur pour l'alignement */}
+          </div>
+        </div>
+
+        {/* Indicateur de progression en bas - ESPACE RÉDUIT */}
+        <div className="text-center mt-3">
+          <div className="flex justify-center space-x-1">
+            {questions.map((_, index) => (
+              <div
+                key={index}
+                className={`h-1 w-6 rounded-full transition-all duration-300 ${
+                  index === currentStep
+                    ? 'bg-blue-600'
+                    : index < currentStep
+                    ? 'bg-green-500'
+                    : 'bg-gray-300'
+                }`}
+              />
+            ))}
           </div>
         </div>
       </div>

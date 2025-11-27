@@ -29,6 +29,7 @@ interface User {
   lastName: string;
   role: string;
   isActive: boolean;
+  isAdmin?: boolean
 }
 
 interface RegisterFormData {

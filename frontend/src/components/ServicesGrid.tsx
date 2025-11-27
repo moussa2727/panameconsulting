@@ -119,7 +119,7 @@ const ServicesGrid = () => {
                 {/* Icône avec taille responsive */}
                 <div className='mb-4 sm:mb-5'>
                   <div
-                    className='inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-white rounded-xl text-sky-600 group-hover:text-white border border-sky-100 group-hover:border-sky-200 group-hover:bg-gradient-to-r from-sky-500 to-sky-600 shadow-xs group-hover:shadow-sm transition-all duration-300'
+                    className='inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-white rounded-full text-sky-600 group-hover:text-white border border-sky-100 group-hover:border-sky-200 group-hover:bg-gradient-to-r from-sky-500 to-sky-600 shadow-xs group-hover:shadow-sm transition-all duration-300'
                     data-aos='zoom-in'
                     data-aos-delay={Math.min(index * 80 + 200, 600)}
                     aria-hidden="true"

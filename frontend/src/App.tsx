@@ -4,7 +4,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
 import ErrorBoundary from './components/ErrorBoundary';
-import { useAuth } from './utils/AuthContext';
+import { useAuth } from './context/AuthContext';
 
 // Components communs
 import Header from './components/Header';
@@ -34,7 +34,8 @@ const AdminDestinations = lazy(() => import('./pages/admin/AdminDestinations'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 
 // Restrictions admin
-import RequireAdmin from './utils/RequireAdmin';
+import RequireAdmin from './context/RequireAdmin';
+
 import MesRendezVous from './pages/user/MesRendezVous';
 import UserProfile from './pages/user/UserProfile';
 import UserProcedure from './pages/user/UserProcedure';
@@ -223,6 +224,10 @@ function App() {
               </Suspense>
             } />
           </Route>
+
+          {/* Routes spécifiques pour /admin/ qui doivent être NotFound */}
+          <Route path='/admin' element={<NotFound />} />
+          <Route path='/admin/*' element={<NotFound />} />
 
           {/* Route de protection contre accès non autorisé ou fausses routes */}
           <Route path='*' element={<NotFound />} />

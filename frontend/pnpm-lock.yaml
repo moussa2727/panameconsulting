@@ -14,6 +14,9 @@ importers:
       '@headlessui/react':
         specifier: ^1.7.17
         version: 1.7.19(react-dom@18.3.1)(react@18.3.1)
+      '@heroicons/react':
+        specifier: 2.2.0
+        version: 2.2.0(react@18.3.1)
       '@mantine/core':
         specifier: ^7.8.0
         version: 7.17.8(@mantine/hooks@7.17.8)(@types/react@18.3.23)(react-dom@18.3.1)(react@18.3.1)
@@ -26,6 +29,12 @@ importers:
       '@tremor/react':
         specifier: ^3.14.2
         version: 3.18.7(react-dom@18.3.1)(react@18.3.1)
+      '@types/chart.js':
+        specifier: 4.0.1
+        version: 4.0.1
+      '@types/papaparse':
+        specifier: 5.3.16
+        version: 5.3.16
       aos:
         specifier: ^2.3.4
         version: 2.3.4
@@ -33,7 +42,7 @@ importers:
         specifier: ^1.6.2
         version: 1.10.0
       chart.js:
-        specifier: ^4.4.0
+        specifier: ^4.5.0
         version: 4.5.0
       class-transformer:
         specifier: ^0.5.1
@@ -56,11 +65,14 @@ importers:
       lucide-react:
         specifier: ^0.294.0
         version: 0.294.0(react@18.3.1)
+      papaparse:
+        specifier: 5.5.3
+        version: 5.5.3
       react:
         specifier: ^18.2.0
         version: 18.3.1
       react-chartjs-2:
-        specifier: ^5.2.0
+        specifier: ^5.3.0
         version: 5.3.0(chart.js@4.5.0)(react@18.3.1)
       react-dom:
         specifier: ^18.2.0
@@ -728,6 +740,14 @@ packages:
       react-dom: 18.3.1(react@18.3.1)
     dev: false
 
+  /@heroicons/react@2.2.0(react@18.3.1):
+    resolution: {integrity: sha512-LMcepvRaS9LYHJGsF0zzmgKCUim/X3N/DQKc4jepAXJ7l8QxJ1PmxJzqplF2Z3FE4PqBAIGyJAQ/w4B5dsqbtQ==}
+    peerDependencies:
+      react: '>= 16 || ^19.0.0-rc'
+    dependencies:
+      react: 18.3.1
+    dev: false
+
   /@humanwhocodes/config-array@0.13.0:
     resolution: {integrity: sha512-DZLEEqFWQFiyK6h5YIeynKx7JlvCYWL0cImfSRXZ9l4Sg2efkFGTuFf6vzXjK1cq6IYkU+Eg/JizXw+TD2vRNw==}
     engines: {node: '>=10.10.0'}
@@ -1215,6 +1235,13 @@ packages:
       '@babel/types': 7.28.0
     dev: true
 
+  /@types/chart.js@4.0.1:
+    resolution: {integrity: sha512-OwXJ6Eg14eFpCsTG6sljiGnvVpit5R9rapG7nwDnQlljsdplVIOYVuCSwy07IduCtihrOwvOnbhXKLyp3nvPcw==}
+    deprecated: This is a stub types definition. chart.js provides its own type definitions, so you do not need this installed.
+    dependencies:
+      chart.js: 4.5.0
+    dev: false
+
   /@types/cors@2.8.19:
     resolution: {integrity: sha512-mFNylyeyqN93lfe/9CSxOGREz8cpzAhH+E93xJ4xWQf62V8sQ/24reV2nyzUWM6H6Xji+GGHpkbLe7pVoUEskg==}
     dependencies:
@@ -1285,6 +1312,12 @@ packages:
     resolution: {integrity: sha512-FE5u0ezmi6y9OZEzlJfg37mqqf6ZDSF2V/NLjUyGrR9uTZ7Sb9F7bLNZ03S4XVUNRWGA7Ck4c1kK+YnuWjl+DA==}
     dependencies:
       undici-types: 6.21.0
+
+  /@types/papaparse@5.3.16:
+    resolution: {integrity: sha512-T3VuKMC2H0lgsjI9buTB3uuKj3EMD2eap1MOuEQuBQ44EnDx/IkGhU6EwiTf9zG3za4SKlmwKAImdDKdNnCsXg==}
+    dependencies:
+      '@types/node': 20.19.24
+    dev: false
 
   /@types/prop-types@15.7.15:
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
@@ -3102,6 +3135,10 @@ packages:
   /package-json-from-dist@1.0.1:
     resolution: {integrity: sha512-UEZIS3/by4OC8vL3P2dTXRETpebLI2NiI5vIrjaD/5UtrkFX/tNbwjTSRAGC/+7CAo2pIcBaRgWmcBBHcsaCIw==}
     dev: true
+
+  /papaparse@5.5.3:
+    resolution: {integrity: sha512-5QvjGxYVjxO59MGU2lHVYpRWBBtKHnlIAcSe1uNFCkkptUh63NFRj0FJQm7nR67puEruUci/ZkjmEFrjCAyP4A==}
+    dev: false
 
   /parent-module@1.0.1:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}

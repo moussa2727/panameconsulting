@@ -3,7 +3,7 @@ import About from '../components/About';
 import CtaSection from '../components/CtaSection';
 import Form from '../components/Form';
 import Hero from '../components/Hero';
-import Partners from '../components/partners';
+// import Partners from '../components/partners';
 import Valeur from '../components/Valeur';
 import '../index.css';
 
@@ -42,8 +42,6 @@ function Accueil() {
           <meta name='googlebot' content='index, follow' />
           <meta name='bingbot' content='index, follow' />
           <meta name='yandexbot' content='index, follow' />
-
-
           <meta
             name='viewport'
             content='width=device-width, initial-scale=1.0, maximum-scale=5.0'
@@ -58,7 +56,7 @@ function Accueil() {
           <link rel='icon' href='/paname-consulting.ico' type='image/x-icon' />
           <link rel='apple-touch-icon' href='/paname-consulting.ico' />
           <link rel='manifest' href='/manifest.json' />
-          <link rel='canonical' href='https://panameconsulting.com/' />
+          <link rel='canonical' href='https://panameconsulting.vercel.app/' />
 
           {/* Balises Open Graph pour le partage social */}
           <meta
@@ -103,8 +101,9 @@ function Accueil() {
           <Hero />
           <About />
           <Valeur />
-          <Partners />
+          {/* <Partners /> */}
           <Form />
+          
           <CtaSection />
         </main>
       </div>

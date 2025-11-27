@@ -48,28 +48,36 @@ const defaultDestinations: Destination[] = [
   }
 ];
 
-const VITE_API_URL = (import.meta as any).env.VITE_API_BASE_URL || '';
+const VITE_API_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 const Destination = () => {
   const [destinations, setDestinations] = useState<Destination[]>(defaultDestinations);
   const [loading, setLoading] = useState(true);
-
-const getFullImageUrl = (imagePath: string) => {
-  if (!imagePath) return '/placeholder-image.jpg';
-
+ const getFullImageUrl = (imagePath: string) => {
+  if (!imagePath) return '/paname-consulting.jpg';
+  
+  // URLs déjà complètes
   if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
     return imagePath;
   }
 
-  if (!import.meta.env.DEV) {
-    if (imagePath.startsWith('/uploads')) {
-      return `${VITE_API_URL}${imagePath}`;
-    }
-    return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+  // Images dans public (par défaut)
+  if (imagePath.startsWith('/')) {
+    return imagePath;
   }
 
-  return imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+  const baseUrl = VITE_API_URL;
+
+  // Images uploadées
+  let cleanPath = imagePath;
+  if (!cleanPath.startsWith('uploads/')) {
+    cleanPath = `uploads/${cleanPath}`;
+  }
+  cleanPath = cleanPath.replace(/\/\//g, '/');
+  
+  return `${baseUrl}/${cleanPath}`;
 };
+
 
   const fetchDestinations = async () => {
   try {
@@ -80,7 +88,6 @@ const getFullImageUrl = (imagePath: string) => {
     });
 
     if (!response.ok) {
-      // Silently fallback to default data on error
       return;
     }
 
@@ -118,7 +125,7 @@ const getFullImageUrl = (imagePath: string) => {
   }
 
   return (
-    <section className='px-5 py-20 md:pt-12 bg-gradient-to-b from-sky-50 to-white lg:py-20'>
+    <section className='px-5 py-20 bg-white lg:py-20'>
       <ToastContainer position='bottom-right' />
       <div className='max-w-7xl mx-auto'>
         <div className='text-center mb-16'>
@@ -143,7 +150,7 @@ const getFullImageUrl = (imagePath: string) => {
                   alt={`${dest.country} flag`}
                   className='w-full h-full object-cover transition-transform duration-500 group-hover:scale-105'
                   onError={e => {
-                    (e.target as HTMLImageElement).src = '/placeholder-image.jpg';
+                    (e.target as HTMLImageElement).src = '/paname-consulting.jpg';
                   }}
                   loading='lazy'
                 />

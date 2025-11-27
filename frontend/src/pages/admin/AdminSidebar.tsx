@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../utils/AuthContext';
+import React, { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import {
   LayoutDashboard,
   LogOut,
@@ -10,11 +10,12 @@ import {
   User,
   Calendar,
   FileText,
-  Settings,
   Menu,
   X,
-  ChevronDown,
-  Folder
+  ChevronLeft,
+  ChevronRight,
+  LogOutIcon,
+  SettingsIcon
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -22,76 +23,198 @@ interface AdminSidebarProps {
 }
 
 const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
-  const { logout, user } = useAuth();
+  const { logout, user, token } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isLogoutAllOpen, setIsLogoutAllOpen] = useState(false);
+
+  // Détection précise des tailles d'écran
+  useEffect(() => {
+    const checkScreenSize = () => {
+      const width = window.innerWidth;
+      const mobile = width < 768;
+      const tablet = width >= 768 && width < 1024;
+      
+      setIsMobile(mobile);
+      setIsTablet(tablet);
+      
+      if (mobile) {
+        setIsCollapsed(false);
+      } else if (tablet) {
+        // Sur tablette, la sidebar est réduite par défaut
+        setIsCollapsed(true);
+      } else {
+        // Sur desktop, on garde l'état précédent
+      }
+    };
+
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    
+    return () => {
+      window.removeEventListener('resize', checkScreenSize);
+    };
+  }, []);
 
   const menuItems = [
     {
-      name: 'Statistiques',
-      path: '/gestionnaire/statistiques',
+      name: 'Tableau de bord',
+      path: '/gestionnaire',
       icon: <LayoutDashboard className='w-5 h-5' />,
+      basePath: '/gestionnaire' // ✅ Spécifier le chemin de base
     },
     {
       name: 'Utilisateurs',
       path: '/gestionnaire/utilisateurs',
       icon: <Users className='w-5 h-5' />,
+      basePath: '/gestionnaire/utilisateurs'
     },
     {
       name: 'Messages',
       path: '/gestionnaire/messages',
       icon: <MessageSquare className='w-5 h-5' />,
-    },
-    {
-      name: 'Destinations',
-      path: '/gestionnaire/destinations',
-      icon: <MapPin className='w-5 h-5' />,
+      basePath: '/gestionnaire/messages'
     },
     {
       name: 'Rendez-vous',
       path: '/gestionnaire/rendez-vous',
       icon: <Calendar className='w-5 h-5' />,
+      basePath: '/gestionnaire/rendez-vous'
     },
     {
-      name: 'Paramètres',
-      path: '/gestionnaire/parametres',
-      icon: <Folder className='w-5 h-5' />,
-      submenu: [
-        {
-          name: 'Procédures',
-          path: '/gestionnaire/procedures',
-          icon: <FileText className='w-4 h-4' />,
-        },
-        {
-          name: 'Mon Profil',
-          path: '/gestionnaire/profil',
-          icon: <User className='w-4 h-4' />,
-        }
-      ]
+      name: 'Procédures',
+      path: '/gestionnaire/procedures',
+      icon: <FileText className='w-5 h-5' />,
+      basePath: '/gestionnaire/procedures'
+    },
+    {
+      name: 'Destinations',
+      path: '/gestionnaire/destinations',
+      icon: <MapPin className='w-5 h-5' />,
+      basePath: '/gestionnaire/destinations'
+    },
+    {
+      name: 'Mon Profil',
+      path: '/gestionnaire/profil',
+      icon: <User className='w-5 h-5' />,
+      basePath: '/gestionnaire/profil'
     },
   ];
 
+  // ✅ DÉTECTION AMÉLIORÉE DES LIENS ACTIFS AVEC SOUS-ROUTES
+  const isActivePath = (basePath: string): boolean => {
+    const currentPath = location.pathname;
+    
+    // Cas spécial pour la racine '/gestionnaire'
+    if (basePath === '/gestionnaire') {
+      return currentPath === '/gestionnaire' || 
+             currentPath.startsWith('/gestionnaire/statistiques') ||
+             currentPath.startsWith('/gestionnaire/analytics') ||
+             (currentPath.startsWith('/gestionnaire/') && 
+              !menuItems.some(item => 
+                item.basePath !== '/gestionnaire' && 
+                currentPath.startsWith(item.basePath)
+              ));
+    }
+    
+    // Pour les autres routes, vérifier si le chemin commence par basePath
+    return currentPath.startsWith(basePath);
+  };
+
+  // ✅ DÉTECTION POUR LE SURBRILLANCE VISUELLE
+  const getActiveItemClass = (basePath: string): string => {
+    const isActive = isActivePath(basePath);
+    
+    if (isActive) {
+      return 'bg-blue-500 text-white shadow-lg shadow-blue-500/25';
+    }
+    
+    return 'text-slate-600 hover:bg-slate-100 hover:text-slate-800';
+  };
+
+  // ✅ DÉTECTION POUR LES ICÔNES
+  const getActiveIconClass = (basePath: string): string => {
+    const isActive = isActivePath(basePath);
+    
+    if (isActive) {
+      return 'text-white';
+    }
+    
+    return 'text-slate-500 group-hover:text-slate-700';
+  };
+
+  // Fonction pour obtenir le nom d'affichage sécurisé selon AuthContext
+  const getDisplayName = (): string => {
+    if (!user) return 'Administrateur';
+    
+    if (user.firstName && user.lastName) {
+      return `${user.firstName} ${user.lastName}`;
+    }
+    
+    if (user.firstName) return user.firstName;
+    
+    if (user.email) return user.email.split('@')[0];
+    
+    return 'Administrateur';
+  };
+
+  // Fonction pour obtenir l'initiale du nom
+  const getNameInitial = (): string => {
+    const displayName = getDisplayName();
+    return displayName.charAt(0).toUpperCase();
+  };
+
+  // Déconnexion simple - session actuelle uniquement
   const handleLogout = () => {
-    logout();
-    navigate('/');
+    logout(); // ✅ Laisser le contexte gérer la redirection
+  };
+
+  // Déconnexion de toutes les sessions (admin seulement)
+  const handleLogoutAll = async () => {
+    if (!token) {
+      console.error('Token non disponible pour la déconnexion globale');
+      return;
+    }
+
+    try {
+      const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      
+      const response = await fetch(`${VITE_API_URL}/api/auth/logout-all`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors de la déconnexion globale');
+      }
+
+      const result = await response.json();
+      console.log('Déconnexion globale réussie:', result);
+      
+      logout(); // ✅ Laisser le contexte gérer la redirection
+      
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion globale:', error);
+      logout(); // ✅ Laisser le contexte gérer la redirection même en cas d'erreur
+    } finally {
+      setIsLogoutAllOpen(false);
+    }
   };
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
   };
 
-  const toggleDropdown = (itemName: string) => {
-    setActiveDropdown(activeDropdown === itemName ? null : itemName);
-  };
-
-  const isActivePath = (path: string) => {
-    return location.pathname === path;
-  };
-
-  const isSubmenuActive = (submenu: any[]) => {
-    return submenu.some(sub => isActivePath(sub.path));
+  const toggleSidebar = () => {
+    setIsCollapsed(!isCollapsed);
   };
 
   // Ne rien afficher si pas admin
@@ -99,142 +222,176 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
     return null;
   }
 
+
   return (
     <>
-      {/* Version Desktop - Sidebar */}
-      <div className='hidden lg:flex min-h-screen bg-sky-50 text-gray-900'>
+      {/* Version Desktop et Tablet - Sidebar */}
+      <div className='hidden md:flex min-h-screen bg-slate-50'>
         {/* Sidebar */}
-        <div className='w-64 bg-white h-screen fixed left-0 top-0 z-40 shadow-lg border-r border-sky-100 flex flex-col'>
-          {/* Logo */}
-          <div className='p-4 border-b border-sky-200 bg-sky-500'>
-            <div className='flex items-center space-x-3'>
-              <div className='w-10 h-10 bg-white rounded-lg flex items-center justify-center'>
-                <Link to="/">
-                  <Settings className='w-6 h-6 text-sky-600' />
-                </Link>
-              </div>
-              <div>
-                <h1 className='text-lg font-bold text-white'>Administration</h1>
-                <p className='text-xs text-sky-100'>Paname Consulting</p>
-              </div>
+        <div 
+          className={`bg-white h-screen fixed left-0 top-0 z-40 shadow-xl border-r border-slate-200/60 flex flex-col transition-all duration-300 ${
+            isCollapsed ? 'w-0 opacity-0' : 'w-64 opacity-100'
+          }`}
+        >
+          {/* En-tête avec bouton de réduction */}
+          <div className='p-4 border-b border-slate-200 bg-gradient-to-r from-blue-600 to-sky-500'>
+            <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+              {!isCollapsed && (
+                <div className='flex items-center space-x-3'>
+                  <Link 
+                    to='/' 
+                    className='w-8 h-8 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-sm font-semibold hover:rotate-90 transition-transform duration-300 ease-in-out'
+                  >
+                    <SettingsIcon className='w-5 h-5' />
+                  </Link>
+                  <div>
+                    <h1 className='text-lg font-bold text-white'>Gestionnaire</h1>
+                  </div>
+                </div>
+              )}
+              
+              <button
+                onClick={toggleSidebar}
+                className={`p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent ${
+                  isCollapsed ? 'transform scale-110' : ''
+                }`}
+                aria-label={isCollapsed ? 'Agrandir le menu' : 'Réduire le menu'}
+              >
+                {isCollapsed ? (
+                  <ChevronRight className='w-4 h-4 text-white' />
+                ) : (
+                  <ChevronLeft className='w-4 h-4 text-white' />
+                )}
+              </button>
             </div>
           </div>
           
           {/* Navigation */}
-          <nav className='flex-1 overflow-y-auto py-4'>
-            <div className='px-4'>
+          <nav className='flex-1 overflow-y-auto py-6'>
+            <div className='px-3'>
               <ul className='space-y-2'>
                 {menuItems.map(item => (
                   <li key={item.path}>
-                    {item.submenu ? (
-                      <div className='relative'>
-                        <button
-                          onClick={() => toggleDropdown(item.name)}
-                          className={`flex items-center justify-between w-full px-4 py-3 rounded-lg transition-colors ${
-                            isSubmenuActive(item.submenu)
-                              ? 'bg-sky-500 text-white shadow-md'
-                              : 'text-gray-700 hover:bg-sky-100 hover:text-sky-600'
-                          }`}
-                        >
-                          <div className='flex items-center space-x-3'>
-                            {item.icon}
-                            <span className='font-medium'>{item.name}</span>
-                          </div>
-                          <ChevronDown className={`w-4 h-4 transition-transform ${
-                            activeDropdown === item.name ? 'rotate-180' : ''
-                          }`} />
-                        </button>
-                        
-                        {/* Sous-menu */}
-                        {activeDropdown === item.name && (
-                          <div className='ml-4 mt-2 space-y-2'>
-                            {item.submenu.map(subItem => (
-                              <Link
-                                key={subItem.path}
-                                to={subItem.path}
-                                onClick={() => setActiveDropdown(null)}
-                                className={`flex items-center space-x-3 px-4 py-2 rounded-lg transition-colors ${
-                                  isActivePath(subItem.path)
-                                    ? 'bg-sky-100 text-sky-600'
-                                    : 'text-gray-600 hover:bg-sky-50 hover:text-sky-600'
-                                }`}
-                              >
-                                {subItem.icon}
-                                <span className='font-medium text-sm'>{subItem.name}</span>
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <Link
-                        to={item.path}
-                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                          isActivePath(item.path)
-                            ? 'bg-sky-500 text-white shadow-md'
-                            : 'text-gray-700 hover:bg-sky-100 hover:text-sky-600'
-                        }`}
-                      >
+                    <Link
+                      to={item.path}
+                      className={`flex items-center rounded-xl transition-all duration-200 group ${
+                        isCollapsed ? 'justify-center px-3 py-4' : 'space-x-4 px-4 py-3'
+                      } ${
+                        isActivePath(item.path)
+                          ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                      } focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent`}
+                      title={isCollapsed ? item.name : ''}
+                    >
+                      <div className={`${isActivePath(item.path) ? 'text-white' : 'text-slate-500 group-hover:text-slate-700'} ${
+                        isCollapsed ? 'transform scale-110' : ''
+                      }`}>
                         {item.icon}
-                        <span className='font-medium'>{item.name}</span>
-                      </Link>
-                    )}
+                      </div>
+                      {!isCollapsed && (
+                        <span className='font-medium truncate'>{item.name}</span>
+                      )}
+                    </Link>
                   </li>
                 ))}
               </ul>
             </div>
           </nav>
 
-          {/* Déconnexion */}
-          <div className='p-4 border-t border-sky-200'>
-            <button
-              onClick={handleLogout}
-              className='w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors border border-gray-200 hover:border-red-200'
-            >
-              <LogOut className='w-5 h-5' />
-              <span className='font-medium'>Déconnexion</span>
-            </button>
+          {/* Section utilisateur et déconnexion */}
+          <div className='p-4 border-t border-slate-200 space-y-3'>
+            {!isCollapsed && (
+              <div className='flex items-center space-x-3 px-3 py-2 text-slate-600'>
+                <div className='w-8 h-8 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-sm font-semibold'>
+                  {getNameInitial()}
+                </div>
+                <div className='flex-1 min-w-0'>
+                  <p className='text-sm font-medium text-slate-800 truncate'>{getDisplayName()}</p>
+                  <p className='text-xs text-slate-500'>Administrateur</p>
+                </div>
+              </div>
+            )}
+            {isCollapsed && (
+              <div className='flex justify-center'>
+                <div className='w-8 h-8 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-sm font-semibold'>
+                  {getNameInitial()}
+                </div>
+              </div>
+            )}
+            
+            {/* Boutons de déconnexion */}
+            <div className={`space-y-2 ${isCollapsed ? 'px-0' : 'px-1'}`}>
+              {/* Déconnexion simple */}
+              <button
+                onClick={handleLogout}
+                className={`w-full flex items-center rounded-xl transition-colors duration-200 border border-slate-300 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600 focus:ring-0 focus:outline-none focus:border-orange-300 ${
+                  isCollapsed ? 'justify-center px-3 py-3' : 'space-x-3 px-4 py-3'
+                }`}
+                title={isCollapsed ? 'Déconnexion' : ''}
+              >
+                <LogOut className='w-4 h-4' />
+                {!isCollapsed && <span className='font-medium text-sm'>Déconnexion</span>}
+              </button>
+
+              {/* Déconnexion de toutes les sessions */}
+              <button
+                onClick={() => setIsLogoutAllOpen(true)}
+                className={`w-full flex items-center rounded-xl transition-colors duration-200 border border-slate-300 hover:border-red-300 hover:bg-red-50 hover:text-red-600 focus:ring-0 focus:outline-none focus:border-red-300 ${
+                  isCollapsed ? 'justify-center px-3 py-3' : 'space-x-3 px-4 py-3'
+                }`}
+                title={isCollapsed ? 'Déconnecter tous' : ''}
+              >
+                <LogOutIcon className='w-4 h-4' />
+                {!isCollapsed && <span className='font-medium text-sm'>Déconnecter tous</span>}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Contenu principal */}
-        <div className='ml-64 flex-1'>
-          {children}
+        {/* Bouton flottant pour réouvrir la sidebar quand elle est rétractée */}
+        {isCollapsed && (
+          <button
+            onClick={toggleSidebar}
+            className='fixed left-4 top-4 z-50 p-1 bg-blue-600 text-white rounded shadow-lg hover:bg-blue-500 transition-all duration-200 focus:ring-none focus:outline-none border border-transparent'
+            aria-label='Ouvrir le menu'
+          >
+            <ChevronRight className='w-5 h-5' />
+          </button>
+        )}
+
+        {/* Contenu principal avec marge adaptative */}
+        <div className={`flex-1 transition-all duration-300 ${
+          isCollapsed ? 'ml-0' : 'ml-64'
+        }`}>
+          <div className='p-4 md:p-6 lg:p-8'>
+            {children}
+          </div>
         </div>
       </div>
 
-      {/* Version Mobile - Header */}
-      <div className='lg:hidden min-h-screen bg-sky-50'>
+      {/* Version Mobile */}
+      <div className='md:hidden min-h-screen bg-slate-50'>
         {/* Header Mobile */}
-        <header className='bg-white shadow-lg border-b border-sky-200 sticky top-0 z-50'>
-          <div className='px-4 sm:px-6'>
+        <header className='bg-white shadow-lg border-b border-slate-200/60 sticky top-0 z-50 backdrop-blur-sm bg-white/95'>
+          <div className='px-4'>
             <div className='flex justify-between items-center h-16'>
-              {/* Logo et Titre */}
+              {/* Logo et titre */}
               <div className='flex items-center space-x-3'>
-                <div className='w-10 h-10 bg-sky-500 rounded-lg flex items-center justify-center'>
-                  <Settings className='w-6 h-6 text-white' />
-                </div>
-                <div>
-                  <h1 className='text-lg font-bold text-gray-900'>Administration</h1>
-                  <p className='text-xs text-sky-600'>Paname Consulting</p>
-                </div>
+                <Link 
+                  to='/' 
+                  className='w-8 h-8 bg-gradient-to-br from-blue-500 to-sky-400 rounded-full flex items-center justify-center text-white text-sm font-semibold hover:rotate-90 transition-transform duration-300 ease-in-out'
+                >
+                  <SettingsIcon className='w-5 h-5' />
+                </Link>
+                <h1 className='text-lg font-bold text-slate-800'>Gestionnaire</h1>
               </div>
 
               {/* Boutons côté droit */}
-              <div className='flex items-center space-x-4'>
-                {/* Déconnexion Desktop en mobile */}
-                <button
-                  onClick={handleLogout}
-                  className='hidden sm:flex items-center space-x-2 px-3 py-2 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors border border-gray-200 hover:border-red-200'
-                >
-                  <LogOut className='w-4 h-4' />
-                  <span className='text-sm font-medium'>Déconnexion</span>
-                </button>
-
+              <div className='flex items-center space-x-2'>
                 {/* Menu Mobile Toggle */}
                 <button
                   onClick={toggleMobileMenu}
-                  className='p-2 rounded-lg text-gray-600 hover:bg-sky-100 hover:text-sky-600 transition-colors'
+                  className='p-2 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent'
                   aria-label='Menu'
                 >
                   {isMobileMenuOpen ? (
@@ -249,83 +406,56 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
 
           {/* Menu Mobile déroulant */}
           {isMobileMenuOpen && (
-            <div className='bg-white border-t border-sky-200 shadow-lg absolute top-16 left-0 right-0 z-50'>
-              <div className='px-4 py-3 space-y-2 max-h-[calc(100vh-4rem)] overflow-y-auto'>
-                {menuItems.map(item => (
-                  <div key={item.path}>
-                    {item.submenu ? (
-                      /* Dropdown Mobile */
-                      <div>
-                        <button
-                          onClick={() => toggleDropdown(item.name)}
-                          className={`flex items-center justify-between w-full px-4 py-3 rounded-lg transition-colors ${
-                            isSubmenuActive(item.submenu)
-                              ? 'bg-sky-500 text-white'
-                              : 'text-gray-700 hover:bg-sky-100 hover:text-sky-600'
-                          }`}
-                        >
-                          <div className='flex items-center space-x-3'>
-                            {item.icon}
-                            <span className='font-medium'>{item.name}</span>
-                          </div>
-                          <ChevronDown className={`w-4 h-4 transition-transform ${
-                            activeDropdown === item.name ? 'rotate-180' : ''
-                          }`} />
-                        </button>
-                        
-                        {/* Sous-menu Mobile */}
-                        {activeDropdown === item.name && (
-                          <div className='ml-8 mt-2 space-y-2'>
-                            {item.submenu.map(subItem => (
-                              <Link
-                                key={subItem.path}
-                                to={subItem.path}
-                                onClick={() => {
-                                  setIsMobileMenuOpen(false);
-                                  setActiveDropdown(null);
-                                }}
-                                className={`flex items-center space-x-3 px-4 py-2 rounded-lg transition-colors ${
-                                  isActivePath(subItem.path)
-                                    ? 'bg-sky-50 text-sky-600'
-                                    : 'text-gray-600 hover:bg-sky-50 hover:text-sky-600'
-                                }`}
-                              >
-                                {subItem.icon}
-                                <span className='font-medium'>{subItem.name}</span>
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      /* Lien simple Mobile */
-                      <Link
-                        to={item.path}
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                          isActivePath(item.path)
-                            ? 'bg-sky-500 text-white'
-                            : 'text-gray-700 hover:bg-sky-100 hover:text-sky-600'
-                        }`}
-                      >
+            <div className='bg-white border-t border-slate-200/60 shadow-xl absolute top-16 left-0 right-0 z-50 backdrop-blur-sm bg-white/95 max-h-[85vh] overflow-y-auto'>
+              <div className='px-4 py-4 space-y-2'>
+                {/* Navigation */}
+                <div className='space-y-1'>
+                  {menuItems.map(item => (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={`flex items-center space-x-4 px-4 py-4 rounded-xl transition-all duration-200 ${
+                        isActivePath(item.path)
+                          ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                      } focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent`}
+                    >
+                      <div className={`${isActivePath(item.path) ? 'text-white' : 'text-slate-500'} w-6 h-6 flex items-center justify-center`}>
                         {item.icon}
-                        <span className='font-medium'>{item.name}</span>
-                      </Link>
-                    )}
-                  </div>
-                ))}
+                      </div>
+                      <span className='font-medium text-base'>{item.name}</span>
+                    </Link>
+                  ))}
+                </div>
                 
-                {/* Déconnexion Mobile (visible seulement sur petits écrans) */}
-                <button
-                  onClick={() => {
-                    handleLogout();
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className='flex items-center space-x-3 w-full px-4 py-3 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors border border-gray-200 hover:border-red-200 sm:hidden'
-                >
-                  <LogOut className='w-5 h-5' />
-                  <span className='font-medium'>Déconnexion</span>
-                </button>
+                {/* Séparateur */}
+                <div className='border-t border-slate-200 my-3'></div>
+                
+                {/* Boutons de déconnexion Mobile */}
+                <div className='space-y-2'>
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className='flex items-center space-x-4 w-full px-4 py-4 text-slate-600 hover:bg-orange-50 hover:text-orange-600 rounded-xl transition-colors duration-200 border border-slate-300 hover:border-orange-300 focus:ring-0 focus:outline-none focus:border-orange-300'
+                  >
+                    <LogOut className='w-6 h-6' />
+                    <span className='font-medium text-base'>Déconnexion</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsLogoutAllOpen(true);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className='flex items-center space-x-4 w-full px-4 py-4 text-slate-600 hover:bg-red-50 hover:text-red-600 rounded-xl transition-colors duration-200 border border-slate-300 hover:border-red-300 focus:ring-0 focus:outline-none focus:border-red-300'
+                  >
+                    <LogOutIcon className='w-6 h-6' />
+                    <span className='font-medium text-base'>Déconnecter tous</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -334,16 +464,59 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ children }) => {
         {/* Overlay pour fermer le menu mobile */}
         {isMobileMenuOpen && (
           <div 
-            className='fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden'
+            className='fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden'
             onClick={() => setIsMobileMenuOpen(false)}
           />
         )}
 
-        {/* Contenu principal mobile */}
-        <div className='p-4 sm:p-6'>
-          {children}
+        {/* Contenu principal mobile avec padding adaptatif */}
+        <div className='p-4'>
+          <div className='bg-white rounded-2xl shadow-sm border border-slate-200 min-h-[calc(100vh-8rem)]'>
+            {children}
+          </div>
         </div>
       </div>
+
+      {/* Modal de confirmation déconnexion globale */}
+      {isLogoutAllOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md transform transition-all">
+            <div className="flex items-center justify-between p-6 border-b border-slate-200">
+              <h2 className="text-xl font-bold text-slate-800">Déconnexion globale</h2>
+              <button
+                onClick={() => setIsLogoutAllOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300 border border-transparent"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-slate-600 text-center mb-2">
+                Êtes-vous sûr de vouloir déconnecter tous les utilisateurs ?
+              </p>
+              <p className="text-sm text-slate-500 text-center">
+                Cette action déconnectera tous les utilisateurs (sauf les administrateurs) du système.
+              </p>
+            </div>
+            
+            <div className="flex space-x-3 p-6 border-t border-slate-200">
+              <button
+                onClick={() => setIsLogoutAllOpen(false)}
+                className="flex-1 px-4 py-3 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors duration-200 focus:ring-0 focus:outline-none focus:border-sky-300"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleLogoutAll}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-xl hover:from-red-600 hover:to-rose-700 transition-all duration-200 focus:ring-0 focus:outline-none focus:border-red-300 border border-transparent"
+              >
+                Déconnecter tous
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../utils/AuthContext';
+import { useAuth } from '../context/AuthContext';
 
 function Header() {
   const { user, isAuthenticated, logout, isLoading } = useAuth();
@@ -288,7 +288,7 @@ let blinkTimeout: any;
                 }
               }}
             >
-              <div className='w-16 h-16 rounded shadow-md'>
+              <div className='w-16 h-16 rounded shadow-sm'>
                 <img
                   src='/paname-consulting.jpg'
                   alt='Logo Paname Consulting'

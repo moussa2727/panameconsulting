@@ -1,522 +1,732 @@
-// AdminDestinations.tsx
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../utils/AuthContext';
-import { toast } from 'react-toastify';
+import React, { useEffect, useState, useRef } from 'react';
+import RequireAdmin from '../../context/RequireAdmin';
+import { useAuth } from '../../context/AuthContext';
+import { 
+  destinationService, 
+  type Destination,
+  type CreateDestinationData,
+  type UpdateDestinationData
+} from '../../api/admin/AdminDestionService';
+import { Helmet } from 'react-helmet-async';
 
-interface Destination {
-  id: string;
-  name: string;
-  description: string;
-  country: string;
-  climate: string;
-  bestTimeToVisit: string;
-  imageUrl: string;
-  price: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+interface DataSourceInfo {
+  count: number;
+  lastUpdated: string | null;
 }
 
-interface DestinationFormData {
-  name: string;
-  description: string;
-  country: string;
-  climate: string;
-  bestTimeToVisit: string;
-  imageUrl: string;
-  price: number;
-  isActive: boolean;
-}
+const initialForm = {
+  country: '',
+  text: '',
+};
 
 const AdminDestinations: React.FC = () => {
-  const { token, refreshToken, logout, isAuthenticated } = useAuth();
+  const { token, user, isAuthenticated } = useAuth();
   const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [editingDestination, setEditingDestination] = useState<Destination | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState<DestinationFormData>({
-    name: '',
-    description: '',
-    country: '',
-    climate: '',
-    bestTimeToVisit: '',
-    imageUrl: '',
-    price: 0,
-    isActive: true,
+  const [form, setForm] = useState(initialForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [popover, setPopover] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [dataSourceInfo, setDataSourceInfo] = useState<DataSourceInfo>({
+    count: 0,
+    lastUpdated: null
   });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const popoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const VITE_API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+  // Affiche un popover animé
+  const showPopover = (message: string, type: 'success' | 'error') => {
+    setPopover({ message, type });
+    if (popoverTimeout.current) clearTimeout(popoverTimeout.current);
+    popoverTimeout.current = setTimeout(() => setPopover(null), 3000);
+  };
 
   // Charger les destinations
   const fetchDestinations = async () => {
-    if (!isAuthenticated || !token) return;
-
-    setIsLoading(true);
+    setLoading(true);
     try {
-      const response = await fetch(`${VITE_API_URL}/api/destinations`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      const data = await destinationService.getAllDestinationsWithoutPagination();
+     setDestinations(
+        data.map((dest: any) => ({
+          ...dest,
+          imagePath: destinationService.getFullImageUrl(dest.imagePath),
+        }))
+      );
+      
+      // Mettre à jour les informations de source de données
+      const stats = await destinationService.getStatistics();
+      
+      setDataSourceInfo({
+        count: data.length,
+        lastUpdated: stats.lastUpdated || new Date().toLocaleDateString('fr-FR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
       });
-
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (!refreshed) {
-          toast.error('Session expirée. Veuillez vous reconnecter.');
-          return;
-        }
-        // Réessayer après rafraîchissement
-        return fetchDestinations();
-      }
-
-      if (!response.ok) {
-        throw new Error('Erreur lors du chargement des destinations');
-      }
-
-      const data = await response.json();
-      setDestinations(data);
     } catch (error: any) {
-      console.error('❌ Erreur chargement destinations:', error);
-      toast.error(error.message);
+      console.error('Erreur:', error);
+      showPopover(error.message || 'Erreur lors du chargement des destinations', 'error');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  // Créer ou mettre à jour une destination
+  // Vérifier les droits admin
+  const hasAdminRights = () => {
+    return isAuthenticated && token && user && (user.role === 'admin' || user.isAdmin);
+  };
+
+  // Soumission du formulaire
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!isAuthenticated || !token) {
-      toast.error('Vous devez être connecté pour effectuer cette action');
+    if (!hasAdminRights()) {
+      showPopover('Droits administrateur requis pour cette action', 'error');
       return;
     }
 
-    setIsSubmitting(true);
+    setLoading(true);
 
     try {
-      const url = editingDestination 
-        ? `${VITE_API_URL}/api/destinations/${editingDestination.id}`
-        : `${VITE_API_URL}/api/destinations`;
-      
-      const method = editingDestination ? 'PUT' : 'POST';
+      if (!form.country.trim() || !form.text.trim()) {
+        showPopover('Veuillez remplir tous les champs obligatoires', 'error');
+        return;
+      }
 
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(url, {
-          method,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentToken}`,
-          },
-          body: JSON.stringify(formData),
-        });
-      };
+      if (form.text.length < 10 || form.text.length > 2000) {
+        showPopover('La description doit contenir entre 10 et 2000 caractères', 'error');
+        return;
+      }
 
-      let response = await makeRequest(token);
+      if (editingId) {
+        // Mise à jour destination existante
+        const updateData: UpdateDestinationData = {
+          country: form.country.trim(),
+          text: form.text.trim(),
+          ...(imageFile && { imageFile })
+        };
 
-      // Si token expiré, rafraîchir et réessayer
-      if (response.status === 401) {
-        console.log('🔄 Token expiré, tentative de rafraîchissement...');
-        const refreshed = await refreshToken();
-        
-        if (refreshed) {
-          // Récupérer le nouveau token
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            console.log('✅ Nouveau token, réessai de la requête...');
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée. Veuillez vous reconnecter.');
+        await destinationService.updateDestination(editingId, updateData, token!);
+        showPopover('Destination modifiée avec succès', 'success');
+      } else {
+        // Création nouvelle destination
+        if (!imageFile) {
+          showPopover('Veuillez sélectionner une image', 'error');
+          return;
         }
+
+        const createData: CreateDestinationData = {
+          country: form.country.trim(),
+          text: form.text.trim(),
+          imageFile
+        };
+
+        await destinationService.createDestination(createData, token!);
+        showPopover('Destination ajoutée avec succès', 'success');
       }
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors de la sauvegarde');
-      }
-
-      const savedDestination = await response.json();
-      
-      if (editingDestination) {
-        setDestinations(prev => 
-          prev.map(dest => 
-            dest.id === savedDestination.id ? savedDestination : dest
-          )
-        );
-        toast.success('Destination mise à jour avec succès');
-      } else {
-        setDestinations(prev => [...prev, savedDestination]);
-        toast.success('Destination créée avec succès');
-      }
-
-      handleCancel();
-      
-    } catch (error: any) {
-      console.error('❌ Erreur sauvegarde:', error);
-      
-      if (error.message.includes('Session expirée') || error.message.includes('Token invalide')) {
-        toast.error('Session expirée. Redirection...');
-        setTimeout(() => logout('/connexion'), 2000);
-      } else {
-        toast.error(error.message);
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Supprimer une destination
-  const handleDelete = async (id: string) => {
-    if (!isAuthenticated || !token) {
-      toast.error('Vous devez être connecté pour effectuer cette action');
-      return;
-    }
-
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette destination ?')) {
-      return;
-    }
-
-    try {
-      const makeRequest = async (currentToken: string): Promise<Response> => {
-        return fetch(`${VITE_API_URL}/api/destinations/${id}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${currentToken}`,
-          },
-        });
-      };
-
-      let response = await makeRequest(token);
-
-      // Si token expiré, rafraîchir et réessayer
-      if (response.status === 401) {
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem('token');
-          if (newToken) {
-            response = await makeRequest(newToken);
-          } else {
-            throw new Error('Token non disponible après rafraîchissement');
-          }
-        } else {
-          throw new Error('Session expirée. Veuillez vous reconnecter.');
-        }
-      }
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de la suppression');
-      }
-
-      setDestinations(prev => prev.filter(dest => dest.id !== id));
-      toast.success('Destination supprimée avec succès');
-      
-    } catch (error: any) {
-      console.error('❌ Erreur suppression:', error);
-      
-      if (error.message.includes('Session expirée') || error.message.includes('Token invalide')) {
-        toast.error('Session expirée. Redirection...');
-        setTimeout(() => logout('/connexion'), 2000);
-      } else {
-        toast.error(error.message);
-      }
-    }
-  };
-
-  // Éditer une destination
-  const handleEdit = (destination: Destination) => {
-    setEditingDestination(destination);
-    setFormData({
-      name: destination.name,
-      description: destination.description,
-      country: destination.country,
-      climate: destination.climate,
-      bestTimeToVisit: destination.bestTimeToVisit,
-      imageUrl: destination.imageUrl,
-      price: destination.price,
-      isActive: destination.isActive,
-    });
-  };
-
-  // Annuler l'édition/création
-  const handleCancel = () => {
-    setEditingDestination(null);
-    setFormData({
-      name: '',
-      description: '',
-      country: '',
-      climate: '',
-      bestTimeToVisit: '',
-      imageUrl: '',
-      price: 0,
-      isActive: true,
-    });
-  };
-
-  // Gérer les changements du formulaire
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    
-    if (type === 'checkbox') {
-      const checked = (e.target as HTMLInputElement).checked;
-      setFormData(prev => ({ ...prev, [name]: checked }));
-    } else if (name === 'price') {
-      setFormData(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
-  };
-
-  // Charger les destinations au montage
-  useEffect(() => {
-    if (isAuthenticated) {
+      // Réinitialiser et rafraîchir
+      handleCancelEdit();
       fetchDestinations();
+    } catch (error: any) {
+      console.error('Erreur détaillée:', error);
+      // Le message d'erreur est déjà géré par le service
+    } finally {
+      setLoading(false);
     }
-  }, [isAuthenticated]);
+  };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-red-600">Accès non autorisé</h2>
-          <p className="mt-4">Vous devez être connecté pour accéder à cette page.</p>
-        </div>
-      </div>
-    );
-  }
+  // Suppression
+  const handleDelete = async (id: string) => {
+    if (!hasAdminRights()) {
+      showPopover('Droits administrateur requis pour cette action', 'error');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await destinationService.deleteDestination(id, token!);
+      showPopover('Destination supprimée avec succès', 'success');
+      setShowDeleteConfirm(null);
+      fetchDestinations();
+    } catch (error: any) {
+      console.error('Erreur détaillée:', error);
+      // Le message d'erreur est déjà géré par le service
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Gestion des changements de formulaire
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  // Gestion de l'image
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+
+      // Validation via le service
+      const validation = destinationService.validateImageFile(file);
+      if (!validation.isValid) {
+        showPopover(validation.error!, "error");
+        e.target.value = "";
+        return;
+      }
+
+      setImageFile(file);
+    }
+  };
+
+  // Édition
+  const handleEdit = (dest: Destination) => {
+    setForm({
+      country: dest.country,
+      text: dest.text,
+    });
+    setEditingId(dest._id);
+    setImageFile(null);
+  };
+
+  // Annuler l'édition
+  const handleCancelEdit = () => {
+    setForm(initialForm);
+    setEditingId(null);
+    setImageFile(null);
+    
+    const fileInput = document.getElementById('image') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
+  };
+
+  useEffect(() => {
+    fetchDestinations();
+    return () => {
+      if (popoverTimeout.current) clearTimeout(popoverTimeout.current);
+    };
+  }, []);
+
+  const isAdmin = hasAdminRights();
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Gestion des Destinations</h1>
-        <button
-          onClick={() => setEditingDestination({} as Destination)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
-        >
-          + Nouvelle Destination
-        </button>
-      </div>
+    <>
 
-      {/* Formulaire de création/édition */}
-      {editingDestination && (
-        <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-          <h2 className="text-xl font-semibold mb-4">
-            {editingDestination?.id ? 'Modifier la Destination' : 'Nouvelle Destination'}
-          </h2>
-          
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   <Helmet>
+      <title>Page de gestion des Destinations - Paname Consulting</title>
+      <meta
+        name="description"
+        content="Interface d'administration pour gérer les destinations de voyage sur Paname Consulting. Accès réservé aux administrateurs."
+      />
+      <meta name="robots" content="noindex, nofollow" />
+      <meta name="googlebot" content="noindex, nofollow" />
+        <meta name="bingbot" content="noindex, nofollow" />
+        <meta name="yandexbot" content="noindex, nofollow" />
+        <meta name="duckduckbot" content="noindex, nofollow" />
+        <meta name="baidu" content="noindex, nofollow" />
+        <meta name="naver" content="noindex, nofollow" />
+        <meta name="seznam" content="noindex, nofollow" />
+  </Helmet>
+
+    
+    <RequireAdmin>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 max-w-[1024px] mx-auto overflow-x-hidden">
+        {/* Header */}
+        <div className="mb-4 px-4">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="p-2 bg-blue-500 rounded-lg">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/>
+              </svg>
+            </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Nom</label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                required
-                className="w-full p-2 border border-gray-300 rounded-md"
-              />
+              <h1 className="text-xl font-bold text-slate-800">Gestion des Destinations</h1>
+              <p className="text-slate-600 text-sm">Administrez les destinations de voyage</p>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Pays</label>
-              <input
-                type="text"
-                name="country"
-                value={formData.country}
-                onChange={handleInputChange}
-                required
-                className="w-full p-2 border border-gray-300 rounded-md"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Description</label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                required
-                rows={3}
-                className="w-full p-2 border border-gray-300 rounded-md"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Climat</label>
-              <input
-                type="text"
-                name="climate"
-                value={formData.climate}
-                onChange={handleInputChange}
-                required
-                className="w-full p-2 border border-gray-300 rounded-md"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Meilleure période</label>
-              <input
-                type="text"
-                name="bestTimeToVisit"
-                value={formData.bestTimeToVisit}
-                onChange={handleInputChange}
-                required
-                className="w-full p-2 border border-gray-300 rounded-md"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Image URL</label>
-              <input
-                type="url"
-                name="imageUrl"
-                value={formData.imageUrl}
-                onChange={handleInputChange}
-                required
-                className="w-full p-2 border border-gray-300 rounded-md"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Prix (€)</label>
-              <input
-                type="number"
-                name="price"
-                value={formData.price}
-                onChange={handleInputChange}
-                required
-                min="0"
-                step="0.01"
-                className="w-full p-2 border border-gray-300 rounded-md"
-              />
-            </div>
-
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                name="isActive"
-                checked={formData.isActive}
-                onChange={handleInputChange}
-                className="mr-2"
-              />
-              <label className="text-sm font-medium">Active</label>
-            </div>
-
-            <div className="md:col-span-2 flex justify-end space-x-4">
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
-              >
-                Annuler
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md disabled:opacity-50"
-              >
-                {isSubmitting ? 'Sauvegarde...' : (editingDestination?.id ? 'Modifier' : 'Créer')}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Liste des destinations */}
-      <div className="bg-white rounded-lg shadow-md">
-        {isLoading ? (
-          <div className="p-8 text-center">
-            <p>Chargement des destinations...</p>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Nom
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pays
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Prix
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Statut
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {destinations.map((destination) => (
-                  <tr key={destination.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <img
-                          src={destination.imageUrl}
-                          alt={destination.name}
-                          className="h-10 w-10 rounded-full object-cover mr-3"
-                        />
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {destination.name}
-                          </div>
-                          <div className="text-sm text-gray-500 truncate max-w-xs">
-                            {destination.description}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {destination.country}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {destination.price} €
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          destination.isActive
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {destination.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      <button
-                        onClick={() => handleEdit(destination)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        Modifier
-                      </button>
-                      <button
-                        onClick={() => handleDelete(destination.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Supprimer
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        </div>
 
-            {destinations.length === 0 && (
-              <div className="p-8 text-center text-gray-500">
-                Aucune destination trouvée.
+        {/* Cartes de statistiques */}
+        {dataSourceInfo && (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 mb-4 px-4">
+            <div className="bg-white rounded-xl border border-slate-200/60 p-3 shadow-sm">
+              <div className="flex items-center">
+                <div className="p-2 bg-blue-500 rounded-lg">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div className="ml-2">
+                  <p className="text-xs text-slate-600">Total</p>
+                  <p className="text-lg font-bold text-slate-800">{dataSourceInfo.count}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200/60 p-3 shadow-sm">
+              <div className="flex items-center">
+                <div className="p-2 bg-emerald-500 rounded-lg">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div className="ml-2">
+                  <p className="text-xs text-slate-600">Statut</p>
+                  <p className="text-lg font-bold text-slate-800">Actif</p>
+                </div>
+              </div>
+            </div>
+
+            {dataSourceInfo.lastUpdated && (
+              <div className="bg-white rounded-xl border border-slate-200/60 p-3 shadow-sm">
+                <div className="flex items-center">
+                  <div className="p-2 bg-purple-500 rounded-lg">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="ml-2">
+                    <p className="text-xs text-slate-600">Mise à jour</p>
+                    <p className="text-sm font-bold text-slate-800 truncate">{dataSourceInfo.lastUpdated}</p>
+                  </div>
+                </div>
               </div>
             )}
           </div>
         )}
+
+        {/* Popover global */}
+        {popover && (
+          <div
+            className={`fixed top-4 left-1/2 z-50 -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg text-white font-semibold transition-all duration-300 flex items-center gap-2
+              ${popover.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}
+          >
+            {popover.type === 'success' ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            <span>{popover.message}</span>
+          </div>
+        )}
+
+        {/* Formulaire */}
+        <div className="bg-white rounded-xl border border-slate-200/60 p-4 mb-4 shadow-sm mx-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              {editingId ? (
+                <>
+                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Modifier une destination
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Nouvelle destination
+                </>
+              )}
+            </h2>
+          </div>
+          
+          {!isAdmin && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-amber-800 text-sm flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Droits administrateur requis pour modifier les destinations
+              </p>
+            </div>
+          )}
+          
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="country" className="text-sm font-medium text-slate-700 mb-1 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Pays *
+                </label>
+                <input
+                  id="country"
+                  name="country"
+                  value={form.country}
+                  onChange={handleChange}
+                  required
+                  disabled={!isAdmin}
+                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  placeholder="Nom du pays"
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="image" className="text-sm font-medium text-slate-700 mb-1 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Image {!editingId && '*'}
+                </label>
+                <input
+                  id="image"
+                  name="image"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  disabled={!isAdmin}
+                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+                <p className="text-xs text-slate-500 mt-1">JPG, PNG, WEBP, SVG - Max 5MB</p>
+                
+                {imageFile && (
+                  <p className="text-sm text-green-600 mt-2 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Fichier sélectionné: {imageFile.name}
+                  </p>
+                )}
+              </div>
+            </div>
+            
+            <div>
+              <label htmlFor="text" className="text-sm font-medium text-slate-700 mb-1 flex items-center gap-2">
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7" />
+                </svg>
+                Description *
+              </label>
+              <textarea
+                id="text"
+                name="text"
+                value={form.text}
+                onChange={handleChange}
+                required
+                disabled={!isAdmin}
+                rows={4}
+                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                placeholder="Description de la destination (10-2000 caractères)"
+              />
+              <div className="flex justify-between items-center mt-1">
+                <p className="text-xs text-slate-500">{form.text.length}/2000 caractères</p>
+                {(form.text.length < 10 || form.text.length > 2000) && (
+                  <p className="text-xs text-red-600 flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    10-2000 caractères requis
+                  </p>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-200">
+              <button
+                type="submit"
+                disabled={loading || !isAdmin}
+                className="flex-1 flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-medium py-2.5 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    {editingId ? 'Modification...' : 'Ajout...'}
+                  </>
+                ) : editingId ? (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Modifier
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Ajouter
+                  </>
+                )}
+              </button>
+              
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  disabled={!isAdmin}
+                  className="flex-1 flex items-center justify-center gap-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium py-2.5 px-4 rounded-lg transition-all duration-200 focus:outline-none focus:ring-none disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Annuler
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+
+        {/* Liste des destinations */}
+        <div className="bg-white rounded-xl border border-slate-200/60 overflow-hidden shadow-sm mx-4">
+          {/* En-tête */}
+          <div className="px-4 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h2 className="text-base font-semibold">Liste des Destinations</h2>
+                <span className="bg-blue-400 text-blue-100 px-2 py-0.5 rounded-full text-xs">
+                  {destinations.length}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Version tablette - Cartes améliorées */}
+          <div className="lg:hidden">
+            {loading ? (
+              <div className="p-4 text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+                <p className="text-slate-600 mt-2 text-sm">Chargement sécurisé...</p>
+              </div>
+            ) : destinations.length === 0 ? (
+              <div className="p-6 text-center text-slate-500">
+                <svg className="w-12 h-12 mx-auto mb-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-slate-500">Aucune destination à afficher</p>
+                <p className="text-slate-400 text-sm mt-1">Commencez par ajouter votre première destination</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-200">
+                {destinations.map((dest) => (
+                  <div key={dest._id} className="p-4 hover:bg-slate-50 transition-colors">
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0">
+                        <img
+                          src={destinationService.getFullImageUrl(dest.imagePath)}
+                          alt={dest.country}
+                          className="w-16 h-16 object-cover rounded-lg border border-slate-200 shadow-sm"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '/paname-placeholder.png';
+                          }}
+                        />
+                      </div>
+                      
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-slate-800 truncate flex items-center gap-2">
+                          {dest.country}
+                        </h3>
+                        
+                        <p className="text-slate-600 text-sm mt-1 line-clamp-2">
+                          {dest.text}
+                        </p>
+                        
+                        <div className="flex gap-3 mt-3">
+                          <button
+                            onClick={() => handleEdit(dest)}
+                            disabled={!isAdmin}
+                            className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Modifier
+                          </button>
+                          
+                          <button
+                            onClick={() => setShowDeleteConfirm(dest._id)}
+                            disabled={!isAdmin}
+                            className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Version desktop - Tableau */}
+          <div className="hidden lg:block overflow-x-auto">
+            <table className="w-full min-w-[600px]">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Destination
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {loading ? (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-8 text-center">
+                      <div className="flex justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                      </div>
+                      <p className="text-slate-600 mt-2 text-sm">Chargement sécurisé...</p>
+                    </td>
+                  </tr>
+                ) : destinations.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-8 text-center">
+                      <svg className="w-16 h-16 mx-auto mb-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p className="text-slate-500">Aucune destination trouvée</p>
+                    </td>
+                  </tr>
+                ) : (
+                  destinations.map((dest) => (
+                    <tr key={dest._id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-4">
+                        <div className="flex items-center">
+                          <img
+                            src={destinationService.getFullImageUrl(dest.imagePath)}
+                            alt={dest.country}
+                            className="w-12 h-12 object-cover rounded-lg border border-slate-200 shadow-sm"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = '/paname-placeholder.png';
+                            }}
+                          />
+                          <div className="ml-3">
+                            <p className="text-sm font-medium text-slate-800">
+                              {dest.country}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      
+                      <td className="px-4 py-4">
+                        <p className="text-sm text-slate-600 line-clamp-2">
+                          {dest.text}
+                        </p>
+                      </td>
+                      
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleEdit(dest)}
+                            disabled={!isAdmin}
+                            className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Modifier la destination"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+
+                          <button
+                            onClick={() => setShowDeleteConfirm(dest._id)}
+                            disabled={!isAdmin}
+                            className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Supprimer la destination"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Modal de confirmation suppression */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl border border-slate-200/60 max-w-md w-full">
+              <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <h2 className="text-lg font-bold text-slate-800">Confirmation</h2>
+                </div>
+                <button
+                  onClick={() => setShowDeleteConfirm(null)}
+                  className="p-1.5 hover:bg-slate-100 rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200"
+                >
+                  <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="p-4">
+                <p className="text-sm text-slate-600 text-center">
+                  Supprimer la destination <span className="font-semibold text-slate-800">
+                    {destinations.find(d => d._id === showDeleteConfirm)?.country}
+                  </span> ?
+                </p>
+                <p className="text-xs text-slate-500 text-center mt-1">
+                  Cette action est irréversible.
+                </p>
+              </div>
+              
+              <div className="flex gap-3 p-4 border-t border-slate-200">
+                <button
+                  onClick={() => setShowDeleteConfirm(null)}
+                  className="flex-1 px-4 py-2.5 text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-none focus:border-blue-500 hover:border-blue-400 transition-all duration-200"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => handleDelete(showDeleteConfirm)}
+                  disabled={!isAdmin}
+                  className={`flex-1 px-4 py-2.5 text-sm rounded-lg focus:outline-none focus:ring-none focus:border-blue-500 transition-all duration-200 flex items-center justify-center gap-2 ${
+                    !isAdmin
+                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                      : 'bg-red-500 text-white hover:bg-red-600'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Supprimer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+    </RequireAdmin>
+    
+    </>
+
   );
 };
 

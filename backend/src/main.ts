@@ -90,8 +90,8 @@ async function bootstrap() {
     'http://localhost:3000',
     'https://panameconsulting.com',
     'https://www.panameconsulting.com',
-    'https://panameconsulting.netlify.app',
-    'https://www.panameconsulting.netlify.app',
+    'https://panameconsulting.vercel.app',
+    'https://www.panameconsulting.vercel.app',
   ];
   const netlifyPreviewRegex = /^https?:\/\/([a-z0-9-]+--)?panameconsulting\.netlify\.app$/i;
   const localhostRegex = /^http:\/\/localhost:\d+$/i;
@@ -172,10 +172,7 @@ async function bootstrap() {
     }
   }));
 
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
-    prefix: '/uploads',
-    maxAge: '30d',
-  });
+
   app.use((req: { path: string | string[]; headers: { authorization: any; }; }, res: { status: (arg0: number) => { (): any; new(): any; json: { (arg0: { message: string; }): any; new(): any; }; }; }, next: () => void) => {
   // Allow CORS preflight to pass without Authorization
   // so browsers can complete OPTIONS before sending actual request
