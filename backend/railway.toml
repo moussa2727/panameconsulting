@@ -1,7 +1,10 @@
 [build]
-builder = "heroku/buildpacks:20"
+builder = "DOCKERFILE"
+dockerfilePath = "backend/Dockerfile"
 
 [deploy]
+healthCheckPath = "https://panameconsulting.up.railway.app/health"
+healthCheckTimeout = 5
 restartPolicyType = "ON_FAILURE"
 
 [variables]
