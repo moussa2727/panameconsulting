@@ -1,10 +1,17 @@
 [build]
-builder = "DOCKERFILE"
+builder = "dockerfile"          # Railway utilise ton Dockerfile
 dockerfilePath = "Dockerfile"
+context = "."
 
 [deploy]
-numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[service]
+name = "backend"
+internal_port = 10000           # Doit correspondre à EXPOSE 10000 dans Dockerfile
 
 [env]
 PORT = "10000"
 NODE_ENV = "production"
+TZ = "Europe/Paris"

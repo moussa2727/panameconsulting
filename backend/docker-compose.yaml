@@ -4,27 +4,51 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    
+      args:
+        NODE_ENV: production  # Injecté dans ton Dockerfile multi-stage
+      
     image: panameconsulting:latest
     
     ports:
       - "10000:10000"
-    
+
     environment:
-      - NODE_ENV=production
-      - PORT=10000
-      - TZ=Europe/Paris
-    
+      NODE_ENV: production
+      PORT: 10000
+      MONGODB_SERVER_SELECTION_TIMEOUT: 30000
+      MONGODB_SOCKET_TIMEOUT: 45000
+      TZ: Europe/Paris
+
     env_file:
       - .env
-    
+
     restart: unless-stopped
+
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    networks:
+      - backend-network
+
     volumes:
-      - ./uploads:/app/uploads
-      - ./logs:/app/logs
-      - node_modules:/app/node_modules
+      - ./uploads:/app/uploads   # Persistance fichiers
+      - ./logs:/app/logs         # Persistance logs
+      - node_modules:/app/node_modules  # Isolement dépendances
 
 volumes:
   node_modules:
     driver: local
+
+networks:
+  backend-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
