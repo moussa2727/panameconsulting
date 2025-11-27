@@ -1,50 +1,47 @@
-# Dockerfile simplifié pour pnpm
-FROM node:18-alpine AS base
+# Dockerfile
+FROM node:18-alpine AS builder
 
-# Installer pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
+# Install pnpm
+RUN npm install -g pnpm
 
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copier package.json d'abord (pour mieux utiliser le cache Docker)
-COPY package.json ./
+# Copy package files
+COPY package.json pnpm-lock.yaml .npmrc ./
 
-# Copier les autres fichiers de configuration si ils existent
-COPY pnpm-lock.yaml ./
-COPY .npmrc ./
-
-FROM base AS development
-
-# Copier d'abord les fichiers de dépendances
-COPY package.json pnpm-lock.yaml* ./
-
-# Installer les dépendances
+# Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copier le reste du code
+# Copy source code
 COPY . .
 
-# Build
+# Build the application
 RUN pnpm run build
 
-FROM base AS production
+# Production image
+FROM node:18-alpine AS production
 
-ARG NODE_ENV=production
-ENV NODE_ENV=${NODE_ENV}
+WORKDIR /app
 
-# Installer les dépendances de production
-RUN pnpm install --frozen-lockfile --prod
+# Install pnpm
+RUN npm install -g pnpm
 
-# Copier les fichiers built
-COPY --from=development /usr/src/app/dist ./dist
+# Copy package files
+COPY package.json pnpm-lock.yaml .npmrc ./
 
-# Sécurité
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S appuser -u 1001 && \
-    chown -R appuser:nodejs /usr/src/app
+# Install only production dependencies
+RUN pnpm install --prod --frozen-lockfile
 
-USER appuser
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/uploads ./uploads
+COPY --from=builder /app/logs ./logs
 
-CMD ["node", "dist/main"]
+# Create necessary directories
+RUN mkdir -p logs uploads
+
+# Expose port
+EXPOSE 3000
+
+# Start the application
+CMD ["node", "dist/main.js"]
