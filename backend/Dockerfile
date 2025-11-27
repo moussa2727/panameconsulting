@@ -1,53 +1,62 @@
+# ============ ÉTAPE DE BUILD ============
 FROM node:18-alpine AS builder
 
-# Install pnpm
-RUN npm install -g pnpm
+# Installation et configuration de pnpm
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
+# Définition du répertoire de travail
 WORKDIR /app
 
-# Copy package files
-COPY package.json ./
-COPY pnpm-lock.yaml ./
+# Copie des fichiers de configuration DEPUIS LE DOSSIER BACKEND
+COPY backend/package.json backend/pnpm-lock.yaml* backend/tsconfig.json backend/nest-cli.json ./
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Installation de toutes les dépendances
+RUN pnpm install --frozen-lockfile --prefer-offline
 
-# Copy source code
-COPY . .
+# Copie des sources de l'application
+COPY backend/src/ ./src/
 
-# Build the application
+# Construction de l'application
 RUN pnpm run build
 
-# Production stage
+# ============ ÉTAPE DE PRODUCTION ============
 FROM node:18-alpine AS production
 
-# Install pnpm
-RUN npm install -g pnpm
+# Arguments de build
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
+ENV PORT=10000
 
+# Installation et configuration de pnpm
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
+# Définition du répertoire de travail
 WORKDIR /app
 
-# Copy package files
-COPY package.json ./
-COPY pnpm-lock.yaml ./
+# Copie des fichiers de package DEPUIS LE DOSSIER BACKEND
+COPY backend/package.json backend/pnpm-lock.yaml* ./
 
-# Install only production dependencies
-RUN pnpm install --prod --frozen-lockfile
+# Installation UNIQUEMENT des dépendances de production
+RUN pnpm install --prod --frozen-lockfile --prefer-offline
 
-# Copy built application from builder stage
+# Copie des fichiers compilés depuis l'étape builder
 COPY --from=builder /app/dist ./dist
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
+# Création des dossiers nécessaires
+RUN mkdir -p /app/uploads && \
+    mkdir -p /app/logs && \
+    chown -R node:node /app
 
-# Change ownership of the app directory
-RUN chown -R nextjs:nodejs /app
+# Script de vérification des variables d'environnement (pour debug)
+RUN echo "🔍 Vérification des variables d'environnement..." && \
+    echo "NODE_ENV: $NODE_ENV" && \
+    echo "PORT: $PORT"
 
-# Switch to non-root user
-USER nextjs
+# Passage à l'utilisateur non-root
+USER node
 
-# Expose port
-EXPOSE 10000
+# Exposition du port (Railway injecte le port via $PORT)
+EXPOSE $PORT
 
-# Start the application
-CMD ["node", "dist/main"]
+# Commande de démarrage avec gestion d'erreur
+CMD ["node", "dist/main.js"]
