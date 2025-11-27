@@ -1,0 +1,19 @@
+{
+  "version": "1",
+  "name": "panameconsulting",
+  "type": "node",
+  "build": {
+    "builder": "nixpacks",
+    "buildCommand": "npm install -g pnpm && pnpm install && pnpm run build",
+    "startCommand": "node dist/main.js",
+    "outputDirectory": "dist"
+  },
+  "deploy": {
+    "startCommand": "node dist/main.js",
+    "healthCheckPath": "/health",
+    "env": {
+      "NODE_ENV": "production",
+      "PORT": "10000"
+    }
+  }
+}

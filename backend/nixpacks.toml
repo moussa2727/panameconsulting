@@ -1,0 +1,15 @@
+[phases.setup]
+cmds = ["corepack enable", "corepack prepare pnpm@8.15.0 --activate"]
+
+[phases.install]
+cmds = ["pnpm install"]
+
+[phases.build]
+cmds = ["pnpm run build"]
+
+[start]
+cmd = "node dist/main.js"
+
+[env]
+PORT = "10000"
+NODE_ENV = "production"
