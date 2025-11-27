@@ -8,13 +8,13 @@ RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 WORKDIR /app
 
 # Copie des fichiers de configuration
-COPY backend/package.json backend/pnpm-lock.yaml* backend/tsconfig.json backend/nest-cli.json ./
+COPY package.json pnpm-lock.yaml* tsconfig.json nest-cli.json ./
 
 # Installation de toutes les dépendances
 RUN pnpm install --frozen-lockfile --prefer-offline
 
 # Copie des sources de l'application
-COPY backend/src/ ./src/
+COPY src/ ./src/
 
 # Construction de l'application
 RUN pnpm run build
@@ -25,6 +25,7 @@ FROM node:18-alpine AS production
 # Arguments de build
 ARG NODE_ENV=production
 ENV NODE_ENV=${NODE_ENV}
+ENV PORT=10000
 
 # Installation et configuration de pnpm
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
@@ -46,11 +47,11 @@ RUN mkdir -p /app/uploads && \
     mkdir -p /app/logs && \
     chown -R node:node /app
 
-# Passage à l'utilisateur non-root (sécurité)
+# Passage à l'utilisateur non-root
 USER node
 
-# Exposition du port (Railway fournit le port via variable d'environnement)
+# Exposition du port
 EXPOSE $PORT
 
-# Commande de démarrage de l'application
+# Commande de démarrage
 CMD ["node", "dist/main.js"]
