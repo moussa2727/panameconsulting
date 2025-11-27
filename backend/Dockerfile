@@ -13,8 +13,8 @@ COPY package.json pnpm-lock.yaml* tsconfig.json nest-cli.json ./
 # Installation de toutes les dépendances (développement + production)
 RUN pnpm install --frozen-lockfile --prefer-offline
 
-# Copie des sources de l'application
-COPY src/ ./src/
+# Copie de TOUT le contexte (y compris src/)
+COPY . .
 
 # Construction de l'application
 RUN pnpm run build
@@ -55,10 +55,10 @@ RUN addgroup -g 1001 -S nodejs && \
 USER nestjs
 
 # Exposition du port de l'application
-EXPOSE 3000
+EXPOSE 10000
 
 # Variables d'environnement par défaut
-ENV PORT=3000
+ENV PORT=10000
 ENV HOSTNAME=0.0.0.0
 
 # Commande de démarrage de l'application
