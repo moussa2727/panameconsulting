@@ -2,20 +2,23 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy only dependency files first for caching
+# Copy package files
 COPY package.json ./
 
-# Check if pnpm-lock.yaml exists and copy it if present
+# Try to copy various lock files that might exist
 COPY pnpm-lock.yaml* ./
+COPY package-lock.json* ./
+COPY yarn.lock* ./
 
-# Enable Corepack and install dependencies
+# Enable Corepack
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
-# Install dependencies (will use package-lock.json if pnpm-lock.yaml doesn't exist)
+# Install based on available lock file
 RUN if [ -f pnpm-lock.yaml ]; then \
         pnpm install --frozen-lockfile --prefer-offline; \
+    elif [ -f package-lock.json ]; then \
+        npm ci --only=production; \
     else \
-        echo "pnpm-lock.yaml not found, using regular install" && \
         pnpm install --prefer-offline; \
     fi
 
@@ -36,7 +39,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 
-# Create runtime directories
+# Create runtime directories (Railway volumes will be mounted here)
 RUN mkdir -p /app/uploads /app/logs && \
     addgroup -g 1001 -S nodejs && \
     adduser -S nestjs -u 1001 && \
@@ -44,6 +47,8 @@ RUN mkdir -p /app/uploads /app/logs && \
 
 USER nestjs
 
+# Expose the port
 EXPOSE 10000
 
+# Start the app
 CMD ["node", "dist/main.js"]
