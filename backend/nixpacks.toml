@@ -1,4 +1,3 @@
--- Active: 1761510403210@@127.0.0.1@5432@etudesmondedb
 [phases.setup]
 cmds = [
   "corepack enable",
