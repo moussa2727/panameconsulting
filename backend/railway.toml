@@ -8,7 +8,3 @@ numReplicas = 1
 [env]
 PORT = "10000"
 NODE_ENV = "production"
-
-[variables]
-NODE_ENV = "production"
-PORT = "10000"
