@@ -7,10 +7,10 @@ RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 # Définition du répertoire de travail
 WORKDIR /app
 
-# Copie des fichiers de configuration en premier (optimisation du cache Docker)
+# Copie des fichiers de configuration
 COPY package.json pnpm-lock.yaml* tsconfig.json nest-cli.json ./
 
-# Installation de toutes les dépendances (développement + production)
+# Installation de toutes les dépendances
 RUN pnpm install --frozen-lockfile --prefer-offline
 
 # Copie des sources de l'application
@@ -43,23 +43,14 @@ COPY --from=builder /app/dist ./dist
 
 # Création des dossiers nécessaires
 RUN mkdir -p /app/uploads && \
-    mkdir -p /app/logs
+    mkdir -p /app/logs && \
+    chown -R node:node /app
 
-# ============ SÉCURITÉ ============
-# Création d'un utilisateur non-root pour plus de sécurité
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nestjs -u 1001 && \
-    chown -R nestjs:nodejs /app
+# Passage à l'utilisateur non-root (sécurité)
+USER node
 
-# Passage à l'utilisateur non-root
-USER nestjs
-
-# Exposition du port de l'application (Render utilise le port 10000)
-EXPOSE 10000
-
-# Variables d'environnement par défaut pour Render
-ENV PORT=10000
-ENV HOSTNAME=0.0.0.0
+# Exposition du port (Railway fournit le port via variable d'environnement)
+EXPOSE $PORT
 
 # Commande de démarrage de l'application
 CMD ["node", "dist/main.js"]
