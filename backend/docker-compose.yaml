@@ -2,7 +2,7 @@ services:
   backend:
     container_name: backend
     build:
-      context: .
+      context: ./backend  # <-- Maintenant le contexte est le dossier backend
       dockerfile: Dockerfile
       # Cache des layers pour builds plus rapides
       args:
