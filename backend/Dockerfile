@@ -1,48 +1,26 @@
-# Dockerfile (Version simplifiée)
-FROM node:18-alpine AS builder
+# Dockerfile
+FROM node:18-alpine As development
 
-# Install pnpm
-RUN npm install -g pnpm
+WORKDIR /usr/src/app
 
-WORKDIR /app
+COPY package*.json ./
+RUN npm install
 
-# Copy package files
-COPY package.json ./
-COPY pnpm-lock.yaml* ./
-COPY .npmrc* ./
-
-# Install dependencies
-RUN pnpm install --prefer-offline
-
-# Copy source code
 COPY . .
 
-# Build the application
-RUN pnpm run build
+RUN npm run build
 
-# Production image
-FROM node:18-alpine
+FROM node:18-alpine as production
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nextjs -u 1001
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
 
-WORKDIR /app
+WORKDIR /usr/src/app
 
-# Copy package files
-COPY package.json ./
+COPY package*.json ./
 
-# Install production dependencies
-RUN npm install --production --prefer-offline
+RUN npm install --only=production
 
-# Copy built application
-COPY --from=builder /app/dist ./dist
+COPY --from=development /usr/src/app/dist ./dist
 
-# Set permissions
-RUN chown -R nextjs:nodejs /app
-
-USER nextjs
-
-EXPOSE 10000
-
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/main"]
