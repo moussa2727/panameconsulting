@@ -1,24 +1,10 @@
-# railway.toml
 [build]
-builder = "Dockerfile"
-buildCommand = "pnpm install && pnpm run build"
+builder = "DOCKERFILE"
+dockerfilePath = "backend/Dockerfile"
 
-[deploy]
-numReplicas = 1
-restartPolicyType = "ON_FAILURE"
-startCommand = "node dist/main"
-
-[healthcheck]
-path = "/api"
-port = 10000
-initialDelay = 30
-timeout = 10
-interval = 30
-
-# Environment variables
-[env]
+[build.env]
 NODE_ENV = "production"
+
+[env]
 PORT = "10000"
-TZ = "Europe/Paris"
-MONGODB_SERVER_SELECTION_TIMEOUT = "30000"
-MONGODB_SOCKET_TIMEOUT = "45000"
+NODE_ENV = "production"
