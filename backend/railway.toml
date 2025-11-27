@@ -3,6 +3,7 @@ builder = "DOCKERFILE"
 dockerfilePath = "backend/Dockerfile"
 
 [deploy]
+name = "panameconsulting"  # ← Nouveau nom
 healthCheckPath = "/health"
 healthCheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
