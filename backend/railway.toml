@@ -10,10 +10,12 @@ restartPolicyMaxRetries = 10
 
 [variables]
 NODE_ENV = "production"
+PORT = "10000"
 TZ = "Europe/Paris"
 MONGODB_SERVER_SELECTION_TIMEOUT = "30000"
 MONGODB_SOCKET_TIMEOUT = "45000"
 
+# Configuration CORS pour Railway
 [http]
 allowedOrigins = ["https://panameconsulting.vercel.app"]
 allowedMethods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
