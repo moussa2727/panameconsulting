@@ -1,33 +1,18 @@
 FROM node:18-alpine
 
-# Installation de pnpm
-RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
-
-# Définition du répertoire de travail
 WORKDIR /app
 
-# Copie des fichiers de configuration
+# Enable Corepack & PNPM
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
 COPY package.json pnpm-lock.yaml* ./
 COPY tsconfig*.json ./
-COPY nest-cli.json ./
+COPY nest-cli.json ./     # <-- This line will work only if file exists in project root
 
-# Installation des dépendances
-RUN pnpm install --frozen-lockfile
+RUN pnpm install
 
-# Copie des sources
 COPY . .
 
-# Construction de l'application
-RUN pnpm run build
+RUN pnpm build
 
-# Variables d'environnement
-ENV NODE_ENV=production
-ENV PORT=10000
-ENV HOSTNAME=0.0.0.0
-ENV TZ=Europe/Paris
-
-# Exposition du port
-EXPOSE 10000
-
-# Commande de démarrage
 CMD ["node", "dist/main.js"]
