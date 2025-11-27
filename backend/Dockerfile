@@ -4,47 +4,59 @@ FROM node:18-alpine AS builder
 # Installation et configuration de pnpm
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
+# Définition du répertoire de travail
 WORKDIR /app
 
-# Copie des fichiers de configuration
-COPY package.json pnpm-lock.yaml* tsconfig.json nest-cli.json ./
+# Copie des fichiers de configuration DEPUIS LE DOSSIER BACKEND
+COPY backend/package.json backend/pnpm-lock.yaml* backend/tsconfig.json backend/nest-cli.json ./
 
-# Installation des dépendances
+# Installation de toutes les dépendances
 RUN pnpm install --frozen-lockfile --prefer-offline
 
-# Copie des sources
-COPY src/ ./src/
+# Copie des sources de l'application
+COPY backend/src/ ./src/
 
-# Construction
+# Construction de l'application
 RUN pnpm run build
 
 # ============ ÉTAPE DE PRODUCTION ============
-FROM node:18-alpine
+FROM node:18-alpine AS production
 
-# Variables d'environnement
-ENV NODE_ENV=production
+# Arguments de build
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
 ENV PORT=10000
 
-# Installation pnpm
+# Installation et configuration de pnpm
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
+# Définition du répertoire de travail
 WORKDIR /app
 
-# Copie des fichiers essentiels
-COPY package.json pnpm-lock.yaml* ./
-COPY --from=builder /app/dist ./dist
+# Copie des fichiers de package DEPUIS LE DOSSIER BACKEND
+COPY backend/package.json backend/pnpm-lock.yaml* ./
 
-# Installation production
+# Installation UNIQUEMENT des dépendances de production
 RUN pnpm install --prod --frozen-lockfile --prefer-offline
 
-# Création dossiers
-RUN mkdir -p uploads logs
+# Copie des fichiers compilés depuis l'étape builder
+COPY --from=builder /app/dist ./dist
 
-# Utilisateur non-root
+# Création des dossiers nécessaires
+RUN mkdir -p /app/uploads && \
+    mkdir -p /app/logs && \
+    chown -R node:node /app
+
+# Script de vérification des variables d'environnement (pour debug)
+RUN echo "🔍 Vérification des variables d'environnement..." && \
+    echo "NODE_ENV: $NODE_ENV" && \
+    echo "PORT: $PORT"
+
+# Passage à l'utilisateur non-root
 USER node
 
-# Exposition port
-EXPOSE 10000
+# Exposition du port (Railway injecte le port via $PORT)
+EXPOSE $PORT
 
-# Commande simple
+# Commande de démarrage avec gestion d'erreur
 CMD ["node", "dist/main.js"]
