@@ -7,7 +7,7 @@ RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
 COPY package.json pnpm-lock.yaml* ./
 COPY tsconfig*.json ./
-COPY nest-cli.json ./     # <-- This line will work only if file exists in project root
+COPY nest-cli.json ./    
 
 RUN pnpm install
 
