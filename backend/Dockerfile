@@ -56,6 +56,9 @@ COPY package.json pnpm-lock.yaml* ./
 # Installation UNIQUEMENT des dépendances de production avec cache optimisé
 RUN pnpm install --prod --frozen-lockfile --prefer-offline --shamefully-hoist
 
+# Copie conditionnelle de nest-cli.json si il existe
+COPY nest-cli.json* ./
+
 # Copie des fichiers compilés depuis l'étape builder
 COPY --from=builder /app/dist ./dist
 
