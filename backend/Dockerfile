@@ -1,14 +1,14 @@
-# ============ BUILD STAGE ============
 FROM node:18-alpine AS builder
-
-# Enable Corepack and set pnpm version
-RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
 WORKDIR /app
 
 # Copy dependency files first for caching
 COPY package.json pnpm-lock.yaml* ./
+
+# Enable Corepack and install dependencies
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 RUN pnpm install --frozen-lockfile --prefer-offline
+
 
 # Copy the rest of the source code
 COPY . .
