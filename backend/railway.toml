@@ -2,11 +2,6 @@
 builder = "DOCKERFILE"
 dockerfilePath = "backend/Dockerfile"
 
-[deploy]
-healthCheckPath = "https://panameconsulting.up.railway.app/health"
-healthCheckTimeout = 5
-restartPolicyType = "ON_FAILURE"
-
 [variables]
 NODE_ENV = "production"
 PORT = "10000"

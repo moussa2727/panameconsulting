@@ -1,40 +1,77 @@
-version: '3.8'
-
 services:
   backend:
-    container_name: panameconsultingbackend
+    container_name: backend
     build:
-      context: .  # Contexte actuel (backend/)
+      context: .
       dockerfile: Dockerfile
+      # Cache des layers pour builds plus rapides
       args:
         NODE_ENV: production
     
+    # Nom de l'image personnalisé
     image: panameconsulting:latest
+    
+    # Ports exposés (host:container)
     ports:
       - "10000:10000"
+    
+    # Variables d'environnement essentielles
     environment:
       - NODE_ENV=production
-      - PORT=10000
-      - HOSTNAME=0.0.0.0
-      - TZ=Europe/Paris
-      - JWT_SECRET=${JWT_SECRET}
-      - EMAIL_HOST=${EMAIL_HOST}
-      - EMAIL_USER=${EMAIL_USER}
-      - EMAIL_PASS=${EMAIL_PASS}
-      - MONGODB_URI=${MONGODB_URI}
-      - FRONTEND_URL=https://panameconsulting.vercel.app
+      - PORT=${PORT}
+      - MONGODB_SERVER_SELECTION_TIMEOUT=30000
+      - MONGODB_SOCKET_TIMEOUT=45000
+      - TZ=Europe/Paris  # Ajout du fuseau horaire
+    
+    # Fichier de variables sensibles (à garder dans .gitignore)
     env_file:
       - .env
+    
+    # Politique de redémarrage automatique
     restart: unless-stopped
+    
+    # Serveurs DNS pour la résolution de noms
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    
+    # Health check pour surveiller l'état de l'application
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://panameconsulting.railway.up.app/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Délai avant premier check
+    
+    # Configuration des logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"   # Taille max par fichier
+        max-file: "3"     # Nombre max de fichiers
+    
+    # Réseau dédié pour l'application
     networks:
       - backend-network
+    
+    # Volumes pour la persistance des données
     volumes:
-      - uploads_data:/app/uploads
-      - logs_data:/app/logs
+      # Mount des dossiers critiques (assurez-vous qu'ils existent sur l'hôte)
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      
+      # Volume pour les node_modules (évite les conflits avec l'hôte)
+      - node_modules:/app/node_modules
 
+# Déclaration des ressources partagées
 volumes:
-  uploads_data:
-  logs_data:
+  node_modules:
+    driver: local
 
 networks:
   backend-network:
+    driver: bridge
+    # Configuration optionnelle du réseau
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
