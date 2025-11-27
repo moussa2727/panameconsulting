@@ -1,26 +1,32 @@
-# Dockerfile optimisé pour pnpm
+# Dockerfile simplifié pour pnpm
 FROM node:18-alpine AS base
 
 # Installer pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
-
-WORKDIR /usr/src/app
-
-# Définir les variables d'environnement pour pnpm
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
-# Copier les fichiers de configuration
-COPY package.json pnpm-lock.yaml* .npmrc* ./
+WORKDIR /usr/src/app
+
+# Copier package.json d'abord (pour mieux utiliser le cache Docker)
+COPY package.json ./
+
+# Copier les autres fichiers de configuration si ils existent
+COPY pnpm-lock.yaml ./
+COPY .npmrc ./
 
 FROM base AS development
 
-# Installer toutes les dépendances (développement inclus)
+# Copier d'abord les fichiers de dépendances
+COPY package.json pnpm-lock.yaml* ./
+
+# Installer les dépendances
 RUN pnpm install --frozen-lockfile
 
+# Copier le reste du code
 COPY . .
 
-# Build de l'application
+# Build
 RUN pnpm run build
 
 FROM base AS production
@@ -28,19 +34,17 @@ FROM base AS production
 ARG NODE_ENV=production
 ENV NODE_ENV=${NODE_ENV}
 
-# Installer uniquement les dépendances de production
+# Installer les dépendances de production
 RUN pnpm install --frozen-lockfile --prod
 
-# Copier le build depuis l'étape development
+# Copier les fichiers built
 COPY --from=development /usr/src/app/dist ./dist
 
-# Créer un utilisateur non-root pour la sécurité
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
+# Sécurité
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S appuser -u 1001 && \
+    chown -R appuser:nodejs /usr/src/app
 
-# Changer les permissions du répertoire de travail
-RUN chown -R nextjs:nodejs /usr/src/app
-USER nextjs
+USER appuser
 
-# Utiliser node au lieu de pnpm pour l'exécution en production
 CMD ["node", "dist/main"]
