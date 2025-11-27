@@ -2,19 +2,17 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy dependency files first for caching
-COPY package.json pnpm-lock.yaml* ./
+# Copy only dependency files first for caching
+COPY package.json pnpm-lock.yaml ./ 
 
 # Enable Corepack and install dependencies
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 RUN pnpm install --frozen-lockfile --prefer-offline
 
-
 # Copy the rest of the source code
 COPY . .
-
-# Build the NestJS app
 RUN pnpm build
+
 
 # ============ PRODUCTION STAGE ============
 FROM node:18-alpine AS production
