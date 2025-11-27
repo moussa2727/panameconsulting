@@ -22,7 +22,7 @@ async function bootstrap() {
   // 👇 Création du serveur Express natif
   const server = express();
 
-  server.get("/health", (req, res) => {
+  server.get("/health", (_req, res) => {
     const health = {
       status: "OK",
       timestamp: new Date().toISOString(),
@@ -39,7 +39,7 @@ async function bootstrap() {
   });
 
   // ➕ Route spéciale pour /
-  server.get("/", (req, res) => {
+  server.get("/", (_req, res) => {
     res.status(200).send(`
       <h1>Bienvenue sur le site Paname Consulting</h1>
       <p>L'API est disponible sur <a href="/api">/api</a></p>
@@ -99,7 +99,7 @@ async function bootstrap() {
 
   app.use(
     (
-      req: any,
+      _req: any,
       res: {
         removeHeader: (arg0: string) => void;
         header: (arg0: string, arg1: string) => void;
@@ -113,24 +113,24 @@ async function bootstrap() {
   );
 
   // Configuration CORS
-  app.enableCors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:3000",
-      "https://panameconsulting.com", 
-      "https://www.panameconsulting.com",
-      "https://panameconsulting.vercel.app",
-    ],
-    methods: ["GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Accept", 
-      "Authorization",
-      "Cache-Control",
-      "X-Requested-With",
-      "X-HTTP-Method-Override",
-    ],
-    credentials: true,
+ app.enableCors({
+  origin: [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://panameconsulting.com", 
+    "https://www.panameconsulting.com",
+    "https://panameconsulting.vercel.app",
+  ],
+  methods: ["GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Accept", 
+    "Authorization",
+    "Cache-Control",
+    "X-Requested-With",
+    "X-HTTP-Method-Override",
+  ],
+  credentials: true, // ← ESSENTIEL pour les cookies
     preflightContinue: false,
     optionsSuccessStatus: 204,
     maxAge: 86400,
@@ -201,7 +201,7 @@ async function bootstrap() {
     }),
   );
 
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 10000;
   await app.listen(port);
   console.log(`Database connected successfully`);
   console.log(`Server running on port ${port}`);

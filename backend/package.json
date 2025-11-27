@@ -10,9 +10,9 @@
     "dev": "nest start --watch --verbose",
     "prod": "node dist/main",
     "docker:build": "docker build -t backend .",
-    "docker:run": "docker run -p 3000:3000 backend",
+    "docker:run": "docker run -p 10000:10000 backend",  
     "start:prod": "node dist/main",
-    "docker:prod": "docker run -p 3000:3000 --env-file .env.production backend",
+    "docker:prod": "docker run -p 10000:10000 --env-file .env.production backend",
     "deploy:setup": "npm run build && npm run docker:build",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit --watch"

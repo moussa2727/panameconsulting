@@ -54,11 +54,11 @@ RUN addgroup -g 1001 -S nodejs && \
 # Passage à l'utilisateur non-root
 USER nestjs
 
-# Exposition du port de l'application
-EXPOSE 3000
+# Exposition du port de l'application (Render utilise le port 10000)
+EXPOSE 10000
 
-# Variables d'environnement par défaut
-ENV PORT=3000
+# Variables d'environnement par défaut pour Render
+ENV PORT=10000
 ENV HOSTNAME=0.0.0.0
 
 # Commande de démarrage de l'application

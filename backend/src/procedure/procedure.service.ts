@@ -37,6 +37,9 @@ export class ProcedureService {
   async createFromRendezvous(
     createDto: CreateProcedureDto,
   ): Promise<Procedure> {
+    const maskedRendezvousId = this.maskId(createDto.rendezVousId);
+    this.logger.log(`Création procédure depuis rendez-vous: ${maskedRendezvousId}`);
+
     const rendezvous = await this.rendezvousModel.findById(
       createDto.rendezVousId,
     );
@@ -67,19 +70,24 @@ export class ProcedureService {
       niveauEtude: rendezvous.niveauEtude,
       filiere: rendezvous.filiere,
       statut: ProcedureStatus.IN_PROGRESS,
-      steps: this.initializeSteps(), // ✅ TOUJOURS 3 ÉTAPES
+      steps: this.initializeSteps(),
       isDeleted: false,
     };
 
     const procedure = await this.procedureModel.create(procedureData);
 
-    this.logger.log(`✅ Procédure créée pour ${procedure.nom}`);
+    const maskedEmail = this.maskEmail(procedure.email);
+    this.logger.log(`Procédure créée pour: ${maskedEmail}`);
+    
     await this.notificationService.sendProcedureCreation(procedure, rendezvous);
 
     return procedure;
   }
 
   async getProcedureDetails(id: string, user: any): Promise<Procedure> {
+    const maskedId = this.maskId(id);
+    this.logger.debug(`Récupération détails procédure: ${maskedId}`);
+
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException("ID de procédure invalide");
     }
@@ -98,9 +106,12 @@ export class ProcedureService {
 
     // Vérification d'accès
     if (procedure.email !== user.email && user.role !== UserRole.ADMIN) {
+      const maskedEmail = this.maskEmail(user.email);
+      this.logger.warn(`Tentative accès non autorisé procédure ${maskedId} par: ${maskedEmail}`);
       throw new ForbiddenException("Accès non autorisé");
     }
 
+    this.logger.debug(`Détails procédure récupérés: ${maskedId}`);
     return procedure;
   }
 
@@ -108,6 +119,9 @@ export class ProcedureService {
     id: string,
     updateDto: UpdateProcedureDto,
   ): Promise<Procedure> {
+    const maskedId = this.maskId(id);
+    this.logger.log(`Mise à jour procédure: ${maskedId}`);
+
     const procedure = await this.procedureModel.findByIdAndUpdate(
       id,
       { ...updateDto, dateDerniereModification: new Date() },
@@ -116,7 +130,7 @@ export class ProcedureService {
 
     if (!procedure) throw new NotFoundException("Procédure non trouvée");
 
-    this.logger.log(`📝 Procédure ${id} mise à jour`);
+    this.logger.log(`Procédure mise à jour: ${maskedId}`);
     return procedure;
   }
 
@@ -127,13 +141,11 @@ export class ProcedureService {
   ): void {
     const steps = procedure.steps;
 
-    // ✅ Récupérer l'étape actuelle
     const currentStep = steps.find((s) => s.nom === stepName);
     if (!currentStep) {
       throw new BadRequestException("Étape non trouvée dans la procédure");
     }
 
-    // ❌ IMPOSSIBLE DE MODIFIER UNE ÉTAPE DÉJÀ FINALISÉE
     if (
       [
         StepStatus.COMPLETED,
@@ -147,9 +159,7 @@ export class ProcedureService {
       );
     }
 
-    // ✅ VALIDATION STRICTE DE L'ORDRE DES ÉTAPES
-
-    // 1. DEMANDE VISA → VÉRIFIER QUE L'ADMISSION EST TERMINÉE
+    // Validation de l'ordre des étapes
     if (stepName === StepName.DEMANDE_VISA) {
       const admissionStep = steps.find(
         (s) => s.nom === StepName.DEMANDE_ADMISSION,
@@ -165,7 +175,6 @@ export class ProcedureService {
         );
       }
 
-      // ✅ VÉRIFICATION SUPPLÉMENTAIRE : Si on veut passer Visa à "En cours", Admission doit être "Terminé"
       if (
         newStatus === StepStatus.IN_PROGRESS &&
         admissionStep.statut !== StepStatus.COMPLETED
@@ -176,7 +185,6 @@ export class ProcedureService {
       }
     }
 
-    // 2. PRÉPARATIFS VOYAGE → VÉRIFIER QUE LE VISA EST TERMINÉ
     if (stepName === StepName.PREPARATIF_VOYAGE) {
       const visaStep = steps.find((s) => s.nom === StepName.DEMANDE_VISA);
 
@@ -190,7 +198,6 @@ export class ProcedureService {
         );
       }
 
-      // VÉRIFICATION SUPPLÉMENTAIRE : Si on veut passer Préparatifs à "En cours", Visa doit être "Terminé"
       if (
         newStatus === StepStatus.IN_PROGRESS &&
         visaStep.statut !== StepStatus.COMPLETED
@@ -201,12 +208,6 @@ export class ProcedureService {
       }
     }
 
-    // VALIDATION : RAISON OBLIGATOIRE POUR LES REJETS
-    if (newStatus === StepStatus.REJECTED) {
-      // La raison sera validée dans la méthode appelante avec le DTO
-    }
-
-    // VALIDATION : IMPOSSIBLE DE REVENIR EN ARRIÈRE
     if (
       currentStep.statut === StepStatus.COMPLETED &&
       newStatus !== StepStatus.COMPLETED
@@ -216,7 +217,6 @@ export class ProcedureService {
       );
     }
 
-    // VALIDATION : IMPOSSIBLE DE REPRENDRE UNE ÉTAPE REJETÉE/ANNULÉE
     if (
       [StepStatus.REJECTED, StepStatus.CANCELLED].includes(
         currentStep.statut,
@@ -234,53 +234,42 @@ export class ProcedureService {
     stepName: string,
     updateDto: UpdateStepDto,
   ): Promise<Procedure> {
+    const maskedId = this.maskId(id);
+    
     try {
-      this.logger.log(
-        `🔄 Début mise à jour étape - ID: ${id}, Étape: ${stepName}`,
-      );
+      this.logger.log(`Mise à jour étape - Procédure: ${maskedId}, Étape: ${stepName}`);
 
-      // DÉCODAGE SÉCURISÉ
       let decodedStepName: string;
       try {
         decodedStepName = decodeURIComponent(stepName);
-        this.logger.log(`🔍 Étape décodée: "${decodedStepName}"`);
       } catch (decodeError) {
         throw new BadRequestException(`Nom d'étape mal formé: ${stepName}`);
       }
 
-      // VALIDATION DU NOM D'ÉTAPE
       const validStepNames = Object.values(StepName);
       if (!validStepNames.includes(decodedStepName as StepName)) {
-        this.logger.error(
-          `❌ Nom d'étape invalide: "${decodedStepName}". Valides: ${validStepNames.join(", ")}`,
-        );
+        this.logger.error(`Nom d'étape invalide: "${decodedStepName}"`);
         throw new BadRequestException(
-          `Nom d'étape invalide: "${decodedStepName}". ` +
-            `Étapes valides: ${validStepNames.join(", ")}`,
+          `Nom d'étape invalide: "${decodedStepName}"`,
         );
       }
 
-      // RECHERCHE DE LA PROCÉDURE
       const procedure = await this.procedureModel.findById(id).exec();
       if (!procedure) {
-        this.logger.error(`❌ Procédure non trouvée: ${id}`);
+        this.logger.error(`Procédure non trouvée: ${maskedId}`);
         throw new NotFoundException("Procédure non trouvée");
       }
 
-      // RECHERCHE DE L'ÉTAPE
       const stepIndex = procedure.steps.findIndex(
         (step: Step) => step.nom === decodedStepName,
       );
       if (stepIndex === -1) {
-        this.logger.error(
-          `❌ Étape non trouvée: "${decodedStepName}" dans la procédure ${id}`,
-        );
+        this.logger.error(`Étape non trouvée: "${decodedStepName}" dans ${maskedId}`);
         throw new NotFoundException(
           `Étape "${decodedStepName}" non trouvée dans cette procédure`,
         );
       }
 
-      // ✅ CORRECTION : Validation améliorée des données
       if (
         updateDto.statut === StepStatus.REJECTED &&
         (!updateDto.raisonRefus || updateDto.raisonRefus.trim() === "")
@@ -290,7 +279,6 @@ export class ProcedureService {
         );
       }
 
-      // ✅ VALIDATION DE L'ORDRE DES ÉTAPES
       if (updateDto.statut) {
         this.validateStepOrder(
           procedure,
@@ -301,12 +289,10 @@ export class ProcedureService {
 
       const now = new Date();
 
-      // ✅ CORRECTION : Construction robuste de l'étape mise à jour
       const existingStep = procedure.steps[stepIndex];
 
-      // Créer un nouvel objet étape avec seulement les champs autorisés
       const updatedStep: Step = {
-        nom: existingStep.nom, // ✅ GARDER le nom original
+        nom: existingStep.nom,
         statut:
           updateDto.statut !== undefined
             ? updateDto.statut
@@ -315,49 +301,42 @@ export class ProcedureService {
           updateDto.raisonRefus !== undefined
             ? updateDto.raisonRefus
             : existingStep.raisonRefus,
-        dateCreation: existingStep.dateCreation, // ✅ PRÉSERVER la date de création
-        dateMaj: now, // ✅ Mettre à jour la date de modification
+        dateCreation: existingStep.dateCreation,
+        dateMaj: now,
       };
 
-      // ✅ CORRECTION : Mise à jour propre de l'étape
       procedure.steps[stepIndex] = updatedStep;
 
-      // ✅ MISE À JOUR DU STATUT GLOBAL
       this.updateProcedureGlobalStatus(procedure);
 
-      // ✅ SAUVEGARDE
       const savedProcedure = await procedure.save();
 
-      // ✅ GESTION AUTOMATIQUE DE L'ÉTAPE SUIVANTE
       if (
         updateDto.statut === StepStatus.COMPLETED &&
         stepIndex < procedure.steps.length - 1
       ) {
         const nextStep = procedure.steps[stepIndex + 1];
         if (nextStep.statut === StepStatus.PENDING) {
-          this.logger.log(
-            `🔄 Activation automatique backend de l'étape suivante: ${nextStep.nom}`,
-          );
+          this.logger.log(`Activation étape suivante: ${nextStep.nom} pour ${maskedId}`);
           nextStep.statut = StepStatus.IN_PROGRESS;
           nextStep.dateMaj = now;
           await procedure.save();
         }
       }
 
-      // ✅ NOTIFICATION
       try {
         await this.notificationService.sendProcedureUpdate(savedProcedure);
       } catch (notificationError) {
         this.logger.warn(
-          `⚠️ Erreur notification: ${notificationError.message}`,
+          `Erreur notification procédure ${maskedId}: ${notificationError.message}`,
         );
       }
 
+      this.logger.log(`Étape mise à jour avec succès: ${stepName} pour ${maskedId}`);
       return savedProcedure;
     } catch (error) {
       this.logger.error(
-        `❌ Erreur critique mise à jour étape "${stepName}" pour ${id}:`,
-        error,
+        `Erreur mise à jour étape "${stepName}" pour ${maskedId}: ${error.message}`,
       );
 
       if (
@@ -367,7 +346,6 @@ export class ProcedureService {
         throw error;
       }
 
-      // ✅ CORRECTION : Meilleur message d'erreur pour le frontend
       throw new InternalServerErrorException(
         `Erreur lors de la mise à jour de l'étape: ${error.message}`,
       );
@@ -378,6 +356,9 @@ export class ProcedureService {
     if (!email) {
       throw new BadRequestException("Email est requis");
     }
+
+    const maskedEmail = this.maskEmail(email);
+    this.logger.debug(`Recherche procédures par email: ${maskedEmail}`);
 
     return this.procedureModel
       .find({
@@ -425,6 +406,9 @@ export class ProcedureService {
   // ==================== USER METHODS ====================
 
   async getUserProcedures(email: string, page: number = 1, limit: number = 10) {
+    const maskedEmail = this.maskEmail(email);
+    this.logger.debug(`Liste procédures utilisateur: ${maskedEmail}, Page: ${page}`);
+
     const skip = (page - 1) * limit;
     const query = { email: email.toLowerCase(), isDeleted: false };
 
@@ -438,6 +422,8 @@ export class ProcedureService {
       this.procedureModel.countDocuments(query),
     ]);
 
+    this.logger.debug(`Procédures trouvées: ${data.length} pour ${maskedEmail}`);
+    
     return {
       data,
       total,
@@ -452,10 +438,16 @@ export class ProcedureService {
     userEmail: string,
     reason?: string,
   ): Promise<Procedure> {
+    const maskedId = this.maskId(id);
+    const maskedEmail = this.maskEmail(userEmail);
+    
+    this.logger.log(`Annulation procédure: ${maskedId} par: ${maskedEmail}`);
+
     const procedure = await this.procedureModel.findById(id);
     if (!procedure) throw new NotFoundException("Procédure non trouvée");
 
     if (procedure.email !== userEmail.toLowerCase()) {
+      this.logger.warn(`Tentative annulation non autorisée: ${maskedId} par: ${maskedEmail}`);
       throw new ForbiddenException(
         "Vous ne pouvez annuler que vos propres procédures",
       );
@@ -483,9 +475,7 @@ export class ProcedureService {
     const savedProcedure = await procedure.save();
     await this.notificationService.sendCancellationNotification(savedProcedure);
 
-    this.logger.log(
-      `❌ Procédure annulée par l'utilisateur: ${procedure.email}`,
-    );
+    this.logger.log(`Procédure annulée: ${maskedId} par: ${maskedEmail}`);
     return savedProcedure;
   }
 
@@ -496,10 +486,15 @@ export class ProcedureService {
     limit: number = 10,
     email?: string,
   ) {
+    this.logger.debug(`Liste procédures actives - Page: ${page}, Limit: ${limit}`);
+
     const skip = (page - 1) * limit;
     const query: any = { isDeleted: false };
 
-    if (email) query.email = email.toLowerCase();
+    if (email) {
+      query.email = email.toLowerCase();
+      this.logger.debug(`Filtre email appliqué: ${this.maskEmail(email)}`);
+    }
 
     const [data, total] = await Promise.all([
       this.procedureModel
@@ -513,6 +508,8 @@ export class ProcedureService {
       this.procedureModel.countDocuments(query),
     ]);
 
+    this.logger.debug(`Procédures actives trouvées: ${data.length}`);
+    
     return {
       data,
       total,
@@ -523,6 +520,9 @@ export class ProcedureService {
   }
 
   async softDelete(id: string, reason?: string): Promise<Procedure> {
+    const maskedId = this.maskId(id);
+    this.logger.log(`Suppression procédure: ${maskedId}`);
+
     const procedure = await this.procedureModel.findById(id);
     if (!procedure) throw new NotFoundException("Procédure non trouvée");
 
@@ -540,13 +540,13 @@ export class ProcedureService {
 
     const savedProcedure = await procedure.save();
 
-    this.logger.log(
-      `🗑️ Procédure marquée comme supprimée (soft delete): ${id}`,
-    );
+    this.logger.log(`Procédure marquée comme supprimée: ${maskedId}`);
     return savedProcedure;
   }
 
   async getProceduresOverview() {
+    this.logger.debug("Calcul statistiques procédures");
+
     const [byStatus, byDestination, total] = await Promise.all([
       this.procedureModel.aggregate([
         { $match: { isDeleted: false } },
@@ -559,29 +559,29 @@ export class ProcedureService {
       this.procedureModel.countDocuments({ isDeleted: false }),
     ]);
 
+    this.logger.debug(`Statistiques calculées - Total: ${total}`);
     return { byStatus, byDestination, total };
   }
 
   // ==================== UTILITY METHODS ====================
 
   private initializeSteps(): Step[] {
-    // ✅ TOUJOURS 3 ÉTAPES OBLIGATOIRES
     return [
       {
         nom: StepName.DEMANDE_ADMISSION,
-        statut: StepStatus.IN_PROGRESS, // Première étape active
+        statut: StepStatus.IN_PROGRESS,
         dateCreation: new Date(),
         dateMaj: new Date(),
       },
       {
         nom: StepName.DEMANDE_VISA,
-        statut: StepStatus.PENDING, // En attente de l'admission
+        statut: StepStatus.PENDING,
         dateCreation: new Date(),
         dateMaj: new Date(),
       },
       {
         nom: StepName.PREPARATIF_VOYAGE,
-        statut: StepStatus.PENDING, // En attente du visa
+        statut: StepStatus.PENDING,
         dateCreation: new Date(),
         dateMaj: new Date(),
       },
@@ -589,20 +589,20 @@ export class ProcedureService {
   }
 
   async rejectProcedure(id: string, reason: string): Promise<Procedure> {
+    const maskedId = this.maskId(id);
+    this.logger.log(`Rejet procédure: ${maskedId}`);
+
     const procedure = await this.procedureModel.findById(id);
     if (!procedure) throw new NotFoundException("Procédure non trouvée");
 
     procedure.statut = ProcedureStatus.REJECTED;
     procedure.raisonRejet = reason;
 
-    // ✅ CORRECTION : TOUTES les étapes sont rejetées (même celles terminées)
     procedure.steps.forEach((step) => {
-      // Peu importe le statut actuel, on rejette TOUT
       step.statut = StepStatus.REJECTED;
-      step.raisonRefus = reason; // Même raison pour toutes les étapes
+      step.raisonRefus = reason;
       step.dateMaj = new Date();
 
-      // Si l'étape n'avait pas de date de completion, on la met à jour
       if (!step.dateCompletion) {
         step.dateCompletion = new Date();
       }
@@ -611,7 +611,25 @@ export class ProcedureService {
     const saved = await procedure.save();
     await this.notificationService.sendProcedureUpdate(saved);
 
-    this.logger.log(`❌ Procédure rejetée: ${id}`);
+    this.logger.log(`Procédure rejetée: ${maskedId}`);
     return saved;
+  }
+
+  private maskEmail(email: string): string {
+    if (!email) return "***";
+    const [name, domain] = email.split("@");
+    if (!name || !domain) return "***";
+
+    const maskedName =
+      name.length > 2
+        ? name.substring(0, 2) + "*".repeat(Math.max(name.length - 2, 1))
+        : "*".repeat(name.length);
+
+    return `${maskedName}@${domain}`;
+  }
+
+  private maskId(id: string): string {
+    if (!id || id.length < 8) return "***";
+    return id.substring(0, 4) + "***" + id.substring(id.length - 4);
   }
 }

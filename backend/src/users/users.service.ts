@@ -1,4 +1,4 @@
-import {
+import{
   BadRequestException,
   Injectable,
   Logger,
@@ -74,6 +74,23 @@ export class UsersService {
     }
   }
 
+  private maskEmail(email: string): string {
+    if (!email) return 'email_inconnu';
+    const [localPart, domain] = email.split('@');
+    if (!localPart || !domain) return 'email_invalide';
+    
+    const maskedLocal = localPart.length <= 2 
+      ? localPart.charAt(0) + '*'
+      : localPart.charAt(0) + '***' + localPart.charAt(localPart.length - 1);
+    
+    return `${maskedLocal}@${domain}`;
+  }
+
+  private maskUserId(userId: string): string {
+    if (!userId) return 'user_inconnu';
+    return userId.length <= 8 ? userId : userId.substring(0, 4) + '***' + userId.substring(userId.length - 4);
+  }
+
   // 🔐 Méthodes d'authentification
   async validateUser(email: string, password: string): Promise<User | null> {
     const cacheKey = this.getCacheKey("validateUser", email);
@@ -85,8 +102,11 @@ export class UsersService {
     const user = await this.findByEmail(email);
     if (user && (await bcrypt.compare(password, user.password))) {
       this.setCache(cacheKey, user);
+      this.logger.log(`Validation utilisateur réussie: ${this.maskEmail(email)}`);
       return user;
     }
+    
+    this.logger.warn(`Échec validation utilisateur: ${this.maskEmail(email)}`);
     return null;
   }
 
@@ -137,6 +157,7 @@ export class UsersService {
 
   async findOne(id: string): Promise<User | null> {
     if (!Types.ObjectId.isValid(id)) {
+      this.logger.warn(`Tentative de recherche avec ID invalide: ${id}`);
       return null;
     }
 
@@ -148,6 +169,13 @@ export class UsersService {
 
     const user = await this.userModel.findById(id).exec();
     this.setCache(cacheKey, user);
+    
+    if (user) {
+      this.logger.debug(`Utilisateur trouvé: ${this.maskUserId(id)}`);
+    } else {
+      this.logger.debug(`Utilisateur non trouvé: ${this.maskUserId(id)}`);
+    }
+    
     return user;
   }
 
@@ -155,17 +183,20 @@ export class UsersService {
     const cacheKey = this.getCacheKey("findAll", "all");
     const cached = this.getCache(cacheKey);
     if (cached) {
+      this.logger.debug(`Liste utilisateurs récupérée depuis le cache: ${cached.length} utilisateurs`);
       return cached;
     }
 
     const users = await this.userModel.find().select("-password").exec();
     this.setCache(cacheKey, users);
+    this.logger.debug(`Liste utilisateurs récupérée depuis la base: ${users.length} utilisateurs`);
     return users;
   }
 
   async findById(id: string): Promise<User> {
     const user = await this.findOne(id);
     if (!user) {
+      this.logger.warn(`Utilisateur non trouvé: ${this.maskUserId(id)}`);
       throw new NotFoundException("Utilisateur non trouvé");
     }
     return user;
@@ -181,6 +212,7 @@ export class UsersService {
 
     const user = await this.userModel.findById(userId);
     if (!user) {
+      this.logger.warn(`Vérification accès - Utilisateur non trouvé: ${this.maskUserId(userId)}`);
       this.setCache(cacheKey, false);
       return false;
     }
@@ -191,11 +223,13 @@ export class UsersService {
     }
 
     if (!user.isActive) {
+      this.logger.warn(`Vérification accès - Utilisateur inactif: ${this.maskUserId(userId)}`);
       this.setCache(cacheKey, false);
       return false;
     }
 
     if (user.logoutUntil && new Date() < user.logoutUntil) {
+      this.logger.warn(`Vérification accès - Utilisateur temporairement déconnecté: ${this.maskUserId(userId)}`);
       this.setCache(cacheKey, false);
       return false;
     }
@@ -217,16 +251,21 @@ export class UsersService {
   }
 
   async setMaintenanceMode(enabled: boolean): Promise<void> {
+    this.logger.log(`Changement mode maintenance: ${enabled ? 'ACTIVÉ' : 'DÉSACTIVÉ'}`);
     process.env.MAINTENANCE_MODE = enabled ? "true" : "false";
     this.clearUserCache(); // Vider le cache car les permissions peuvent changer
   }
 
   // ➕ Méthodes de création
   async create(createUserDto: RegisterDto): Promise<User> {
+    const maskedEmail = this.maskEmail(createUserDto.email);
+    this.logger.log(`Début création utilisateur: ${maskedEmail}`);
+
     try {
       // Vérifier l'email
       const existingUserWithEmail = await this.findByEmail(createUserDto.email);
       if (existingUserWithEmail) {
+        this.logger.warn(`Email déjà utilisé: ${maskedEmail}`);
         throw new BadRequestException("Cet email est déjà utilisé");
       }
 
@@ -252,6 +291,7 @@ export class UsersService {
       if (normalizedTelephone) {
         userData.telephone = normalizedTelephone;
       } else {
+        this.logger.warn(`Téléphone invalide pour: ${maskedEmail}`);
         throw new BadRequestException("Le numéro de téléphone est invalide");
       }
 
@@ -261,12 +301,14 @@ export class UsersService {
       // Nettoyer le cache après création
       this.clearUserCache();
 
+      this.logger.log(`Utilisateur créé avec succès: ${maskedEmail}, ID: ${this.maskUserId(savedUser._id.toString())}`);
       return savedUser;
     } catch (error: any) {
       // Gestion des erreurs MongoDB
       if (error?.code === 11000) {
         const field = Object.keys(error.keyPattern)[0];
         if (field === "email") {
+          this.logger.warn(`Conflit email: ${maskedEmail}`);
           throw new BadRequestException("Cet email est déjà utilisé");
         }
       }
@@ -276,17 +318,19 @@ export class UsersService {
         throw error;
       }
 
-      this.logger.error(
-        `Erreur lors de la création utilisateur: ${error.message}`,
-      );
+      this.logger.error(`Erreur création utilisateur ${maskedEmail}: ${error.message}`);
       throw new BadRequestException("Erreur lors de la création du compte");
     }
   }
 
   // ✏️ Méthodes de mise à jour
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+    const maskedId = this.maskUserId(id);
+    this.logger.log(`Début mise à jour utilisateur: ${maskedId}`);
+
     // Validation de l'ID
     if (!id || !Types.ObjectId.isValid(id)) {
+      this.logger.warn(`ID utilisateur invalide: ${id}`);
       throw new BadRequestException("ID utilisateur invalide");
     }
 
@@ -311,15 +355,17 @@ export class UsersService {
         .exec();
 
       if (!updatedUser) {
+        this.logger.error(`Utilisateur non trouvé après mise à jour: ${maskedId}`);
         throw new NotFoundException("Utilisateur non trouvé après mise à jour");
       }
 
       // Nettoyer le cache après mise à jour
       this.clearUserCache(id);
 
+      this.logger.log(`Utilisateur mis à jour avec succès: ${maskedId}`);
       return updatedUser;
     } catch (error: any) {
-      this.handleUpdateError(error);
+      this.handleUpdateError(error, maskedId);
     }
   }
 
@@ -380,6 +426,7 @@ export class UsersService {
       .select("_id")
       .exec();
     if (!existingUser) {
+      this.logger.warn(`Utilisateur non trouvé: ${this.maskUserId(userId)}`);
       throw new NotFoundException("Utilisateur non trouvé");
     }
   }
@@ -398,6 +445,7 @@ export class UsersService {
         .exec();
 
       if (existingUserWithEmail) {
+        this.logger.warn(`Conflit email: ${this.maskEmail(updateData.email)} déjà utilisé`);
         throw new BadRequestException("Cet email est déjà utilisé");
       }
     }
@@ -412,6 +460,7 @@ export class UsersService {
         .exec();
 
       if (existingUserWithPhone) {
+        this.logger.warn(`Conflit téléphone: ${updateData.telephone} déjà utilisé`);
         throw new BadRequestException(
           "Ce numéro de téléphone est déjà utilisé",
         );
@@ -419,13 +468,15 @@ export class UsersService {
     }
   }
 
-  private handleUpdateError(error: any): never {
+  private handleUpdateError(error: any, userId: string): never {
     if (error?.code === 11000) {
       const fields = Object.keys(error.keyPattern || {});
       if (fields.includes("email")) {
+        this.logger.warn(`Erreur duplication email pour: ${userId}`);
         throw new BadRequestException("Cet email est déjà utilisé");
       }
       if (fields.includes("telephone")) {
+        this.logger.warn(`Erreur duplication téléphone pour: ${userId}`);
         throw new BadRequestException(
           "Ce numéro de téléphone est déjà utilisé",
         );
@@ -437,10 +488,12 @@ export class UsersService {
       const messages = Object.values(error.errors).map(
         (err: any) => err.message,
       );
+      this.logger.warn(`Erreur validation pour ${userId}: ${messages.join(', ')}`);
       throw new BadRequestException(messages.join(", "));
     }
 
     if (error.name === "CastError") {
+      this.logger.warn(`ID utilisateur invalide: ${userId}`);
       throw new BadRequestException("ID utilisateur invalide");
     }
 
@@ -452,7 +505,7 @@ export class UsersService {
       throw error;
     }
 
-    this.logger.error(`Erreur inattendue: ${error.message}`, error.stack);
+    this.logger.error(`Erreur inattendue pour ${userId}: ${error.message}`, error.stack);
     throw new BadRequestException("Erreur lors de la mise à jour du profil");
   }
 
@@ -461,8 +514,12 @@ export class UsersService {
     userId: string,
     updatePasswordDto: UpdatePasswordDto,
   ): Promise<void> {
+    const maskedId = this.maskUserId(userId);
+    this.logger.log(`Début changement mot de passe: ${maskedId}`);
+
     const user = await this.userModel.findById(userId);
     if (!user) {
+      this.logger.warn(`Utilisateur non trouvé pour changement mot de passe: ${maskedId}`);
       throw new NotFoundException("Utilisateur non trouvé");
     }
 
@@ -471,6 +528,7 @@ export class UsersService {
       user.password,
     );
     if (!isMatch) {
+      this.logger.warn(`Mot de passe actuel incorrect: ${maskedId}`);
       throw new UnauthorizedException("Mot de passe actuel incorrect");
     }
 
@@ -481,11 +539,17 @@ export class UsersService {
 
     await user.save();
     this.clearUserCache(userId);
+    
+    this.logger.log(`Mot de passe changé avec succès: ${maskedId}`);
   }
 
   async resetPassword(userId: string, newPassword: string): Promise<void> {
+    const maskedId = this.maskUserId(userId);
+    this.logger.log(`Réinitialisation mot de passe: ${maskedId}`);
+
     const user = await this.userModel.findById(userId);
     if (!user) {
+      this.logger.warn(`Utilisateur non trouvé pour réinitialisation: ${maskedId}`);
       throw new NotFoundException("Utilisateur non trouvé");
     }
 
@@ -496,18 +560,29 @@ export class UsersService {
 
     await user.save();
     this.clearUserCache(userId);
+    
+    this.logger.log(`Mot de passe réinitialisé: ${maskedId}`);
   }
 
   // 🗑️ Méthodes de suppression
   async delete(id: string): Promise<void> {
+    const maskedId = this.maskUserId(id);
+    this.logger.log(`Début suppression utilisateur: ${maskedId}`);
+
     const result = await this.userModel.findByIdAndDelete(id).exec();
     if (!result) {
+      this.logger.warn(`Utilisateur non trouvé pour suppression: ${maskedId}`);
       throw new NotFoundException("Utilisateur non trouvé");
     }
+    
     this.clearUserCache(id);
+    this.logger.log(`Utilisateur supprimé: ${maskedId}`);
   }
 
   async toggleStatus(id: string): Promise<User> {
+    const maskedId = this.maskUserId(id);
+    this.logger.log(`Changement statut utilisateur: ${maskedId}`);
+
     const user = await this.findById(id);
     const updatedUser = await this.userModel
       .findByIdAndUpdate(id, { isActive: !user.isActive }, { new: true })
@@ -515,10 +590,12 @@ export class UsersService {
       .exec();
 
     if (!updatedUser) {
+      this.logger.error(`Utilisateur non trouvé après changement statut: ${maskedId}`);
       throw new NotFoundException("Utilisateur non trouvé");
     }
 
     this.clearUserCache(id);
+    this.logger.log(`Statut utilisateur modifié: ${maskedId}, Actif: ${updatedUser.isActive}`);
     return updatedUser;
   }
 
@@ -526,12 +603,14 @@ export class UsersService {
   async checkDatabaseConnection(): Promise<boolean> {
     try {
       if (!this.userModel.db || !this.userModel.db.db) {
+        this.logger.error("Connexion base de données non disponible");
         return false;
       }
       await this.userModel.db.db.command({ ping: 1 });
+      this.logger.debug("Connexion base de données vérifiée avec succès");
       return true;
     } catch (error) {
-      this.logger.error("Database connection check failed", error.stack);
+      this.logger.error("Échec vérification connexion base de données", error.stack);
       return false;
     }
   }
@@ -540,6 +619,7 @@ export class UsersService {
     const cacheKey = this.getCacheKey("getStats", "all");
     const cached = this.getCache(cacheKey);
     if (cached) {
+      this.logger.debug("Statistiques récupérées depuis le cache");
       return cached;
     }
 
@@ -558,6 +638,7 @@ export class UsersService {
     };
 
     this.setCache(cacheKey, stats);
+    this.logger.debug(`Statistiques générées - Total: ${totalUsers}, Actifs: ${activeUsers}, Admins: ${adminUsers}`);
     return stats;
   }
 
@@ -579,7 +660,8 @@ export class UsersService {
 
   // 🧹 Méthode de nettoyage du cache (pour les tests ou maintenance)
   async clearAllCache(): Promise<void> {
+    const cacheSize = this.cache.size;
     this.cache.clear();
-    this.logger.log("Cache utilisateur complètement vidé");
+    this.logger.log(`Cache utilisateur vidé - ${cacheSize} entrées supprimées`);
   }
 }

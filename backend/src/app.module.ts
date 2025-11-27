@@ -32,10 +32,13 @@ import { ProcedureModule } from "./procedure/procedure.module";
       inject: [ConfigService],
     }),
 
-    // 3. Fichiers statiques
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, "..", "uploads"),
       serveRoot: "/uploads",
+      serveStaticOptions: {
+        index: false,           // Désactive l'indexation
+        dotfiles: 'deny',       // Bloque les fichiers cachés (.env, etc.)
+      },
     }),
 
     // 4. Modules fonctionnels

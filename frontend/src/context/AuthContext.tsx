@@ -269,14 +269,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Remplacer la fonction refreshTokenFunction dans AuthContext.tsx
-const refreshTokenFunction = async (): Promise<boolean> => {
-  // Éviter les refresh multiples simultanés
+  const refreshTokenFunction = async (): Promise<boolean> => {
   if (isRefreshing && refreshInFlightRef.current) {
     return refreshInFlightRef.current;
   }
-  
-  // Vérifier si un refresh est déjà en cours (protection contre les boucles)
+
   const existingRefresh = sessionStorage.getItem('refresh_in_progress');
   if (existingRefresh) {
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -295,18 +292,17 @@ const refreshTokenFunction = async (): Promise<boolean> => {
     let refreshSuccessful = false;
     
     try {
+      // ✅ CORRECTION : Inclure les credentials pour envoyer les cookies
       const response = await fetch(`${VITE_API_URL}/api/auth/refresh`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
         },
-        credentials: 'include'
+        credentials: 'include' // ← CRITIQUE : pour envoyer les cookies
       });
 
-      // Gestion des erreurs HTTP
       if (!response.ok) {
         if (response.status === 401) {
-          // Vérifier si c'est une expiration de session normale
           const errorData = await response.json().catch(() => null);
           if (errorData?.sessionExpired) {
             throw new Error('SESSION_EXPIRED');
@@ -323,17 +319,15 @@ const refreshTokenFunction = async (): Promise<boolean> => {
 
       const data: RefreshResponse = await response.json();
       
-      // Vérifier si l'utilisateur est déconnecté côté serveur
       if (data.loggedOut) {
         throw new Error('USER_LOGGED_OUT');
       }
       
-      // Vérifier la présence du token
       if (!data.accessToken) {
         throw new Error('NO_TOKEN_RECEIVED');
       }
 
-      // SAUVEGARDE CRITIQUE DU TOKEN
+      // ✅ SAUVEGARDE DU TOKEN DANS LOCALSTORAGE
       localStorage.setItem('token', data.accessToken);
       setToken(data.accessToken);
       
@@ -343,24 +337,16 @@ const refreshTokenFunction = async (): Promise<boolean> => {
         localStorage.setItem('token', data.accessToken);
         setToken(data.accessToken);
         
-        // Vérification finale
         const finalToken = localStorage.getItem('token');
         if (finalToken !== data.accessToken) {
           throw new Error('TOKEN_SAVE_FAILED');
         }
       }
 
-      // Décoder et configurer le nouveau token
       try {
         const decoded = jwtDecode<JwtPayload>(data.accessToken);
-        
-        // Configurer le prochain rafraîchissement automatique (5 min avant expiration)
         setupTokenRefresh(decoded.exp);
-        
-        // Recharger les données utilisateur
         await fetchUserData(data.accessToken);
-        
-        // Mettre à jour les métadonnées de session
         saveSessionMetadata();
         
         refreshSuccessful = true;
@@ -371,14 +357,11 @@ const refreshTokenFunction = async (): Promise<boolean> => {
       }
       
     } catch (error: any) {
-      // Nettoyer les données d'authentification en cas d'échec
       localStorage.removeItem('token');
       setToken(null);
       setUser(null);
       
-      // Déclencher une déconnexion propre seulement pour certaines erreurs
       if (['REFRESH_TOKEN_EXPIRED', 'USER_LOGGED_OUT', 'NO_TOKEN_RECEIVED', 'SESSION_EXPIRED'].includes(error.message)) {
-        // Déconnexion silencieuse
         setTimeout(() => {
           logout('/', true);
         }, 1000);
