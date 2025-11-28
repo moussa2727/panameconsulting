@@ -5,19 +5,14 @@ RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
 WORKDIR /app
 
-# Copie de TOUS les fichiers de configuration
-COPY backend/package.json backend/pnpm-lock.yaml* backend/tsconfig.json backend/tsconfig.build.json backend/nest-cli.json ./
-
-# Installation des dépendances
-RUN pnpm install --frozen-lockfile --prefer-offline
-
-# Installation des dépendances de développement manquantes
-RUN pnpm add -D @typescript-eslint/parser @typescript-eslint/eslint-plugin
-
-# Copie de TOUT le code source (y compris les dossiers référencés)
+# Copie de tout le backend
 COPY backend/ ./
 
-# Construction avec skipLibCheck
+# Installation
+RUN pnpm install --frozen-lockfile --prefer-offline
+
+# Construction forcée avec configuration modifiée
+RUN sed -i 's/"skipLibCheck": false/"skipLibCheck": true/g' tsconfig.json || true
 RUN npx nest build --tsc-skip-lib-check
 
 # ============ ÉTAPE DE PRODUCTION ============
