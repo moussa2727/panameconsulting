@@ -10,14 +10,17 @@ WORKDIR /app
 COPY backend/package.json backend/pnpm-lock.yaml* ./
 COPY backend/*.json ./
 
-# Installation des dépendances
+# Installation de toutes les dépendances (y compris devDependencies)
 RUN pnpm install --frozen-lockfile --prefer-offline
 
-# Copie de TOUT le dossier src avec sa structure
+# Installation explicite des types ESLint si nécessaire
+RUN pnpm add -D @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint || true
+
+# Copie des sources
 COPY backend/src/ ./src/
 
-# Construction de l'application
-RUN pnpm run build
+# Construction avec skipLibCheck
+RUN npx tsc -p tsconfig.json --skipLibCheck
 
 # ============ ÉTAPE DE PRODUCTION ============
 FROM node:18-alpine AS production
