@@ -2,24 +2,16 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "incremental": true,
-    "incrementalFile": ".tsbuildinfo",
-    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "incremental": false,
     "sourceMap": true,
     "declaration": false,
     "declarationMap": false,
     "removeComments": true,
-    "noEmitOnError": true,
-    "pretty": false,
+    "noEmitOnError": false,
+    "pretty": true,
     "stripInternal": true,
-    "diagnostics": false,
-    "extendedDiagnostics": false,
-    "listFiles": false,
-    "listEmittedFiles": false,
-    "traceResolution": false,
     "skipLibCheck": true,
-    "preserveConstEnums": false,
-    "importsNotUsedAsValues": "remove"
+    "preserveConstEnums": false
   },
   "include": [
     "src/**/*.ts"
@@ -32,12 +24,7 @@
     "**/*.spec.ts",
     "**/*.test.ts",
     "**/*.e2e-spec.ts",
-    "**/*.d.ts",
     "**/__tests__/**",
-    "**/__mocks__/**",
-    "scripts/**",
-    "docs/**",
-    "temp/**",
-    "**/fixtures/**"
+    "**/__mocks__/**"
   ]
 }
