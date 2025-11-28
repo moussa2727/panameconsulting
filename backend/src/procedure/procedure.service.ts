@@ -242,7 +242,7 @@ export class ProcedureService {
       let decodedStepName: string;
       try {
         decodedStepName = decodeURIComponent(stepName);
-      } catch (decodeError) {
+      } catch{
         throw new BadRequestException(`Nom d'étape mal formé: ${stepName}`);
       }
 
