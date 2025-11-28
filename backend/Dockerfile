@@ -4,44 +4,54 @@ FROM node:18-alpine AS builder
 # Installation et configuration de pnpm
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
+# Définition du répertoire de travail
 WORKDIR /app
 
 # Copie des fichiers de configuration
-COPY backend/package.json backend/pnpm-lock.yaml* ./
-COPY backend/*.json ./
+COPY package.json pnpm-lock.yaml* tsconfig.json nest-cli.json ./
 
-# Installation de toutes les dépendances (y compris devDependencies)
+# Installation de toutes les dépendances
 RUN pnpm install --frozen-lockfile --prefer-offline
 
-# Installation explicite des types ESLint si nécessaire
-RUN pnpm add -D @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint || true
+# Copie des sources de l'application
+COPY src/ ./src/
 
-# Copie des sources
-COPY backend/src/ ./src/
-
-# Construction avec skipLibCheck
-RUN npx tsc -p tsconfig.json --skipLibCheck
+# Construction de l'application
+RUN pnpm run build
 
 # ============ ÉTAPE DE PRODUCTION ============
 FROM node:18-alpine AS production
 
+# Arguments de build
 ARG NODE_ENV=production
 ENV NODE_ENV=${NODE_ENV}
 ENV PORT=10000
 
+# Installation et configuration de pnpm
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
+# Définition du répertoire de travail
 WORKDIR /app
 
-COPY backend/package.json backend/pnpm-lock.yaml* ./
+# Copie des fichiers de package
+COPY package.json pnpm-lock.yaml* ./
+
+# Installation UNIQUEMENT des dépendances de production
 RUN pnpm install --prod --frozen-lockfile --prefer-offline
 
+# Copie des fichiers compilés depuis l'étape builder
 COPY --from=builder /app/dist ./dist
 
+# Création des dossiers nécessaires
 RUN mkdir -p /app/uploads && \
     mkdir -p /app/logs && \
     chown -R node:node /app
 
+# Passage à l'utilisateur non-root
 USER node
+
+# Exposition du port
 EXPOSE $PORT
+
+# Commande de démarrage
 CMD ["node", "dist/main.js"]
