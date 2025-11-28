@@ -4,21 +4,20 @@ FROM node:18-alpine AS builder
 # Installation et configuration de pnpm
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
-# Définition du répertoire de travail
 WORKDIR /app
 
-# Copie des fichiers de configuration DEPUIS LE DOSSIER BACKEND
-COPY backend/package.json backend/pnpm-lock.yaml* backend/tsconfig.json backend/nest-cli.json ./
+# Copie de tous les fichiers de configuration possibles
+COPY backend/package.json backend/pnpm-lock.yaml* ./
+COPY backend/*.json ./
 
-# Installation de toutes les dépendances
+# Installation des dépendances
 RUN pnpm install --frozen-lockfile --prefer-offline
 
-# Copie des sources de l'application
+# Copie des sources
 COPY backend/src/ ./src/
 
 # Construction de l'application
 RUN pnpm run build
-
 
 # ============ ÉTAPE DE PRODUCTION ============
 FROM node:18-alpine AS production
