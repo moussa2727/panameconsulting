@@ -10,9 +10,11 @@ WORKDIR /app
 # Copie des fichiers de configuration
 COPY backend/package.json backend/pnpm-lock.yaml* backend/tsconfig.json backend/nest-cli.json ./
 
-# Installation des dépendances (suppression du store prune)
-RUN pnpm install --frozen-lockfile --prefer-offline && \
-    pnpm i --save-dev @types/eslint__js
+# Installation des dépendances AVANT d'ajouter les types supplémentaires
+RUN pnpm install --frozen-lockfile --prefer-offline
+
+# Installation des types manquants (si nécessaire)
+RUN pnpm i --save-dev @types/eslint__js @types/node @typescript-eslint/parser @typescript-eslint/eslint-plugin
 
 # Copie des sources de l'application
 COPY backend/src/ ./src/
