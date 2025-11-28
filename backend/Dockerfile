@@ -5,26 +5,20 @@ RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
 WORKDIR /app
 
-# Copie des fichiers de configuration
-COPY backend/package.json backend/pnpm-lock.yaml* backend/tsconfig.json backend/nest-cli.json ./
+# Copie de TOUS les fichiers de configuration
+COPY backend/package.json backend/pnpm-lock.yaml* backend/tsconfig.json backend/tsconfig.build.json backend/nest-cli.json ./
 
-# Installation et nettoyage des dépendances
+# Installation des dépendances
 RUN pnpm install --frozen-lockfile --prefer-offline
 
-# Tentative de résolution des types manquants
-RUN pnpm ls @types/eslint__js 2>/dev/null || pnpm add -D @types/eslint@latest
-RUN pnpm ls eslint 2>/dev/null || pnpm add -D eslint@latest
+# Installation des dépendances de développement manquantes
+RUN pnpm add -D @typescript-eslint/parser @typescript-eslint/eslint-plugin
 
-# Alternative: si le package n'existe pas, installer eslint directement
-RUN pnpm add -D eslint @types/eslint__js || \
-    pnpm add -D @eslint/js || \
-    echo "Tentative d'installation des types eslint échouée, continuation..."
+# Copie de TOUT le code source (y compris les dossiers référencés)
+COPY backend/ ./
 
-# Copie des sources
-COPY backend/src/ ./src
-
-# Construction
-RUN pnpm run build
+# Construction avec skipLibCheck
+RUN npx nest build --tsc-skip-lib-check
 
 # ============ ÉTAPE DE PRODUCTION ============
 FROM node:18-alpine AS production
