@@ -16,13 +16,6 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
-    "noFallthroughCasesInSwitch": false,
-    "paths": {
-      "@/*": ["src/*"],
-      "@/schemas/*": ["src/schemas/*"],
-      "@/shared/*": ["src/shared/*"],
-      "@/procedure/*": ["src/procedure/*"],
-      "@/auth/*": ["src/auth/*"]
-    }
+    "noFallthroughCasesInSwitch": false
   }
 }

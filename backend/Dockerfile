@@ -1,25 +1,20 @@
 # ============ ÉTAPE DE BUILD ============
 FROM node:18-alpine AS builder
 
-# Installation et configuration de pnpm
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
-# Définition du répertoire de travail
 WORKDIR /app
 
-# Copie des fichiers de configuration
 COPY backend/package.json backend/pnpm-lock.yaml* backend/tsconfig.json backend/nest-cli.json ./
 
-# Installation des dépendances AVANT d'ajouter les types supplémentaires
+# Installation des dépendances avec le package spécifique
 RUN pnpm install --frozen-lockfile --prefer-offline
+RUN pnpm add -D @eslint/js @types/eslint__js || pnpm add -D eslint @types/eslint__js
 
-# Installation des types manquants (si nécessaire)
-RUN pnpm i --save-dev @types/eslint__js @types/node @typescript-eslint/parser @typescript-eslint/eslint-plugin
-
-# Copie des sources de l'application
+# Copie des sources
 COPY backend/src/ ./src/
 
-# Construction de l'application
+# Construction
 RUN pnpm run build
 
 # ============ ÉTAPE DE PRODUCTION ============
