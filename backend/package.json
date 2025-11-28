@@ -4,10 +4,10 @@
   "description": "NestJS backend for Paname Consulting's Application",
   "main": "dist/main.js",
   "type": "commonjs",
-  "scripts": {
+ "scripts": {
     "build": "nest build",
     "dev": "nest start --watch --verbose",
-    "start": "node dist/main.js",
+    "start": "node dist/main.js", 
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit --watch"
   },
