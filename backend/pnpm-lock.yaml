@@ -189,7 +189,7 @@ devDependencies:
     specifier: ^5.62.0
     version: 5.62.0(eslint@9.39.1)(typescript@5.3.3)
   eslint:
-    specifier: ^9.39.1
+    specifier: ^9.4.0
     version: 9.39.1
   eslint-config-prettier:
     specifier: ^9.1.0
