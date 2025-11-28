@@ -9,13 +9,14 @@ services:
     
     image: panameconsulting:latest
     
-    # Port ajusté pour correspondre à la configuration de production
+    # Ports exposés (host:container)
     ports:
       - "10000:10000"
     
+    # Variables d'environnement essentielles
     environment:
       - NODE_ENV=production
-      - PORT=10000  # ← Port ajusté
+      - PORT=10000
       - MONGODB_SERVER_SELECTION_TIMEOUT=30000
       - MONGODB_SOCKET_TIMEOUT=45000
       - TZ=Europe/Paris
@@ -24,28 +25,51 @@ services:
       - EMAIL_USER=${EMAIL_USER}
       - EMAIL_PASS=${EMAIL_PASS}
       - MONGODB_URI=${MONGODB_URI}
+      # Variables pour le développement local (simulent Railway)
+      - RAILWAY_STATIC_URL=https://panameconsulting.up.railway.app
+      - FRONTEND_URL=http://panameconsulting.vercerl.app
+      
+    # Fichier de variables sensibles
     env_file:
       - .env
     
+    # Politique de redémarrage automatique
     restart: unless-stopped
     
+    # Serveurs DNS pour la résolution de noms
     dns:
       - 1.1.1.1
       - 8.8.8.8
+    
+    # Health check pour surveiller l'état de l'application
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://panameconsulting.up.railway.app/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # Configuration des logs
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
     
+    # Réseau dédié pour l'application
     networks:
       - backend-network
     
+    # Volumes pour la persistance des données
     volumes:
+      # Mount des dossiers critiques
       - ./uploads:/app/uploads
       - ./logs:/app/logs
+      
+      # Volume pour les node_modules (évite les conflits avec l'hôte)
       - node_modules:/app/node_modules
 
+# Déclaration des ressources partagées
 volumes:
   node_modules:
     driver: local
@@ -53,6 +77,7 @@ volumes:
 networks:
   backend-network:
     driver: bridge
+    # Configuration optionnelle du réseau
     ipam:
       config:
         - subnet: 172.20.0.0/16
