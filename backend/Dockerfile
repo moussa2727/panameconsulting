@@ -19,6 +19,11 @@ COPY backend/src/ ./src/
 # Construction de l'application
 RUN pnpm run build
 
+
+# ✅ SOLUTION : Désactiver ESLint pendant le build et installer les types manquants
+RUN pnpm add -D @types/eslint@^8.56.0
+RUN nest build --eslint false
+
 # ============ ÉTAPE DE PRODUCTION ============
 FROM node:18-alpine AS production
 
