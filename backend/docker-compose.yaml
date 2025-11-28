@@ -4,14 +4,14 @@ services:
   backend:
     container_name: panameconsultingbackend
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
       args:
         NODE_ENV: production
     
     image: panameconsulting:latest
     
-    # Ports exposés
+    # Ports exposés (host:container)
     ports:
       - "10000:10000"
     
@@ -27,7 +27,9 @@ services:
       - EMAIL_USER=${EMAIL_USER}
       - EMAIL_PASS=${EMAIL_PASS}
       - MONGODB_URI=${MONGODB_URI}
-      - FRONTEND_URL=https://panameconsulting.vercel.app
+      # Variables pour le développement local (simulent Railway)
+      - RAILWAY_STATIC_URL=https://panameconsulting.up.railway.app
+      - FRONTEND_URL=http://localhost:5173
       
     # Fichier de variables sensibles
     env_file:
@@ -41,6 +43,14 @@ services:
       - 1.1.1.1
       - 8.8.8.8
     
+    # Health check pour surveiller l'état de l'application
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://panameconsulting.up.railway.app/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
     # Configuration des logs
     logging:
       driver: "json-file"
@@ -48,22 +58,28 @@ services:
         max-size: "10m"
         max-file: "3"
     
-    # Réseau dédié
+    # Réseau dédié pour l'application
     networks:
       - backend-network
     
-    # Volumes pour la persistance
+    # Volumes pour la persistance des données
     volumes:
-      - uploads_data:/app/uploads
-      - logs_data:/app/logs
+      # Mount des dossiers critiques
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      
+      # Volume pour les node_modules (évite les conflits avec l'hôte)
+      - node_modules:/app/node_modules
 
-# Déclaration des volumes persistants
+# Déclaration des ressources partagées
 volumes:
-  uploads_data:
-    driver: local
-  logs_data:
+  node_modules:
     driver: local
 
 networks:
   backend-network:
     driver: bridge
+    # Configuration optionnelle du réseau
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
