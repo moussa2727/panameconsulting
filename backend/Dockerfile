@@ -12,13 +12,17 @@ COPY backend/package.json backend/pnpm-lock.yaml* backend/tsconfig.json backend/
 
 # Nettoyage du cache et installation des dépendances
 RUN pnpm store prune && \
-    pnpm install --frozen-lockfile --prefer-offline
-
+    pnpm install --frozen-lockfile --prefer-offline && \
+    pnpm i --save-dev @types/eslint__js
 # Copie des sources de l'application
 COPY backend/src/ ./src/
 
 # Construction de l'application
 RUN pnpm run build
+
+
+# Nettoyage après le build (optionnel)
+RUN pnpm store prune
 
 # ============ ÉTAPE DE PRODUCTION ============
 FROM node:18-alpine AS production
